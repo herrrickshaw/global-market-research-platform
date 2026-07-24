@@ -39,10 +39,11 @@ def mtime(rel: str) -> str:
 # each: {market: (verdict, evidence)}
 VAL_RATIO = {  # source: pe_anomaly_backtest.md + valuation_reversion_*.md
  "Value — cheap vs peers (low PE)": {
-   "IN": ("✅", "+5.3%/6M sector-rel, t2.5"), "US": ("✅", "+1.7%/3M, t2.3"),
-   "KR": ("🟡", "t3.3 on 2022-26 BUT drops to 1.5 on deeper 2020-26 (COVID diluted) — period-dependent"),
-   "JP": ("⚠️", "direction right, t≈0"),
-   "EU": ("⚠️", "+36%/6M headline but t1.5 — small-sample (449) micro-cap artifact; CN: value ABSENT t0")},
+   "IN": ("✅", "+5.3%/6M, t2.5 — POWERED (17 non-overlap obs, 60% liq cov)"),
+   "US": ("✅", "+1.7%/3M, t2.3 — POWERED (17 obs, 90% cov)"),
+   "KR": ("✅", "powered (17 obs, 96% cov via DART); recent t3.3, deeper t1.5"),
+   "JP": ("🔴", "INSUFFICIENT DATA — 5y, only 9 non-overlap obs → underpowered, can't conclude"),
+   "EU": ("🔴", "INSUFFICIENT DATA — 9 obs + broken Volume; the +36% was a data artifact (CN same)")},
  "Value+Quality long/short (cheap∩hiROE − rich∩loROE)": {
    "IN": ("❌", "−1.0%/6M — momentum runs shorts over"), "US": ("🟡", "+1.7%/6M, t1.0"),
    "KR": ("✅", "+4.8%/6M, t4.2 — full L/S works"), "JP": ("—", "excluded"),
