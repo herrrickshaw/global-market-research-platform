@@ -206,6 +206,16 @@ FAILURES=()
   /usr/bin/python3 financial_ratios.py \
     || FAILURES+=("ratios: financial_ratios rebuild")
 
+  # [15c] All-market ratio derivation + data-quality gate. build_all_ratios derives
+  # PE/PB/ROE across ALL warehouse markets (adds JP/EU/CN from already-collected
+  # fundamentals, no fetch); data_quality runs GE/dbt-style expectations (unique,
+  # not-null, accepted-range, freshness), back-fills missing ratios, and reports
+  # coverage — a validation gate that fails loudly on regressions.
+  $PY build_all_ratios.py > /dev/null 2>&1 \
+    && $PY data_quality.py > /dev/null 2>&1 \
+    && echo "  ratios extended (6 markets) + data-quality validated" \
+    || FAILURES+=("data-quality: ratio build / validation gate")
+
   # [16] Cloud copy — rclone-sync the data trees (market_cache, bhavcopy_cache,
   # cache_seed, gmd cache_seed, warehouse duckdb) to Google Drive with dated
   # history, replacing GitHub LFS as the off-machine store (LFS budget is
