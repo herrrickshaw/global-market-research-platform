@@ -137,8 +137,9 @@ def main() -> int:
     ax.bar([b.replace("🟢 ", "").replace("🔴 ", "") for b in bars.index], bars.values,
            color=[colors.get(b, "#888") for b in bars.index])
     ax.axhline(0, c="k", lw=.8); ax.set_ylabel("PEAD spread % (beat drift − miss drift)")
-    ax.set_title("PEAD is a fundamentals anomaly — it's stronger where fundamentals price the stock\n"
-                 f"(US, {len(d):,} earnings events, +{ENTRY}→+{EXIT} trading days)", fontsize=11)
+    ax.set_title("PEAD lives in the SPECULATIVE corner — earnings surprises drift more where "
+                 "stocks are hard to value\n(information-uncertainty effect; US, "
+                 f"{len(d):,} earnings events, +{ENTRY}→+{EXIT} trading days)", fontsize=10.5)
     for i, v in enumerate(bars.values):
         ax.text(i, v + (0.05 if v >= 0 else -0.1), f"{v:+.2f}%", ha="center", fontsize=10, fontweight="bold")
     plt.tight_layout(); plt.savefig(REP / "pead_fund_vs_spec.png", dpi=150, bbox_inches="tight")
