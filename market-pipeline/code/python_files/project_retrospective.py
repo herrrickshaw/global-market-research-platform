@@ -25,6 +25,9 @@ FIND = [
  ("Measurement > data quantity (Japan flip: null→+6.6%/6M t4.84 via EDINET depth)", 9, "validated"),
  ("Country-ERP: China's cheapness is NOT risk-justified (CRP 0.91%) → speculation confirmed", 7, "validated"),
  ("China: NEITHER value (t0.3) NOR 6M momentum (t−0.2) works — passive only (was tentative, now tested)", 8, "validated"),
+ ("KR value+quality L/S HALVES net of borrow (+4.83%→+2.3%/6M, t4.2→2.0); US L/S turns negative net", 8, "validated"),
+ ("China is BIMODAL — anchored SOE core (Utilities PB~ROE R²0.90) + speculative retail growth-periphery", 6, "validated (small-n caveat)"),
+ ("Fundamentals-vs-speculation is MARKET×SECTOR-specific, not poolable across markets", 7, "validated"),
  ("EU value effect", 2, "underpowered — cannot conclude"),
 ]
 
@@ -89,7 +92,7 @@ def main() -> int:
           "| gap | impact | effort | fix |", "|---|--:|--:|---|"]
     for g, i, e, fx in sorted(GAP, key=lambda x: -(x[1] / max(x[2], 1))):
         L.append(f"| {g} | {i} | {e} | {fx} |")
-    L += ["", "### The quick, high-impact fixes (do next)", "",
+    L += ["", "### ✅ Cleared this pass\n\n1. Extended valuation clustering to JP/EU/CN (JP picks 3→8). 2. CN momentum backtested — fails at 6M (t−0.2), corrects the 'likely' claim. 3. Borrow-haircut on L/S — KR halves to +2.3%/6M t2.0, US turns negative. 4. Full-universe fund-vs-spec (all 6 markets, 95% sectors) — China-bimodal + not-poolable findings. 5. EV/EBITDA cross-check.\n\n### Residual backlog (bigger / time-gated)", "",
           "1. **Extend valuation clustering to JP/EU/CN** — the data now exists; instantly fills the "
           "thin JP/EU picks and gives peer-relative value everywhere (impact 8, effort 3).",
           "2. **Backtest CN momentum** — resolve the one asserted-but-untested claim (impact 6, effort 3).",

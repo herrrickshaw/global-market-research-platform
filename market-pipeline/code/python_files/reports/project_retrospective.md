@@ -27,6 +27,9 @@ A full-arc review from the platform's origin to the live paper-track: what we've
 | Measurement > data quantity (Japan flip: null→+6.6%/6M t4.84 via EDINET depth) | 9/10 | validated |
 | Country-ERP: China's cheapness is NOT risk-justified (CRP 0.91%) → speculation confirmed | 7/10 | validated |
 | China: NEITHER value (t0.3) NOR 6M momentum (t−0.2) works — passive only (was tentative, now tested) | 8/10 | validated |
+| KR value+quality L/S HALVES net of borrow (+4.83%→+2.3%/6M, t4.2→2.0); US L/S turns negative net | 8/10 | validated |
+| China is BIMODAL — anchored SOE core (Utilities PB~ROE R²0.90) + speculative retail growth-periphery | 6/10 | validated (small-n caveat) |
+| Fundamentals-vs-speculation is MARKET×SECTOR-specific, not poolable across markets | 7/10 | validated |
 | EU value effect | 2/10 | underpowered — cannot conclude |
 
 ## Gaps to fix (prioritised by impact ÷ effort)
@@ -44,7 +47,11 @@ A full-arc review from the platform's origin to the live paper-track: what we've
 | Live forward performance = zero (paper-track just started) | 7 | 9 | TIME — the picks were only just watchlisted; needs weeks/months to validate out-of-sample |
 | EU depth pre-2021 paywalled → EU value stays underpowered | 4 | 7 | national registries / paid vendor — low priority, hard |
 
-### The quick, high-impact fixes (do next)
+### ✅ Cleared this pass
+
+1. Extended valuation clustering to JP/EU/CN (JP picks 3→8). 2. CN momentum backtested — fails at 6M (t−0.2), corrects the 'likely' claim. 3. Borrow-haircut on L/S — KR halves to +2.3%/6M t2.0, US turns negative. 4. Full-universe fund-vs-spec (all 6 markets, 95% sectors) — China-bimodal + not-poolable findings. 5. EV/EBITDA cross-check.
+
+### Residual backlog (bigger / time-gated)
 
 1. **Extend valuation clustering to JP/EU/CN** — the data now exists; instantly fills the thin JP/EU picks and gives peer-relative value everywhere (impact 8, effort 3).
 2. **Backtest CN momentum** — resolve the one asserted-but-untested claim (impact 6, effort 3).
