@@ -49,6 +49,8 @@ REG = [
   "build EU_union", "after 21:30 IST", "5y only; pre-2021 needs registries"),
  ("fundamentals", "CN", "fundamentals", f"{FH}/CN_deep.parquet", "akshare indicators",
   "cn_akshare_collect.py", "after 15:00 CST / 12:30 IST", "akshare; sleep 0.3s/req"),
+ ("reference", "JP", "sectors/universe", "/Users/umashankar/repos/global-market-data/reference/jp_sectors.parquet",
+  "JPX listed-issues master (FREE)", "curl data_e.xls", "anytime", "official TSE 33/17-sector + size + ETF flag; NOT fundamentals — depth is paid (J-Quants Premium)"),
  # ---- derived ----
  ("derived", "IN/US/KR", "ratios", "reports/financial_ratios.csv", "financial_ratios.py",
   "financial_ratios.py", "post fundamentals refresh", "rebuilt daily [15b]"),
@@ -115,6 +117,12 @@ def main() -> int:
           "| scope | rows | updated | builder | note |", "|---|--:|--:|---|---|"]
     for _, r in d[d.asset == "derived"].iterrows():
         L.append(f"| {r.market} | {r.rows:,} | {r.updated} | `{r.fetch}` | {r.rate_note} |")
+    ref = d[d.asset == "reference"]
+    if len(ref):
+        L += ["", "## Reference (free exchange masters)", "",
+              "| market | rows | updated | source | note |", "|---|--:|--:|---|---|"]
+        for _, r in ref.iterrows():
+            L.append(f"| {r.market} | {r.rows:,} | {r.updated} | {r.source} | {r.rate_note} |")
     L += ["", "## Fetch-window cheat-sheet (post-market, un-throttled)", "",
           "- **India prices** — NSE/BSE bhavcopy after **18:00 IST**; official archive, no throttle.",
           "- **yfinance** (US/EU/CN/JP prices + JP/EU fundamentals) — **03:00–07:00 IST** (post-US-close, "

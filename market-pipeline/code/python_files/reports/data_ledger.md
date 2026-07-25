@@ -32,6 +32,12 @@ Living catalog; re-run `data_ledger.py` to refresh volume/latest/updated from di
 | IN/US/KR | 7,590 | 2026-07-24 | `financial_ratios.py` | rebuilt daily [15b] |
 | 6 markets | 10,202 | 2026-07-24 | `build_all_ratios.py` | adds JP/EU/CN |
 
+## Reference (free exchange masters)
+
+| market | rows | updated | source | note |
+|---|--:|--:|---|---|
+| JP | 4,437 | 2026-07-25 | JPX listed-issues master (FREE) | official TSE 33/17-sector + size + ETF flag; NOT fundamentals — depth is paid (J-Quants Premium) |
+
 ## Fetch-window cheat-sheet (post-market, un-throttled)
 
 - **India prices** — NSE/BSE bhavcopy after **18:00 IST**; official archive, no throttle.

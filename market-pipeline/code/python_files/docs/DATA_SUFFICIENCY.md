@@ -46,3 +46,19 @@ obs AND ≥60% liquid coverage):
 
 Until a market clears the bar, its cell reads **"insufficient data"** — never a verdict.
 This is the anti-false-outcome contract. Research only, not investment advice.
+
+## JPX direct-source assessment (2026-07-25)
+
+Referred to jpx.co.jp/english/markets. Findings:
+- **JPX free data = market statistics + listings only** (monthly reports, investor-type,
+  margin, listed-issues master). The data-catalog's company financials are all **"Paid
+  Information Services."** Deep per-company fundamentals are monetized via J-Quants
+  (Premium, 20y) and FLEX (paid contract — what `jpxlab` parses). **No free path to
+  deep JP fundamentals.**
+- **Free win taken:** the listed-issues master (`data_e.xls`, 4,437 issues) →
+  `reference/jp_sectors.parquet` (3,904 equities, official TSE 33/17-sector + TOPIX size,
+  533 ETF/other flagged). Improves JP peer clustering and gives an ETF-exclusion filter
+  (JP's equivalent of the ISIN check). Does NOT add fundamental depth.
+- **Conclusion:** JP statistical underpower is a **hard free-data limit**, not a fixable
+  gap. J-Quants free/standard = ~2y (quality upgrade only, `jq_jp_collect.py`). CN
+  (akshare, free deep history) remains the one market where depth is actually recoverable.
