@@ -28,6 +28,7 @@ run() {  # run <label> <script>
   run "quality gate (GE/dbt expectations)" data_quality.py
   run "sufficiency guard (+ trend history + flips)" data_sufficiency.py
   run "freshness ledger" data_ledger.py
+  run "source registry (+ reachability)" source_registry.py
   echo '```'
   echo
   echo "## Current sufficiency verdict"
