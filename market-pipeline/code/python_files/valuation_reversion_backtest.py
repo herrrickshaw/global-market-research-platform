@@ -37,7 +37,7 @@ CFG = {
  "KR_deep": (f"{FH}/KR_deep.parquet", f"{WH}/KR", "2020-06-01"),
  "JP": (f"{FH}/JP_edinet.parquet", f"{WH}/JP", "2016-06-01"),
  "EU": (f"{FH}/EU.parquet", f"{WH}/EU", "2022-01-01"),
- "CN": (f"{FH}/CN_deep.parquet", f"{WH}/CN", "2017-01-01"),
+ "CN": (f"{FH}/CN_full.parquet", f"{WH}/CN", "2017-01-01"),
 }
 MKT = sys.argv[1] if len(sys.argv) > 1 else "US"
 FUND, PX_DIR, START = CFG[MKT]

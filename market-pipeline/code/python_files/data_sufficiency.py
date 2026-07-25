@@ -25,7 +25,7 @@ HERE = Path(__file__).resolve().parent
 LOG = get_logger("data_sufficiency")
 FH = "/Users/umashankar/repos/global-stock-screener/cache_seed/fundamentals_history"
 WH = "/Users/umashankar/repos/global-market-data/warehouse/ohlcv"
-FUND = {"IN": "IN", "US": "US", "KR": "KR_deep", "JP": "JP_edinet", "EU": "EU", "CN": "CN_deep"}
+FUND = {"IN": "IN", "US": "US", "KR": "KR_deep", "JP": "JP_edinet", "EU": "EU", "CN": "CN_full"}
 # minimum non-overlapping obs for a credible de-overlapped t-stat
 MIN_NONOVERLAP = 15
 MIN_UNIVERSE_COV = 0.60          # fundamentals should cover ≥60% of tradeable universe
