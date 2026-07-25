@@ -216,6 +216,14 @@ FAILURES=()
     && echo "  ratios extended (6 markets) + data-quality validated" \
     || FAILURES+=("data-quality: ratio build / validation gate")
 
+  # [15d] Data ledger refresh — re-inspect every source (prices/fundamentals/derived)
+  # for volume + freshness (latest data date, last-fetch date) so the catalog always
+  # reflects disk. reports/data_ledger.md answers "which market is up to date at what
+  # level, and how/when to top it up off-peak" without hitting rate throttles.
+  $PY data_ledger.py > /dev/null 2>&1 \
+    && echo "  data ledger refreshed" \
+    || FAILURES+=("data-ledger: refresh")
+
   # [16] Cloud copy — rclone-sync the data trees (market_cache, bhavcopy_cache,
   # cache_seed, gmd cache_seed, warehouse duckdb) to Google Drive with dated
   # history, replacing GitHub LFS as the off-machine store (LFS budget is
