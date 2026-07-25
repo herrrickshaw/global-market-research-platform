@@ -1,0 +1,40 @@
+strategy,family,retail_access,durability,note,harvestable
+Factor Investing (value/mom/quality),systematic,9,8,our core: value-reversion + momentum survive DSR (IN/US/KR/JP),True
+"Mean Reversion (value, monthly)",systematic,9,8,value-reversion +5-6%/6M where fundamentals rule; fails in China,True
+Momentum / Trend-Following,systematic,8,7,survives DSR in TRENDING markets (IN/KR/EU); whipsaws in JP,True
+Position Trading,systematic,8,7,"long-horizon trend; capacity-friendly, low info-tax",True
+Dollar-Cost Averaging,passive,10,6,"market beta not alpha, but robust + zero info-tax",True
+Portfolio Rebalancing,passive,9,6,harvests mean-reversion; Sharpe +0.2-0.5 plausible,True
+Risk Parity,passive,8,6,"vol-weighted diversification; robust, not an alpha",True
+Insider Sentiment,event,7,6,documented 6-12mo outperformance; retail-accessible via filings,True
+Pairs / Stat-Arb / Cointegration,systematic,6,6,real mean-reversion of spreads but crowded + execution-sensitive,True
+HFT / Latency Arb,market-structure,1,8,"real but pure speed advantage — retail is the prey, not the hunter",False
+Market Making,market-structure,1,7,earns the spread — needs colocation + inventory tech,False
+Vol Selling / Theta / Vol-Crush,options,5,6,vol-risk-premium is real for SELLERS; tail risk; needs margin,False
+PEAD / Earnings Trading,event,4,6,"real (Bernard-Thomas); stronger in high-uncertainty sectors, but the fast trader eats the first move",False
+M&A / Merger Arb,event,4,6,real deal-risk premium; needs capital + deal access,False
+Basis / Funding-rate Arb,options,3,6,convergence is predictable; needs scale + low cost,False
+Arbitrage (classic),market-structure,3,6,"0.1-0.5%/trade, 70-90% hit — but competed to zero without speed",False
+Hedging,passive,8,5,MPT risk reduction; not a return source,False
+Tail-Risk Hedging,passive,7,5,"insurance — costs premium, protects drawdown",False
+Regression / Correlation trading,systematic,6,5,"trend-deviation reversion; modest, decays (McLean-Pontiff)",False
+Macro / Rates / Inflation Trading,macro,5,5,"real cycle edge; hard to systematize, slow",False
+Quant / Algo / AI Trading,meta,5,5,"only as good as the underlying signal — a wrapper, not an edge",False
+Calendar / Delta-neutral / Gamma / Skew,options,4,5,real structural edges but need infra + constant management,False
+Order Flow / Tape Reading,market-structure,2,5,the informed side of our info-asymmetry tax,False
+Breakout Trading,technical,7,4,"36% raw, needs filters; fragile under DSR (Darvas loses in IN)",False
+Sentiment Analysis (FII/fear-greed),sentiment,5,4,IS the speculation driver (our China/Iran finding); short-lived,False
+VWAP Trading,market-structure,4,4,"institutional execution benchmark, not an alpha",False
+News Trading,event,3,4,sentiment drives it (our finding) but seconds-horizon = you lose to speed,False
+Range Trading,technical,7,3,"high win-rate but negative skew (small wins, big losses)",False
+Crypto / DeFi / Yield / Staking,crypto,6,3,different asset class; yield real but smart-contract + vol risk,False
+Gap Trading,technical,5,3,"70% fill but tiny edge, fast, slippage-heavy",False
+Seasonal Trading,technical,8,2,mostly data-mined; multiple-testing kills most,False
+Social / Copy Trading,technical,8,2,no durable edge; you copy the lag,False
+Price Action / Candlesticks,technical,7,2,"fails multiple-testing; VLM study: only short-horizon, regime-bound",False
+Fibonacci Retracement,technical,7,2,no robust out-of-sample edge; arbitrary levels,False
+Smart Money Concepts,technical,7,2,"narrative, not a tested edge",False
+Reversal Trading,technical,7,2,41% win-rate (their own number) — negative expectancy,False
+Dividend Capture,event,6,2,price drops ~by the dividend; weak after tax,False
+Dark Pool / Liquidity Grab / Scalping,market-structure,1,2,scalping: 80-95% lose; dark-pool needs privileged data,False
+Options Buying (OTM),options,6,1,80-90% of NSE OTM buyers lose — negative edge,False
