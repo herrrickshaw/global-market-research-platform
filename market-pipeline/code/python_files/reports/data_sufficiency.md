@@ -9,7 +9,7 @@ Guards against false outcomes from thin data. **completeness** = fundamentals co
 | KR | 1,564 | 1,622 | 58% | 2016-2026 | 102 | 17 | 🔴 THIN | ✅ powered |
 | JP | 2,006 | 1,609 | 84% | 2020-2026 | 66 | 11 | ✅ complete | 🔴 UNDERPOWERED |
 | EU | 449 | 15 | 7% | 2021-2026 | 54 | 9 | 🔴 THIN | 🔴 UNDERPOWERED |
-| CN | 932 | 3,454 | 18% | 2021-2025 | 54 | 9 | 🔴 THIN | 🔴 UNDERPOWERED |
+| CN | 426 | 3,454 | 12% | 2015-2025 | 102 | 17 | 🔴 THIN | ✅ powered |
 
 ## What each verdict means for the analysis (DERIVED from the numbers above)
 
@@ -20,6 +20,6 @@ Guards against false outcomes from thin data. **completeness** = fundamentals co
 | KR | 🟡 RETURNS ONLY | 17 obs (powered) BUT 58% liquid cov — a coverage bias risk; fetch more fundamentals |
 | JP | 🔴 CAN'T CONCLUDE | only 11 non-overlap obs (2020-2026) — any t-stat is UNDERPOWERED; the verdict is a data artifact, not an effect |
 | EU | 🔴 CAN'T CONCLUDE | only 9 non-overlap obs (2021-2026) — any t-stat is UNDERPOWERED; the verdict is a data artifact, not an effect |
-| CN | 🔴 CAN'T CONCLUDE | only 9 non-overlap obs (2021-2025) — any t-stat is UNDERPOWERED; the verdict is a data artifact, not an effect |
+| CN | 🟡 RETURNS ONLY | 17 obs (powered) BUT 12% liquid cov — a coverage bias risk; fetch more fundamentals |
 
 > 🔴 The honest correction: only **India** is fully powered + reasonably complete. US is powered but coverage-thin (fetch shares). KR is borderline. **JP/EU/CN cannot be concluded either way on current data** — their verdicts were data-sufficiency artifacts. To fix: (1) fetch full-universe fundamentals (raise coverage), (2) collect deep history via official filings (EDINET-JP, EU registries, akshare-CN) to raise obs count, THEN re-run. Until then, report JP/EU/CN as 'insufficient data', not a verdict.
