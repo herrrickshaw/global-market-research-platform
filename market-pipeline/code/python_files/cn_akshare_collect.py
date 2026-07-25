@@ -33,7 +33,7 @@ for i, (code, sym) in enumerate(todo, 1):
                          "roe": pd.to_numeric(r[rc[0]], errors="coerce")/100 if rc else np.nan})
     except Exception:
         pass
-    if i % 100 == 0:
+    if i % 25 == 0:
         pd.DataFrame(rows).to_parquet(OUT, index=False); LOG.info(f"  {i}/{len(todo)}")
     time.sleep(0.3)
 pd.DataFrame(rows).to_parquet(OUT, index=False)
