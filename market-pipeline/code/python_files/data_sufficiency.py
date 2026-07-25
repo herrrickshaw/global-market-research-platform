@@ -16,7 +16,7 @@ Documents, per market:
 Output: reports/data_sufficiency.md
 """
 from __future__ import annotations
-import glob
+import glob, datetime
 from pathlib import Path
 import pandas as pd, numpy as np
 from obs import get_logger
@@ -25,25 +25,31 @@ HERE = Path(__file__).resolve().parent
 LOG = get_logger("data_sufficiency")
 FH = "/Users/umashankar/repos/global-stock-screener/cache_seed/fundamentals_history"
 WH = "/Users/umashankar/repos/global-market-data/warehouse/ohlcv"
-FUND = {"IN": "IN", "US": "US", "KR": "KR_deep", "JP": "JP", "EU": "EU", "CN": "CN"}
+FUND = {"IN": "IN", "US": "US", "KR": "KR_deep", "JP": "JP_merged", "EU": "EU", "CN": "CN"}
 # minimum non-overlapping obs for a credible de-overlapped t-stat
 MIN_NONOVERLAP = 15
 MIN_UNIVERSE_COV = 0.60          # fundamentals should cover ≥60% of tradeable universe
 
 
 def liquid_universe(mkt: str) -> tuple:
-    """(#liquid tickers, #all tickers) — liquid = top-2 turnover terciles on the latest
-    date. Coverage vs the LIQUID universe is the honest denominator (we never trade the
-    illiquid micro-cap tail, so missing fundamentals there don't matter)."""
+    """(set of liquid tickers, #all tickers) — liquid = top-2 turnover terciles on the
+    latest date. Coverage is |fundamentals ∩ liquid| / |liquid|, the honest denominator
+    (we never trade the illiquid micro-cap tail, so missing fundamentals there don't
+    matter). Returns the SET so the caller can intersect (a count alone lets coverage
+    exceed 100% when the fundamentals set includes names outside the liquid universe)."""
     parts = glob.glob(f"{WH}/{mkt}/year=2026.parquet")
     if not parts:
-        return 0, 0
+        return set(), 0
     df = pd.read_parquet(parts[0], columns=["Date", "Symbol", "Close", "Volume"])
     last = df[df.Date == df.Date.max()].copy()
     last["turn"] = last.Close * last.Volume
-    all_n = last.Symbol.nunique()
-    liq = last[last.turn >= last.turn.quantile(1/3)]
-    return liq.Symbol.nunique(), all_n
+    all_syms = set(last.Symbol.astype(str))
+    liq = set(last[last.turn >= last.turn.quantile(1 / 3)].Symbol.astype(str))
+    # guard: if Volume/turnover is broken (e.g. EU warehouse), the turnover filter
+    # collapses to a handful — fall back to the full universe as the denominator.
+    if len(liq) < 100 and len(all_syms) > 300:
+        return all_syms, len(all_syms)
+    return liq, len(all_syms)
 
 
 def main() -> int:
@@ -57,8 +63,11 @@ def main() -> int:
         yrs = pd.to_datetime(f.fy_end, errors="coerce").dt.year
         span = f"{int(yrs.min())}-{int(yrs.max())}" if yrs.notna().any() else "?"
         n_years = int(yrs.max() - yrs.min() + 1) if yrs.notna().any() else 0
-        uni, all_n = liquid_universe(mkt)
-        cov = ntk / uni if uni else np.nan
+        liq_set, all_n = liquid_universe(mkt)
+        fund_syms = set(f.ticker.astype(str))
+        uni = len(liq_set)
+        inter = len(fund_syms & liq_set)
+        cov = inter / uni if uni else np.nan
         # reversion power: monthly formations over the usable window, de-overlapped by 6
         start_yr = max(int(yrs.min()) if yrs.notna().any() else 2021, 2017) + 1  # +1y for PIT lag
         n_form = max(0, (2026 - start_yr) * 12 + 6)
@@ -101,8 +110,35 @@ def main() -> int:
           "deep history via official filings (EDINET-JP, EU registries, akshare-CN) to raise obs "
           "count, THEN re-run. Until then, report JP/EU/CN as 'insufficient data', not a verdict."]
     (HERE / "reports" / "data_sufficiency.md").write_text("\n".join(L))
+
+    # ---- trend history: append a dated snapshot so the 3-day check shows coverage
+    #      climbing as collections land, and flags any verdict FLIP since last check ----
+    hist_path = HERE / "cache_seed" / "data_sufficiency_history.parquet"
+    snap = d[["market", "fund_tickers", "liquid_uni", "cov"]].copy()
+    snap["nonoverlap_6M"] = d["nonoverlap_6M≈"]
+    snap["powered"] = d["nonoverlap_6M≈"] >= MIN_NONOVERLAP
+    snap["complete"] = d["cov"] >= MIN_UNIVERSE_COV
+    snap["date"] = datetime.date.today().isoformat()
+    flips = []
+    if hist_path.exists():
+        prev = pd.read_parquet(hist_path)
+        last = prev.sort_values("date").drop_duplicates("market", keep="last").set_index("market")
+        for _, r in snap.iterrows():
+            if r.market in last.index:
+                was = bool(last.loc[r.market, "powered"] and last.loc[r.market, "complete"])
+                now = bool(r.powered and r.complete)
+                if was != now:
+                    flips.append(f"{r.market}: {'SUFFICIENT' if was else 'insufficient'} → "
+                                 f"{'SUFFICIENT' if now else 'insufficient'}")
+        snap = pd.concat([prev, snap], ignore_index=True).drop_duplicates(["date", "market"], keep="last")
+    snap.to_parquet(hist_path, index=False)
+    for f in flips:
+        LOG.warning(f"SUFFICIENCY FLIP: {f}")
+
     print("\n".join(L))
-    print("\nwrote reports/data_sufficiency.md")
+    if flips:
+        print("\n⚠️ SUFFICIENCY FLIPS since last check: " + "; ".join(flips))
+    print("\nwrote reports/data_sufficiency.md + cache_seed/data_sufficiency_history.parquet")
     return 0
 
 
