@@ -87,6 +87,34 @@ where the marginal trader eventually prices on fundamentals:
 **Company-level inference:** in a fundamental sector, a stock's distance from the PB~ROE line
 is a genuine over/under-valuation signal; in a speculation sector, that distance is noise.
 
+## Literature corroboration (the mechanism is well-established)
+
+The "speculation-ruled where the marginal trader doesn't price on fundamentals" mechanism is
+not our invention — it has deep roots, and recent empirical work confirms it in exactly the
+markets our data flags:
+
+- **Keynes (1936), the "Beauty Contest"** — the foundational account of speculation: investors
+  buy what they expect *others* to buy, not intrinsic value. This is the theoretical definition
+  of the 🔴 regime.
+- **De Long, Shleifer, Summers & Waldmann (1990), noise-trader risk** — why mispricings *persist*
+  when the marginal trader is a sentiment-driven retail investor (arbitrage is limited). Explains
+  why value-reversion *fails to correct* in China rather than merely being cheaper.
+- **Baker & Wurgler (2006), investor sentiment & the cross-section** — sentiment predictably moves
+  hard-to-value/hard-to-arbitrage stocks, i.e. exactly the 🔴 sectors.
+- **Jahangiri & Corazza (2026), *Sentiment-based prediction in developing countries: Evidence from
+  Iran*** (Int. Rev. Econ. & Finance) — in a retail-heavy, intervention-heavy emerging market,
+  "fundamental analysis is often obscured... investor sentiment becomes a primary driver." Direct
+  evidence for our China/developing-market read; explicitly invokes the Keynes Beauty Contest.
+- **Graph-NN + news-sentiment on CSI 300 (PMC9371341)** — Chinese prices are predictable from news
+  sentiment (≈69%), a second method confirming China is sentiment/speculation-driven.
+- **VLM candlestick study (arXiv 2604.12659)** — vision-language models capture only *short-horizon
+  technical/momentum* signals and only in trending regimes — matching our result that technical
+  factors are fragile and momentum needs a trending market.
+
+Three independent methods (our PB~ROE R², Damodaran's money-losing×PE, and sentiment-prediction
+studies) converge on the same map — which is the strongest evidence it's a real regime, not an
+artifact.
+
 ## Data & caveats
 
 - Sector labels: `damodaran_sector_map.parquet` (48k global companies, covers CN 99% / JP 100%
