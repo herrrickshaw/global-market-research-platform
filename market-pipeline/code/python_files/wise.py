@@ -64,6 +64,43 @@ RATIO_COLS = {"close": "close", "eps": "eps", "pe": "pe", "pb": "pb", "roe": "ro
               "mcap": "mcap_local", "earnings_yield": "earnings_yield"}
 
 
+def _pnl() -> pd.DataFrame:
+    """the strategy's own income statement per geography (paper-trade ledger)."""
+    p = REP / "income_statement_by_geo.csv"
+    return pd.read_csv(p).set_index("market") if p.exists() else pd.DataFrame()
+
+
+def _bench() -> pd.DataFrame:
+    p = REP / "strategy_vs_benchmark.csv"
+    return pd.read_csv(p) if p.exists() else pd.DataFrame()
+
+
+# the strategy treated as a firm: which per-market P&L metrics wise() can return
+PNL_COLS = {"net_income": "net_income", "roic": "ROIC_%", "eva": "economic_profit_eva",
+            "hit_rate": "hit_rate", "capital": "capital_deployed", "ebit": "operating_income_ebit",
+            "revenue": "revenue_gross_gains", "cost_of_capital": "cost_of_capital_%"}
+
+
+def performance_insight() -> pd.DataFrame:
+    """Does the strategy create value? Per geography: net income, ROIC vs its cost of
+    capital, economic profit (EVA), and alpha over the benchmark — with a plain read."""
+    pnl = _pnl(); bench = _bench()
+    rows = []
+    for mk in [m for m in MKTS if m in pnl.index]:
+        r = pnl.loc[mk]
+        alpha = bench[bench.market == mk]["excess"].mean() if len(bench) else float("nan")
+        roic, coc = float(r["ROIC_%"]) * 100, float(r["cost_of_capital_%"]) * 100
+        ni = float(r.net_income); eva = float(r.economic_profit_eva)
+        read = ("✅ profitable + beats benchmark" if ni > 0 and alpha > 0 else
+                "🟡 profitable, lags benchmark" if ni > 0 else
+                "🔴 loss-making (paper-track)")
+        rows.append({"market": mk, "trades": int(r.trades), "hit_rate": f"{float(r.hit_rate)*100:.0f}%",
+                     "net_income": round(ni), "ROIC_%": round(roic, 2), "cost_of_capital_%": round(coc, 1),
+                     "creates_value(EVA)": "yes" if eva > 0 else "no", "alpha_vs_bench": f"{alpha*100:+.2f}%" if alpha == alpha else "—",
+                     "read": read})
+    return pd.DataFrame(rows)
+
+
 def wise(entity: str, metric: str, period: str = "LY"):
     """The =WISE() analog. entity = ticker or market; metric = any of the above."""
     metric = metric.lower()
@@ -80,6 +117,9 @@ def wise(entity: str, metric: str, period: str = "LY"):
             c = _clusters(); col = "valuation_z" if metric == "valuation_z" else "verdict"
             return c[c.mk == mk][["name", col]].reset_index(drop=True) if len(c) else "no clusters"
     # ---- ticker-level metrics ----
+    if mk and metric in PNL_COLS:                   # the strategy's own P&L per market
+        pnl = _pnl()
+        return float(pnl.loc[mk, PNL_COLS[metric]]) if mk in pnl.index else None
     tk = str(entity)
     if metric in RATIO_COLS:
         r = _ratios(); row = r[r.ticker.astype(str) == tk]
@@ -118,6 +158,16 @@ def workbook(path: str = "reports/analysis_dashboard.xlsx"):
         summ = pd.DataFrame([{"market": m, "character": STRAT[m][0], "book": STRAT[m][1],
                               "winning edge": STRAT[m][2], "backtest": STRAT[m][3]} for m in MKTS])
         summ.to_excel(xl, sheet_name="Strategy Summary", index=False)
+        # ---- the strategy AS A FIRM: performance, income statement, balance sheet ----
+        ins = performance_insight()
+        if len(ins):
+            ins.to_excel(xl, sheet_name="Performance Insight", index=False)
+        for name, p in [("Income Statement", "income_statement_by_geo.csv"),
+                        ("Balance Sheet", "balance_sheet_by_geo.csv"),
+                        ("vs Benchmark", "strategy_vs_benchmark.csv")]:
+            fp = REP / p
+            if fp.exists():
+                pd.read_csv(fp).to_excel(xl, sheet_name=name, index=False)
         for m in MKTS:
             try:
                 s = sheet(m)
@@ -135,6 +185,13 @@ def main() -> int:
         print(__doc__); return 0
     if a[0] == "--workbook":
         workbook(); return 0
+    if a[0] == "--insight":
+        print("# Strategy performance — the paper-track as a firm\n")
+        print(performance_insight().to_markdown(index=False))
+        print("\n> ROIC is the period return on capital deployed; the cost-of-capital hurdle is "
+              "annual, so EVA is a conservative (stringent) read. Alpha = mean return over the "
+              "market benchmark. Paper-track only — no capital deployed. Not investment advice.")
+        return 0
     if a[0] == "--sheet" and len(a) > 1:
         print(sheet(_mk(a[1]) or a[1].upper()).to_markdown(index=False)); return 0
     entity, metric = a[0], (a[1] if len(a) > 1 else "pe")
