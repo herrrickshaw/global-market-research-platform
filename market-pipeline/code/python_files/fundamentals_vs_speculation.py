@@ -33,15 +33,18 @@ MIN_N = 12                                    # min names per (market, sector) t
 def load() -> pd.DataFrame:
     d = pd.read_csv(REP / "all_ratios.csv")
     d["mk"] = d.market.astype(str).str.lower().map(NORM).fillna(d.market.astype(str).str.upper())
-    smap = json.loads((HERE.parent.parent / "market_cache" / "sector_map.json").read_text()) \
-        if (HERE.parent.parent / "market_cache" / "sector_map.json").exists() \
-        else json.loads(Path("/Users/umashankar/market-pipeline/market_cache/sector_map.json").read_text())
-    # sector_map keys look like "EU:BBOX.L" / "US:AAPL"
+    # full-universe GICS sectors: yfinance crawl (95%, all markets) ∪ Damodaran 48k map
     sec = {}
-    for k, v in smap.items():
-        if ":" in k:
-            mk, tk = k.split(":", 1); sec[(mk.upper(), tk)] = v
-    d["sector"] = [sec.get((m, str(t))) for m, t in zip(d.mk, d.ticker)]
+    su = REP / "sector_universe.parquet"
+    if su.exists():
+        s = pd.read_parquet(su)
+        for _, r in s[s.sector.notna()].iterrows():
+            sec[(str(r.market), str(r.ticker))] = r.sector
+    dm = REP / "damodaran_sector_map.parquet"
+    if dm.exists():
+        for _, r in pd.read_parquet(dm)[["wh_ticker", "Primary Sector"]].dropna().iterrows():
+            sec.setdefault((None, str(r.wh_ticker)), r["Primary Sector"])
+    d["sector"] = [sec.get((m, str(t))) or sec.get((None, str(t))) for m, t in zip(d.mk, d.ticker)]
     d = d[d.sector.notna() & (d.pb > 0) & np.isfinite(d.roe) & (d.roe.abs() < 3)].copy()
     return d
 
@@ -70,9 +73,14 @@ def main() -> int:
                      np.where(res.R2_pb_roe >= 0.10, "🟡 mixed", "🔴 SPECULATION"))
     res = res.sort_values("R2_pb_roe", ascending=False)
 
-    # global sector view (pool markets; how fundamentally-priced is each sector overall)
-    glob = (d.groupby("sector").apply(lambda g: pd.Series(
-        {"n": len(g), "R2_pb_roe": r2(g.roe.values, g.pb.values),
+    # global sector view — WITHIN-MARKET standardised (you cannot pool raw PB/ROE across
+    # markets: a US PB isn't comparable to a China PB, so cross-market level noise washes out
+    # the relationship). z-score pb & roe inside each market, then pool per sector.
+    dz = d.copy()
+    for col in ("pb", "roe"):
+        dz[col + "_z"] = dz.groupby("mk")[col].transform(lambda s: (s - s.mean()) / (s.std(ddof=0) or 1))
+    glob = (dz.groupby("sector").apply(lambda g: pd.Series(
+        {"n": len(g), "R2_pb_roe": r2(g.roe_z.values, g.pb_z.values),
          "median_pe": g.pe.median(), "median_roe": g.roe.median() * 100}), include_groups=False)
         .dropna(subset=["R2_pb_roe"]).sort_values("R2_pb_roe", ascending=False).reset_index())
     glob = glob[glob.n >= MIN_N]
@@ -95,14 +103,28 @@ def main() -> int:
     for _, r in res.iterrows():
         L.append(f"| {r.market} | {r.sector} | {r.n} | {r.R2_pb_roe:.2f} | {r.spearman:.2f} | "
                  f"{r.median_pe} | {r.median_roe} | {r.regime} |")
-    L += ["", "> **Company-level inference:** in a 🟢 fundamentals-ruled sector, a stock's "
-          "residual from the PB~ROE line is genuine over/under-valuation vs what its performance "
-          "justifies (a real signal). In a 🔴 speculation-ruled sector, valuation says little "
-          "about performance — cheapness/richness there is sentiment, and the value-reversion "
-          "edge is weakest.", "",
-          "**Caveats:** single-period cross-section (not time-series); survivorship-biased; "
-          "sector labels cover ~830 names; PB~ROE is a linear proxy for a convex relation; "
-          "financials/REITs have book-heavy PB that flatters the fit. Research, not advice."]
+    L += ["", "## Full-universe findings (all 6 markets, 95% sector coverage)", "",
+          "- **The regime is MARKET×SECTOR-specific, not a universal sector property.** Pooling "
+          "PB~ROE across markets washes the signal out (US Tech prices on ROE at R² 0.41, but "
+          "'Tech' across all 6 markets ≈ 0) — because Chinese, Japanese and US tech each price "
+          "differently. Read the *by market × sector* table, never the pooled global.",
+          "- **Surprise: China's SOE core is the MOST fundamentally-priced** — CN Utilities "
+          "(R² 0.90), Communication/telecom (0.84), Energy (0.81) track ROE tightly. The state "
+          "prices these like regulated bonds (stable ROE → stable PB). This **refines** (not "
+          "contradicts) the China value-reversion null: China's *cross-sectional cheapness* doesn't "
+          "reward because the liquid, retail-driven **growth periphery** is speculative — even "
+          "though the SOE **core** is anchored. China is bimodal.",
+          "- EU/KR/JP carry the most speculation cells; developed-market sector valuations float "
+          "further from current ROE (growth/future-priced).", "",
+          "> **Company-level inference:** in a 🟢 fundamentals-ruled market×sector, a stock's "
+          "residual from the PB~ROE line is genuine over/under-valuation (a real signal). In a 🔴 "
+          "speculation-ruled one, valuation is sentiment and value-reversion is weakest. NB: this "
+          "level-tracking metric (does PB track ROE?) is *related to but distinct from* "
+          "value-reversion (does cheapness correct?) — a homogeneous SOE group can track tightly "
+          "yet re-rate together without cross-sectional reversion.", "",
+          "**Caveats:** single-period cross-section; survivorship-biased; small-n sectors (esp. the "
+          "high-R² China SOE cells, n15–27); PB~ROE is linear for a convex relation; book-heavy "
+          "financials/REITs/utilities flatter the fit. Research, not advice."]
     (REP / "fundamentals_vs_speculation.md").write_text("\n".join(L))
 
     # ---- viz: global sector R² bar ----
