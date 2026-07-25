@@ -57,6 +57,28 @@ for (mkt, lt), b in scored.groupby(["market","long_term"]):
         scored.loc[pos.index, "tax"] = pos/pos.sum() * tax_bucket   # allocate to winners
 scored["net_income"] = scored["net_pnl_pretax"] - scored["tax"]
 
+# ---- DEBIAS: restrict each market to its BACKTEST-VALIDATED edge ------------
+# The raw ledger is dominated by `darvas` (IN 28k vs 241 trend signals), so an all-filter
+# income statement is effectively a darvas P&L — and darvas LOSES in India. India's
+# validated edge is TREND + value/quality (value-reversion +5.3%/6M t2.5; golden_cross
+# survives Deflated Sharpe DSR 0.994), NOT darvas. Keep, per market, only the filters that
+# match the backtested winning strategy so the financials reflect the edge we actually endorse.
+VALIDATED_FILTERS = {
+ "IN": {"golden_cross_hist", "piotroski", "piotroski+debt", "piotroski+roce",
+        "roce_plus", "triple", "debt_reduction"},   # trend + value/quality (NOT darvas)
+ "US": {"darvas", "golden_cross_hist"},             # momentum/trend (darvas validated +1.40%)
+ "EU": {"darvas", "golden_cross_hist"},             # momentum (DSR 0.985)
+ "JP": {"golden_cross_hist", "technical"},          # trend proxy — JP's value edge isn't a ledger filter
+ "KR": {"golden_cross_hist", "technical"},          # trend proxy — KR's value+quality L/S isn't a ledger filter
+}
+scored_all = scored.copy()                           # keep the full set for the transparency table
+_before = len(scored)
+scored = scored[scored.apply(
+    lambda r: r["filter"] in VALIDATED_FILTERS.get(r["market"], set()), axis=1)].copy()
+print(f"DEBIAS: kept {len(scored)}/{_before} trades on each market's validated filters "
+      f"(India = trend+value/quality, dropped darvas). JP/KR use a trend proxy — their "
+      f"validated value edge is not represented as a ledger filter.")
+
 # ---- open positions (all-pending signals) ----------------------------------
 kstat = (df.assign(_pending=df.status.eq("pending"))
            .groupby(KEY, dropna=False)
@@ -154,7 +176,9 @@ print("\nBOTTOM 8 FIRMS by net income")
 print(firm.tail(8)[["geography","symbol","trades","gross_trading_profit","net_income"]].to_string(index=False))
 
 # ---- STRATEGY vs BENCHMARK (step 10: which strategy beats the index) --------
-strat = (scored.groupby(["market","filter"])
+# NB: computed on the FULL ledger (scored_all) so the table still shows the dropped filters
+# (e.g. India-darvas) for transparency — the income statement above uses only validated ones.
+strat = (scored_all.groupby(["market","filter"])
          .agg(trades=("net_income","size"), hit=("gross_pnl",lambda s:(s>0).mean()),
               mean_ret=("fwd_ret","mean"), bench_ret=("mkt_median","mean"),
               excess=("excess_ret","mean"), net_income=("net_income","sum"),
