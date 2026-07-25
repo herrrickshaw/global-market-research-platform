@@ -28,3 +28,14 @@ falls through to TF-IDF retrieval over the reports.
 
 > To upgrade retrieval quality (optional, still free/offline): `pip install sentence-transformers`
 > for semantic embeddings, and run LM Studio/ollama for fluent synthesis. Not investment advice.
+
+## New intents (this session's analysis)
+```bash
+python local_rag.py "what should I do in japan"       # -> per-market playbook (ranked edges)
+python local_rag.py "where is the edge in korea"      # -> the fat-pitch grid (edge × market)
+python local_rag.py "which sectors are speculation"   # -> fundamentals-vs-speculation (PB~ROE R²)
+python local_rag.py "picks for korea"                 # -> LIVE playbook picks (validated filters, long/short)
+```
+`picks` now serves the live `playbook_picks.csv` (each market's validated edge, on the watchlist
+for monitoring). The standalone `market_screener_rag` repo adds `screener_rag.py playbook <market>`
+with the same ranked edges + the net-of-borrow and China corrections.
