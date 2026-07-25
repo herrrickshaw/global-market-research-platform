@@ -35,7 +35,7 @@ CFG = {
  "US": (f"{FH}/US.parquet", f"{WH}/US", "2017-01-01"),
  "KR": (f"{FH}/KR.parquet", f"{WH}/KR", "2022-01-01"),
  "KR_deep": (f"{FH}/KR_deep.parquet", f"{WH}/KR", "2020-06-01"),
- "JP": (f"{FH}/JP.parquet", f"{WH}/JP", "2022-01-01"),
+ "JP": (f"{FH}/JP_merged.parquet", f"{WH}/JP", "2021-06-01"),
  "EU": (f"{FH}/EU.parquet", f"{WH}/EU", "2022-01-01"),
  "CN": (f"{FH}/CN.parquet", f"{WH}/CN", "2022-01-01"),
 }
