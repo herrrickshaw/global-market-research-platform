@@ -48,25 +48,40 @@ def balance_sheet(_q=""):
 
 
 def _market_from_q(q: str) -> str | None:
-    for name, mk in {"india": "IN", "indian": "IN", " in ": "IN", "us": "US", "united states": "US",
-                     "korea": "KR", "korean": "KR", "japan": "JP", "europe": "EU", "china": "CN"}.items():
-        if name in f" {q.lower()} ":
+    s = f" {q.lower()} "
+    # full names first (unambiguous), then explicit codes — never bare " in " (matches English)
+    for name, mk in {"india": "IN", "indian": "IN", "korea": "KR", "korean": "KR",
+                     "japan": "JP", "japanese": "JP", "europe": "EU", "european": "EU",
+                     "china": "CN", "chinese": "CN", "united states": "US", "america": "US"}.items():
+        if name in s:
             return mk
+    for code in [" us ", " uk ", " jp ", " kr ", " eu ", " cn "]:
+        if code in s:
+            return {" us ": "US", " uk ": "EU", " jp ": "JP", " kr ": "KR", " eu ": "EU", " cn ": "CN"}[code]
     return None
 
 
 def picks(q=""):
-    mk = _market_from_q(q) or "IN"
+    """live playbook picks (validated per-market filters) — preferred; recs_ as fallback."""
+    mk = _market_from_q(q)
+    pp = REP / "playbook_picks.csv"
+    if pp.exists():
+        d = pd.read_csv(pp)
+        if mk:
+            d = d[d.market == mk]
+        if len(d):
+            cols = [c for c in ["market", "symbol", "name", "filter", "direction", "pe", "roe"] if c in d.columns]
+            note = f" — {mk}" if mk else " (all markets)"
+            return (f"**Live playbook picks{note}** (each market's validated edge; on the watchlist "
+                    f"for monitoring; research, not advice):\n\n" + _md_table(d[cols].head(20)))
+    mk = mk or "IN"
     p = REP / f"recs_{mk}.csv"
     if not p.exists():
-        avail = [Path(x).stem.split("_")[1] for x in glob.glob(str(REP / "recs_*.csv"))]
-        return f"No recs for {mk}. Available: {avail}. Run `python generate_recommendations.py`."
-    d = pd.read_csv(p)
-    d.columns = ["ticker", "pred_fwd_ret"] + list(d.columns[2:])
+        return f"No picks for {mk}. Run `python playbook_screener.py`."
+    d = pd.read_csv(p); d.columns = ["ticker", "pred_fwd_ret"] + list(d.columns[2:])
     d = d.sort_values("pred_fwd_ret", ascending=False).head(15)
     d["pred_fwd_ret"] = (d.pred_fwd_ret * 100).round(2).astype(str) + "%"
-    return (f"**Top {mk} stock picks** (learned-model predicted forward return; research, not advice):\n\n"
-            + _md_table(d[["ticker", "pred_fwd_ret"]]))
+    return f"**Top {mk} picks** (learned model):\n\n" + _md_table(d[["ticker", "pred_fwd_ret"]])
 
 
 def signals(q=""):
@@ -126,10 +141,50 @@ def sources(_q=""):
     return ("**Data sources registry:**\n\n" + p.read_text()[:2500]) if p.exists() else "run `python source_registry.py`."
 
 
+def playbook(q=""):
+    """per-market ranked retail-accessible edges (the actionable recommendation)."""
+    p = REP / "market_playbook.md"
+    if not p.exists():
+        return "run `python market_playbook.py`."
+    txt = p.read_text(); mk = _market_from_q(q)
+    if mk:
+        m = re.search(rf"## {mk} —.*?(?=\n## |\Z)", txt, re.S)
+        if m:
+            return f"**Playbook — {mk} (ranked edges):**\n\n" + m.group(0)
+    return "**Market playbook — retail-accessible edges by priority:**\n\n" + txt[:2200]
+
+
+def edge_map(q=""):
+    """the fat-pitch grid: which filter works in which market."""
+    p = REP / "edge_matrix.csv"
+    if not p.exists():
+        return "run `python edge_matrix.py`."
+    d = pd.read_csv(p); mk = _market_from_q(q)
+    cols = ["strategy"] + ([mk] if mk and mk in d.columns else [c for c in d.columns if c != "strategy"])
+    return "**Where's the edge? (filter × market — green=swing, red=avoid):**\n\n" + _md_table(d[cols])
+
+
+def speculation(q=""):
+    """which sectors price on fundamentals vs speculation (PB~ROE R²)."""
+    p = REP / "fundamentals_vs_speculation.csv"
+    if not p.exists():
+        return "run `python fundamentals_vs_speculation.py`."
+    d = pd.read_csv(p); mk = _market_from_q(q)
+    if mk and "market" in d.columns:
+        d = d[d.market == mk]
+    col = "R2_pb_roe" if "R2_pb_roe" in d.columns else d.columns[-2]
+    d = d.sort_values(col, ascending=False)
+    return ("**Fundamentals vs speculation — PB~ROE R² by sector (high=fundamentals rule, "
+            "low=speculation):**\n\n" + _md_table(d.head(20)))
+
+
 INTENTS = [
+ (r"playbook|what.*(do|strateg|trade|buy).*(india|us|korea|japan|europe|china|market)|recommend.*market", playbook),
+ (r"edge|fat.?pitch|which filter|edge matrix|where.*edge", edge_map),
+ (r"speculat|fundamentals? rule|sector.*(fundamental|speculat)|pb.?roe|pricing regime", speculation),
  (r"income statement|p&?l|profit.*loss|revenue.*tax", income_statement),
  (r"balance sheet|assets?.*liabilit|equity position", balance_sheet),
- (r"pick|recommend|top stocks|what to buy", picks),
+ (r"pick|recommend|top stocks|what to buy|screen", picks),
  (r"buy|sell|hold|signal|watchlist|zone", signals),
  (r"under\s?priced|over\s?priced|cheap|expensive|mispriced|valuation|cluster", valuation),
  (r"sufficien|coverage|enough data|reliable|trust", sufficiency),
