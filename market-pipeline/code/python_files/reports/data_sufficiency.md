@@ -7,7 +7,7 @@ Guards against false outcomes from thin data. **completeness** = fundamentals co
 | IN | 1,870 | 3,103 | 50% | 2012-2026 | 102 | 17 | 🔴 THIN | ✅ powered |
 | US | 4,597 | 5,086 | 64% | 1987-2029 | 102 | 17 | ✅ complete | ✅ powered |
 | KR | 1,564 | 1,622 | 58% | 2016-2026 | 102 | 17 | 🔴 THIN | ✅ powered |
-| JP | 2,006 | 1,609 | 84% | 2020-2026 | 66 | 11 | ✅ complete | 🔴 UNDERPOWERED |
+| JP | 1,437 | 1,609 | 36% | 2011-2024 | 102 | 17 | 🔴 THIN | ✅ powered |
 | EU | 449 | 15 | 7% | 2021-2026 | 54 | 9 | 🔴 THIN | 🔴 UNDERPOWERED |
 | CN | 426 | 3,454 | 12% | 2015-2025 | 102 | 17 | 🔴 THIN | ✅ powered |
 
@@ -18,7 +18,7 @@ Guards against false outcomes from thin data. **completeness** = fundamentals co
 | IN | 🟡 RETURNS ONLY | 17 obs (powered) BUT 50% liquid cov — a coverage bias risk; fetch more fundamentals |
 | US | ✅ YES | 1987-2029, 64% liquid cov, 17 non-overlap obs — powered & complete |
 | KR | 🟡 RETURNS ONLY | 17 obs (powered) BUT 58% liquid cov — a coverage bias risk; fetch more fundamentals |
-| JP | 🔴 CAN'T CONCLUDE | only 11 non-overlap obs (2020-2026) — any t-stat is UNDERPOWERED; the verdict is a data artifact, not an effect |
+| JP | 🟡 RETURNS ONLY | 17 obs (powered) BUT 36% liquid cov — a coverage bias risk; fetch more fundamentals |
 | EU | 🔴 CAN'T CONCLUDE | only 9 non-overlap obs (2021-2026) — any t-stat is UNDERPOWERED; the verdict is a data artifact, not an effect |
 | CN | 🟡 RETURNS ONLY | 17 obs (powered) BUT 12% liquid cov — a coverage bias risk; fetch more fundamentals |
 

@@ -35,7 +35,7 @@ CFG = {
  "US": (f"{FH}/US.parquet", f"{WH}/US", "2017-01-01"),
  "KR": (f"{FH}/KR.parquet", f"{WH}/KR", "2022-01-01"),
  "KR_deep": (f"{FH}/KR_deep.parquet", f"{WH}/KR", "2020-06-01"),
- "JP": (f"{FH}/JP_merged.parquet", f"{WH}/JP", "2021-06-01"),
+ "JP": (f"{FH}/JP_edinet.parquet", f"{WH}/JP", "2016-06-01"),
  "EU": (f"{FH}/EU.parquet", f"{WH}/EU", "2022-01-01"),
  "CN": (f"{FH}/CN_deep.parquet", f"{WH}/CN", "2017-01-01"),
 }
@@ -58,7 +58,7 @@ def pit_eps(dates) -> pd.DataFrame:
     lag = 120 if MKT == "CN" else 90
     f["eff"] = pd.to_datetime(f.get("filed"), errors="coerce")
     f["eff"] = f["eff"].fillna(pd.to_datetime(f["fy_end"], errors="coerce") + pd.Timedelta(days=lag))
-    if "eps" in f.columns and "net_income" not in f.columns:      # CN_deep: direct EPS
+    if "eps" in f.columns and "shares" not in f.columns:          # CN_deep / JP_edinet: direct EPS
         f["eps"] = pd.to_numeric(f["eps"], errors="coerce")
     else:
         f["eps"] = pd.to_numeric(f.net_income, errors="coerce") / pd.to_numeric(f.shares, errors="coerce")
