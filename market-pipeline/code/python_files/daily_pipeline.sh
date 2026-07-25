@@ -147,6 +147,15 @@ FAILURES=()
   $PY screen_value_rerating.py \
     || FAILURES+=("screen: value re-rating (India)")
 
+  # [13y] Playbook screener — apply each market's BACKTEST-VALIDATED edge as a live
+  # filter (IN trend+value/quality · US/JP cheap-vs-market · KR value+quality L/S ·
+  # EU momentum · CN none-value-fails) -> reports/playbook_picks.csv, promoted to
+  # watchlist.csv as `playbook` rows (entry price+date) so the paper-track scores them.
+  # Runs BEFORE the mailer so today's playbook picks are in today's digest.
+  step "[13y/14] playbook screener (validated edges -> picks -> watchlist)"
+  $PY playbook_screener.py \
+    || FAILURES+=("screen: playbook (validated edges)")
+
   # [13x] Paper-track scorecard — accumulates every past mailer pick (signal
   # ledger) and marks to today, so the mailer carries a running report card.
   # Weekly (Mondays) — the forward horizons only move meaningfully week to

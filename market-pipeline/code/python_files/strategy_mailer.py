@@ -17,62 +17,68 @@ HERE = Path(__file__).resolve().parent
 LOG = get_logger("strategy_mailer")
 ASOF = "2026-07-24"
 
-# validated cheap+high-ROE longs (reports/valuation_clusters.csv, ACCUMULATE clusters)
-PICKS = {
- "IN": [("VEDL","Vedanta",5.9,43),("IOC","Indian Oil",4.7,19),("BPCL","BPCL",5.2,26),
-        ("HINDPETRO","HPCL",4.5,28),("COALINDIA","Coal India",8.5,26),
-        ("NATIONALUM","Natl Aluminium",12.1,30),("SIGNATURE","Signatureglobal",9.8,59),
-        ("ACCELYA","Accelya",13.3,46)],
- "US": [("AOS","A.O. Smith ⭐",8.2,29),("LULU","Lululemon",7.8,32),("ANF","Abercrombie",8.0,36),
-        ("ALC","Alcon",9.2,30),("ACN","Accenture",11.5,25),("IBEX","IBEX",11.7,27)],
- "KR": [("015760.KS","KEPCO",2.5,18),("002380.KS","KCC",2.4,20),("071320.KS","KDHC",2.2,15),
-        ("020710.KQ","Sigongtech",2.3,16),("007370.KQ","Jinyang Pharm",2.4,14)],
-}
+# LIVE picks from the validated playbook screener (reports/playbook_picks.csv)
+def load_picks():
+    p = HERE / "reports" / "playbook_picks.csv"
+    if not p.exists():
+        return {}
+    d = pd.read_csv(p)
+    out = {}
+    for mkt, g in d.groupby("market"):
+        out[mkt] = [(str(r.symbol), str(r.name)[:22], r.pe, r.roe, r["filter"], r.direction)
+                    for _, r in g.iterrows()]
+    return out
+
+
+PICKS = load_picks()
+TITLE = {"IN": "🇮🇳 India — trend + value/quality (long-only)", "US": "🇺🇸 US — cheap-vs-market (≤3M)",
+         "KR": "🇰🇷 Korea — value+quality long/short", "JP": "🇯🇵 Japan — value-reversion",
+         "EU": "🇪🇺 Europe — 12-month momentum"}
 DEPLOY = [
- ("🇮🇳 India","momentum/trend","breakout + sector-relative value (long-only)","❌ never short — bull runs shorts over"),
- ("🇺🇸 US","mixed","golden-cross / cheap+quality, light","marginal"),
+ ("🇮🇳 India","momentum/trend","trend + sector-relative value (long-only)","❌ never short — bull runs shorts over"),
+ ("🇺🇸 US","value (light)","short-horizon cheap-vs-market, ≤3M","marginal"),
  ("🇰🇷 Korea","mean-reversion","cheap∩hi-ROE (the Korea discount)","✅ short hollow-overpriced (validated t4.2)"),
+ ("🇯🇵 Japan","value-reversion","cheap-vs-market low PE (+6.6%/6M t4.84)","— (extension only)"),
+ ("🇪🇺 Europe","momentum","12-month momentum (DSR 0.985)","—"),
+ ("🇨🇳 China","speculation-ruled","PASSIVE / index only — value tested & FAILS","🚫 no active picks"),
 ]
 
 
 def update_watchlist():
+    """the playbook screener already writes status='playbook' entries with entry price/date;
+    this counts them for the decision log."""
     wl = pd.read_csv(HERE / "watchlist.csv")
-    have = set(zip(wl.symbol.astype(str).str.upper(), wl.market.astype(str).str.upper()))
-    new = []
-    for mkt, rows in PICKS.items():
-        for sym, name, pe, roe in rows:
-            key = (sym.upper(), mkt)
-            if key in have:
-                continue
-            new.append({"symbol": sym, "market": mkt, "status": "value-hold",
-                        "note": f"value-cluster PE{pe} ROE{roe}% (validated reversion) {ASOF}",
-                        "entry_date": ASOF, "entry_price": ""})
-    if new:
-        pd.concat([wl, pd.DataFrame(new)], ignore_index=True).to_csv(HERE / "watchlist.csv", index=False)
-    LOG.info(f"watchlist: +{len(new)} value-hold picks (exempt from trend eviction)")
-    return len(new)
+    n = int((wl.status == "playbook").sum())
+    LOG.info(f"watchlist: {n} 'playbook' entries under performance monitoring")
+    return n
 
 
 def html():
     C = {"bg": "#0B2F4A", "accent": "#0c6b58", "muted": "#8aa0ae"}
     def pick_rows(mkt):
         out = ""
-        for sym, name, pe, roe in PICKS[mkt]:
+        for sym, name, pe, roe, filt, direction in PICKS.get(mkt, []):
+            dcol = "#b23b3b" if direction == "SHORT" else C["accent"]
+            roe_s = f"{roe*100:.0f}%" if pd.notna(roe) else "—"
+            pe_s = f"{pe}" if pd.notna(pe) else "—"
             out += (f'<tr><td style="padding:5px 8px"><b>{sym}</b> '
-                    f'<span style="color:{C["muted"]};font-size:12px">{name}</span></td>'
-                    f'<td style="text-align:right;padding:5px 8px">PE {pe}</td>'
-                    f'<td style="text-align:right;padding:5px 8px;color:{C["accent"]}">ROE {roe}%</td></tr>')
+                    f'<span style="color:{C["muted"]};font-size:12px">{name}</span> '
+                    f'<span style="color:{dcol};font-size:11px">{direction}</span></td>'
+                    f'<td style="text-align:right;padding:5px 8px">PE {pe_s}</td>'
+                    f'<td style="text-align:right;padding:5px 8px;color:{C["accent"]}">ROE {roe_s}</td></tr>')
         return out
     dep = "".join(f'<tr><td style="padding:5px 8px">{m}</td><td style="padding:5px 8px">{c}</td>'
                   f'<td style="padding:5px 8px">{l}</td><td style="padding:5px 8px;font-size:12px">{s}</td></tr>'
                   for m, c, l, s in DEPLOY)
     blocks = ""
-    for mkt, title in [("IN","🇮🇳 India — cheap + high-ROE (long-only)"),
-                       ("US","🇺🇸 US — value + quality"),
-                       ("KR","🇰🇷 Korea — the discount (reversion strongest)")]:
-        blocks += (f'<h3 style="color:{C["bg"]};margin:18px 0 6px">{title}</h3>'
+    for mkt in ["IN", "US", "KR", "JP", "EU"]:
+        if not PICKS.get(mkt):
+            continue
+        blocks += (f'<h3 style="color:{C["bg"]};margin:18px 0 6px">{TITLE[mkt]}</h3>'
                    f'<table style="border-collapse:collapse;width:100%;font-size:14px;'
                    f'border:1px solid #dfe7ec">{pick_rows(mkt)}</table>')
+    blocks += ('<p style="font-size:13px;color:#8aa0ae;margin-top:10px">🇨🇳 <b>China — no picks.</b> '
+               'Value-reversion tested & fails (t0.3, 1993 stocks × 10y); passive/index only.</p>')
     return f'''<div style="font-family:Arial,sans-serif;max-width:640px;margin:0 auto;color:#1a2b34">
 <h2 style="color:{C["bg"]}">📊 Strategy digest — validated picks & suitability</h2>
 <p style="font-size:14px;color:{C["muted"]}">Cheap + high-ROE longs where valuation reversion is

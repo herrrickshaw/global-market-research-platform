@@ -764,3 +764,77 @@ JNKINDIA,IN,signal,value_rerating 2026-07-23,2026-07-23,473.75
 LGBBROSLTD,IN,evicted,value_rerating 2026-07-23 | evicted 2026-07-23 after 13 sessions in sell zone,2026-07-23,1547.7
 SATIN,IN,signal,value_rerating 2026-07-23,2026-07-23,251.85
 GESHIP,IN,signal,value_rerating 2026-07-24,2026-07-24,1435.2
+DBO,US,signal,recurring x2 +11.4% since 2026-07-21,2026-07-21,20.87
+USO,US,signal,recurring x2 +11.4% since 2026-07-21,2026-07-21,125.51
+HRI,US,signal,recurring x2 +10.6% since 2026-07-21,2026-07-21,147.36
+4092,JP,signal,recurring x2 +10.2% since 2026-07-21,2026-07-21,5190.0
+BNO,US,signal,recurring x2 +8.7% since 2026-07-21,2026-07-21,49.32
+GRWRHITECH,IN,justified,97.2% of 52w-hi @ 2026-07-24,2026-07-24,
+ACI,US,justified,22.4 RSI @ 2026-07-24,2026-07-24,
+ASALCBR,IN,evicted,tuned-model 2026-07-24 | evicted 2026-07-24 after 12 sessions in sell zone,2026-07-24,
+PEG,US,evicted,tuned-model 2026-07-24 | evicted 2026-07-24 after 7 sessions in sell zone,2026-07-24,
+ASLE,US,evicted,tuned-model 2026-07-24 | evicted 2026-07-24 after 12 sessions in sell zone,2026-07-24,
+AOS,US,signal,tuned-model 2026-07-24,2026-07-24,
+RPM,US,signal,tuned-model 2026-07-24,2026-07-24,
+FERG,US,signal,tuned-model 2026-07-24,2026-07-24,
+AFYA,US,evicted,tuned-model 2026-07-24 | evicted 2026-07-24 after 9 sessions in sell zone,2026-07-24,
+PCYO,US,signal,tuned-model 2026-07-24,2026-07-24,
+VEDL,IN,value-hold,value-cluster PE5.9 ROE43% (validated reversion) 2026-07-24,2026-07-24,
+COALINDIA,IN,value-hold,value-cluster PE8.5 ROE26% (validated reversion) 2026-07-24,2026-07-24,
+NATIONALUM,IN,value-hold,value-cluster PE12.1 ROE30% (validated reversion) 2026-07-24,2026-07-24,
+SIGNATURE,IN,value-hold,value-cluster PE9.8 ROE59% (validated reversion) 2026-07-24,2026-07-24,
+ACCELYA,IN,value-hold,value-cluster PE13.3 ROE46% (validated reversion) 2026-07-24,2026-07-24,
+LULU,US,value-hold,value-cluster PE7.8 ROE32% (validated reversion) 2026-07-24,2026-07-24,
+ANF,US,value-hold,value-cluster PE8.0 ROE36% (validated reversion) 2026-07-24,2026-07-24,
+ALC,US,value-hold,value-cluster PE9.2 ROE30% (validated reversion) 2026-07-24,2026-07-24,
+ACN,US,value-hold,value-cluster PE11.5 ROE25% (validated reversion) 2026-07-24,2026-07-24,
+IBEX,US,value-hold,value-cluster PE11.7 ROE27% (validated reversion) 2026-07-24,2026-07-24,
+015760.KS,KR,value-hold,value-cluster PE2.5 ROE18% (validated reversion) 2026-07-24,2026-07-24,
+002380.KS,KR,value-hold,value-cluster PE2.4 ROE20% (validated reversion) 2026-07-24,2026-07-24,
+071320.KS,KR,value-hold,value-cluster PE2.2 ROE15% (validated reversion) 2026-07-24,2026-07-24,
+020710.KQ,KR,value-hold,value-cluster PE2.3 ROE16% (validated reversion) 2026-07-24,2026-07-24,
+007370.KQ,KR,value-hold,value-cluster PE2.4 ROE14% (validated reversion) 2026-07-24,2026-07-24,
+JAYBARMARU,IN,playbook,trend+value/quality (LONG),2026-07-25,168.07
+IMFA,IN,playbook,trend+value/quality (LONG),2026-07-25,1370.0
+TMB,IN,playbook,trend+value/quality (LONG),2026-07-25,810.65
+AVL,IN,playbook,trend+value/quality (LONG),2026-07-25,635.35
+UNIPARTS,IN,playbook,trend+value/quality (LONG),2026-07-25,676.35
+SEAMECLTD,IN,playbook,trend+value/quality (LONG),2026-07-25,1370.7
+SANGHVIMOV,IN,playbook,trend+value/quality (LONG),2026-07-25,429.75
+INDNIPPON,IN,playbook,trend+value/quality (LONG),2026-07-25,1213.7
+ASHAPURMIN,IN,playbook,trend+value/quality (LONG),2026-07-25,676.7
+MAYURUNIQ,IN,playbook,trend+value/quality (LONG),2026-07-25,798.15
+CHTR,US,playbook,cheap-vs-market (LONG),2026-07-25,129.22
+NXTT,US,playbook,cheap-vs-market (LONG),2026-07-25,0.77
+AFGC,US,playbook,cheap-vs-market (LONG),2026-07-25,17.85
+AFGB,US,playbook,cheap-vs-market (LONG),2026-07-25,20.72
+ENR,US,playbook,cheap-vs-market (LONG),2026-07-25,20.5
+SOJE,US,playbook,cheap-vs-market (LONG),2026-07-25,16.67
+SHOE,US,playbook,cheap-vs-market (LONG),2026-07-25,14.73
+ACCO,US,playbook,cheap-vs-market (LONG),2026-07-25,4.07
+CMSC,US,playbook,cheap-vs-market (LONG),2026-07-25,21.91
+100220.KS,KR,playbook,cheap∩hi-ROE (LONG),2026-07-25,4705.0
+298000.KS,KR,playbook,cheap∩hi-ROE (LONG),2026-07-25,61400.0
+088130.KQ,KR,playbook,cheap∩hi-ROE (LONG),2026-07-25,5040.0
+088910.KQ,KR,playbook,cheap∩hi-ROE (LONG),2026-07-25,2170.0
+284740.KS,KR,playbook,cheap∩hi-ROE (LONG),2026-07-25,21100.0
+136490.KS,KR,playbook,cheap∩hi-ROE (LONG),2026-07-25,9650.0
+069730.KS,KR,playbook,cheap∩hi-ROE (LONG),2026-07-25,5800.0
+096760.KS,KR,playbook,cheap∩hi-ROE (LONG),2026-07-25,3827.0
+472850.KQ,KR,playbook,cheap∩hi-ROE (LONG),2026-07-25,3820.0
+314930.KQ,KR,playbook,expensive∩lo-ROE (SHORT),2026-07-25,8410.0
+089030.KQ,KR,playbook,expensive∩lo-ROE (SHORT),2026-07-25,49250.0
+163730.KQ,KR,playbook,expensive∩lo-ROE (SHORT),2026-07-25,8040.0
+448730.KS,KR,playbook,expensive∩lo-ROE (SHORT),2026-07-25,5520.0
+417310.KS,KR,playbook,expensive∩lo-ROE (SHORT),2026-07-25,10730.0
+098460.KQ,KR,playbook,expensive∩lo-ROE (SHORT),2026-07-25,27100.0
+066980.KQ,KR,playbook,expensive∩lo-ROE (SHORT),2026-07-25,1587.0
+416180.KQ,KR,playbook,expensive∩lo-ROE (SHORT),2026-07-25,18070.0
+071670.KQ,KR,playbook,expensive∩lo-ROE (SHORT),2026-07-25,5100.0
+093370.KS,KR,playbook,expensive∩lo-ROE (SHORT),2026-07-25,11190.0
+123750.KQ,KR,playbook,expensive∩lo-ROE (SHORT),2026-07-25,2075.0
+130660.KS,KR,playbook,expensive∩lo-ROE (SHORT),2026-07-25,10780.0
+7212.T,JP,playbook,value-reversion (LONG),2026-07-25,682.0
+2220.T,JP,playbook,value-reversion (LONG),2026-07-25,1226.0
+7815.T,JP,playbook,value-reversion (LONG),2026-07-25,365.0
+BBVA.MC,EU,playbook,12M-momentum (LONG),2026-07-25,22.94
