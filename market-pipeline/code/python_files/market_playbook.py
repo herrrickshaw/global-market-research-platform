@@ -29,7 +29,8 @@ P = {
    "EU": (0, "underpowered — can't recommend yet"), "CN": (-1, "TESTED & FAILS (t0.3) — do not run")},
  "Value+Quality Long/Short": {
    "IN": (-1, "−1.0%/6M — momentum runs shorts over"), "US": (1, "+1.7%/6M t1.0 marginal"),
-   "KR": (3, "+4.83%/6M t4.17 — STRONGEST edge of all; full L/S"), "JP": (2, "ROE available; extension of value"),
+   "KR": (3, "+4.83%/6M t4.17 GROSS → +2.3%/6M t2.0 NET of 5% borrow — best L/S, needs cheap locate"),
+   "JP": (2, "ROE available; extension of value"),
    "EU": (0, "no fundamentals depth"), "CN": (-1, "value leg fails")},
  "Momentum / Trend": {
    "IN": (3, "trend DSR 0.994 — most robust factor found; long-only"), "US": (1, "mom DSR 0.90 fragile — light"),

@@ -71,8 +71,13 @@ def nonoverlap_t(sp, step):
     return float(d.mean() / d.std() * np.sqrt(len(d))) if len(d) > 2 and d.std() else float("nan")
 
 
+# annualised short-leg cost (locate + stock-borrow), retail-realistic; small/EM caps dearer
+BORROW_ANN = {"IN": 0.07, "US": 0.02, "KR": 0.05, "JP": 0.03}
+
+
 def run(mkt):
     fund, px_dir, start = CFG[mkt]
+    borrow = BORROW_ANN.get(mkt, 0.03)
     px = load_px(px_dir); dates = px.index[px.index >= start]
     rec = fund_records(mkt, fund)
     eps = pit_panel(rec, dates, "eps"); roe = pit_panel(rec, dates, "roe")
@@ -97,6 +102,7 @@ def run(mkt):
             lm, sm = fr.reindex(longs).mean(), fr.reindex(shorts).mean()
             if np.isfinite(lm) and np.isfinite(sm):
                 books[h].append({"date": t, "long": lm, "short": sm, "ls": lm - sm,
+                                 "ls_net": lm - sm - borrow * (h / 12),   # net of short-leg borrow
                                  "n_long": len(longs), "n_short": len(shorts)})
     return {h: pd.DataFrame(v) for h, v in books.items()}
 
@@ -113,26 +119,29 @@ def main() -> int:
          "PE) ∩ low-ROE (bottom half). Dollar-neutral, monthly formations. Markets where "
          "valuation reversion tested significant (Japan excluded). Survivorship-biased → "
          "read the L/S spread; de-overlapped t.", "",
-         "| market | horizon | long | short | **L/S** | t | n L/S |",
-         "|---|---|--:|--:|--:|--:|--:|"]
+         "| market | horizon | long | short | L/S gross | **L/S net** | t gross | **t net** | borrow/yr |",
+         "|---|---|--:|--:|--:|--:|--:|--:|--:|"]
     combined = {3: [], 6: []}
     for mkt in ("IN", "US", "KR"):
         for h in (3, 6):
             d = res[mkt][h]
             if d.empty: continue
-            t = nonoverlap_t(d["ls"], h)
+            tg, tn = nonoverlap_t(d["ls"], h), nonoverlap_t(d["ls_net"], h)
             L.append(f"| {mkt} | {h}M | {d['long'].mean()*100:+.2f}% | {d['short'].mean()*100:+.2f}% | "
-                     f"**{d['ls'].mean()*100:+.2f}%** | {t:.2f} | {d.n_long.mean():.0f}/{d.n_short.mean():.0f} |")
-            combined[h].append(d.set_index("date")["ls"])
+                     f"{d['ls'].mean()*100:+.2f}% | **{d['ls_net'].mean()*100:+.2f}%** | {tg:.2f} | **{tn:.2f}** | "
+                     f"{BORROW_ANN.get(mkt,0.03)*100:.0f}% |")
+            combined[h].append(d.set_index("date")["ls_net"])
     L += ["", "## Combined (equal-weight across IN/US/KR)", "",
           "| horizon | avg L/S | t |", "|---|--:|--:|"]
     for h in (3, 6):
         c = pd.concat(combined[h], axis=1).mean(axis=1).dropna()
         L.append(f"| {h}M | **{c.mean()*100:+.2f}%** | {nonoverlap_t(c, h):.2f} |")
-    L += ["", "> L/S > 0 with t≳2 ⇒ cheap-for-quality out-returns hollow-overpriced — the "
-          "strategy the clustering + reversion tests both point to. Gross of costs/borrow; "
-          "the short leg needs a locate and pays borrow (thin small-caps especially). "
-          "Not investment advice."]
+    L += ["", "> **The borrow leg is decisive.** Net of a realistic short-borrow (KR 5%/yr, US "
+          "2%, IN 7%): **only Korea survives** (+2.33%/6M, t 1.99 — halved from +4.83% gross). "
+          "US turns negative net (+0.66%, t −0.33) and India is deeply negative. The 'strongest "
+          "edge anywhere' (KR t4.17) is a *gross* number; **net of borrow it is a modest ~+2.3%/6M** "
+          "and needs a reliable, cheap locate on thin Korean small-caps. Read the **L/S net** "
+          "column. Not investment advice."]
     (HERE / "reports" / "value_quality_ls.md").write_text("\n".join(L))
     print("\n".join(L))
     print("\nwrote reports/value_quality_ls.md")

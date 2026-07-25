@@ -22,7 +22,7 @@ Only durable + retail-harvestable edges (low information-asymmetry tax). Ranked 
 
 ## KR — *mean-reversion / full L/S*
 
-- 🥇 PRIMARY — **Value+Quality Long/Short** — +4.83%/6M t4.17 — STRONGEST edge of all; full L/S
+- 🥇 PRIMARY — **Value+Quality Long/Short** — +4.83%/6M t4.17 GROSS → +2.3%/6M t2.0 NET of 5% borrow — best L/S, needs cheap locate
 - 🥈 secondary — **Value-reversion (cheap PE)** — +3.85%/6M t1.5
 - 🥈 secondary — **Momentum / Trend** — breakout DSR 0.99
 - 🥈 secondary — **Quality (hi-ROE) overlay** — hi-ROE cheap = the Korea discount

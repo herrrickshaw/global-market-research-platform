@@ -7,7 +7,7 @@ Value-reversion (cheap PE),EU,0,underpowered — can't recommend yet
 Value-reversion (cheap PE),CN,-1,TESTED & FAILS (t0.3) — do not run
 Value+Quality Long/Short,IN,-1,−1.0%/6M — momentum runs shorts over
 Value+Quality Long/Short,US,1,+1.7%/6M t1.0 marginal
-Value+Quality Long/Short,KR,3,+4.83%/6M t4.17 — STRONGEST edge of all; full L/S
+Value+Quality Long/Short,KR,3,"+4.83%/6M t4.17 GROSS → +2.3%/6M t2.0 NET of 5% borrow — best L/S, needs cheap locate"
 Value+Quality Long/Short,JP,2,ROE available; extension of value
 Value+Quality Long/Short,EU,0,no fundamentals depth
 Value+Quality Long/Short,CN,-1,value leg fails
