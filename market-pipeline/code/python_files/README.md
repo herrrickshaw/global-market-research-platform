@@ -49,6 +49,7 @@ added — Japan). China's multiples converge but don't pay a return premium.
 |---|---|
 | [docs/METHODOLOGY.md](docs/METHODOLOGY.md) | assumptions · how to read results · literature |
 | [docs/EDGE_MATRIX.md](docs/EDGE_MATRIX.md) | **the fat-pitch grid** — where the edge is (filter × market) |
+| [docs/WHY_THESE_WIN.md](docs/WHY_THESE_WIN.md) | **why** each filter wins — economics + literature + caveats |
 | [docs/GLOSSARY.md](docs/GLOSSARY.md) | **every term in plain English** (no finance background needed) |
 | [docs/PIPELINE_STAGES.md](docs/PIPELINE_STAGES.md) | the 10-stage pipeline |
 | [docs/SYSTEM_REFERENCE.md](docs/SYSTEM_REFERENCE.md) | module map · findings · data map |
