@@ -11,6 +11,17 @@ from pathlib import Path
 import pandas as pd, numpy as np, yfinance as yf
 warnings.filterwarnings("ignore")
 
+# anti-throttle: impersonate a real Chrome via curl_cffi so Yahoo doesn't rate-limit us.
+try:
+    from curl_cffi import requests as cffi
+    SESS = cffi.Session(impersonate="chrome")
+except Exception:
+    SESS = None
+
+
+def ticker(tk):
+    return yf.Ticker(tk, session=SESS) if SESS is not None else yf.Ticker(tk)
+
 WH = "/Users/umashankar/repos/global-market-data/warehouse/ohlcv/JP"
 OUT = Path("/Users/umashankar/repos/global-stock-screener/cache_seed/fundamentals_history/JP_yf_breadth.parquet")
 LIMIT = int(sys.argv[1]) if len(sys.argv) > 1 else 3200
@@ -40,7 +51,7 @@ def main() -> int:
     print(f"JP yfinance breadth: {len(todo)} tickers", flush=True)
     for i, tk in enumerate(todo, 1):
         try:
-            t = yf.Ticker(tk)
+            t = ticker(tk)
             inc, bs = t.financials, t.balance_sheet
             rev = pick(inc, "Total Revenue", "Operating Revenue")
             ni = pick(inc, "Net Income Continuous", "Net Income")
