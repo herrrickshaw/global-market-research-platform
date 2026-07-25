@@ -24,7 +24,7 @@ FIND = [
  ("Information-asymmetry tax is horizon-dependent → retail can only harvest SLOW edges", 8, "validated"),
  ("Measurement > data quantity (Japan flip: null→+6.6%/6M t4.84 via EDINET depth)", 9, "validated"),
  ("Country-ERP: China's cheapness is NOT risk-justified (CRP 0.91%) → speculation confirmed", 7, "validated"),
- ("China value-reversion fails but momentum likely dominates", 3, "tentative/untested"),
+ ("China: NEITHER value (t0.3) NOR 6M momentum (t−0.2) works — passive only (was tentative, now tested)", 8, "validated"),
  ("EU value effect", 2, "underpowered — cannot conclude"),
 ]
 
@@ -32,8 +32,6 @@ FIND = [
 GAP = [
  ("valuation_clusters only IN/US/KR — JP/EU/CN have no peer clusters (screener falls back)", 8, 3,
   "re-run valuation_clustering.py on JP_full/CN_full/EU_union (data now exists) → fills JP/EU picks"),
- ("CN momentum untested (we assert 'likely' but never backtested)", 6, 3,
-  "run deflated_sharpe/regime on CN warehouse prices → confirm or kill the momentum claim"),
  ("Full-universe fundamentals-vs-speculation incomplete (US-only preview)", 6, 4,
   "join Damodaran sector map (48k, instant) to all markets → the cross-market speculation map"),
  ("H2 Accumulation (prior paper) never re-tested this session", 5, 4,

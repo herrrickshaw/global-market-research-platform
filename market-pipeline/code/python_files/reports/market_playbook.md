@@ -46,10 +46,10 @@ Only durable + retail-harvestable edges (low information-asymmetry tax). Ranked 
 
 ## CN — *speculation-ruled — passive only*
 
-- ⚙️ base — **Momentum / Trend** — untested but character-implied; use with care
 - ⚙️ base — **Passive core (DCA+rebalance)** — always-on base: DCA + annual rebalance, vol-targeted
 - 🚫 AVOID — **Value-reversion (cheap PE)** — TESTED & FAILS (t0.3) — do not run
 - 🚫 AVOID — **Value+Quality Long/Short** — value leg fails
+- 🚫 AVOID — **Momentum / Trend** — TESTED & FAILS at 6M too (W−L −0.7%, t−0.2) — any CN momentum is fast/retail-inaccessible
 
 ## Rules that apply everywhere
 

@@ -16,7 +16,7 @@ Momentum / Trend,US,1,mom DSR 0.90 fragile — light
 Momentum / Trend,KR,2,breakout DSR 0.99
 Momentum / Trend,JP,-1,no DSR survivor — whipsaws
 Momentum / Trend,EU,3,mom252 DSR 0.985 — primary EU edge
-Momentum / Trend,CN,1,untested but character-implied; use with care
+Momentum / Trend,CN,-1,"TESTED & FAILS at 6M too (W−L −0.7%, t−0.2) — any CN momentum is fast/retail-inaccessible"
 Quality (hi-ROE) overlay,IN,2,earns premium behind the liquidity gate
 Quality (hi-ROE) overlay,US,-1,Piotroski INVERTED in US
 Quality (hi-ROE) overlay,KR,2,hi-ROE cheap = the Korea discount

@@ -34,7 +34,8 @@ P = {
  "Momentum / Trend": {
    "IN": (3, "trend DSR 0.994 — most robust factor found; long-only"), "US": (1, "mom DSR 0.90 fragile — light"),
    "KR": (2, "breakout DSR 0.99"), "JP": (-1, "no DSR survivor — whipsaws"),
-   "EU": (3, "mom252 DSR 0.985 — primary EU edge"), "CN": (1, "untested but character-implied; use with care")},
+   "EU": (3, "mom252 DSR 0.985 — primary EU edge"),
+   "CN": (-1, "TESTED & FAILS at 6M too (W−L −0.7%, t−0.2) — any CN momentum is fast/retail-inaccessible")},
  "Quality (hi-ROE) overlay": {
    "IN": (2, "earns premium behind the liquidity gate"), "US": (-1, "Piotroski INVERTED in US"),
    "KR": (2, "hi-ROE cheap = the Korea discount"), "JP": (1, "pairs with value"),

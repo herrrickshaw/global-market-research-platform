@@ -26,7 +26,7 @@ A full-arc review from the platform's origin to the live paper-track: what we've
 | Information-asymmetry tax is horizon-dependent → retail can only harvest SLOW edges | 8/10 | validated |
 | Measurement > data quantity (Japan flip: null→+6.6%/6M t4.84 via EDINET depth) | 9/10 | validated |
 | Country-ERP: China's cheapness is NOT risk-justified (CRP 0.91%) → speculation confirmed | 7/10 | validated |
-| China value-reversion fails but momentum likely dominates | 3/10 | tentative/untested |
+| China: NEITHER value (t0.3) NOR 6M momentum (t−0.2) works — passive only (was tentative, now tested) | 8/10 | validated |
 | EU value effect | 2/10 | underpowered — cannot conclude |
 
 ## Gaps to fix (prioritised by impact ÷ effort)
@@ -35,7 +35,6 @@ A full-arc review from the platform's origin to the live paper-track: what we've
 |---|--:|--:|---|
 | valuation_clusters only IN/US/KR — JP/EU/CN have no peer clusters (screener falls back) | 8 | 3 | re-run valuation_clustering.py on JP_full/CN_full/EU_union (data now exists) → fills JP/EU picks |
 | EV/EBITDA sector map not run (dam_vebitda downloaded) | 5 | 2 | capital-structure-neutral re-do of the sector map — de-distorts financials/asset-heavy |
-| CN momentum untested (we assert 'likely' but never backtested) | 6 | 3 | run deflated_sharpe/regime on CN warehouse prices → confirm or kill the momentum claim |
 | Short-borrow cost not modelled in KR/JP long/short returns | 6 | 3 | haircut the short leg by a locate+borrow estimate — the L/S t-stats are gross |
 | Full-universe fundamentals-vs-speculation incomplete (US-only preview) | 6 | 4 | join Damodaran sector map (48k, instant) to all markets → the cross-market speculation map |
 | Confusion matrix on SHORT-horizon signals (PEAD/momentum) not done | 6 | 4 | where the info-asymmetry tax actually bites — run the net-of-cost classifier on fast signals |
