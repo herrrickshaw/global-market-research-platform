@@ -48,6 +48,7 @@ added — Japan). China's multiples converge but don't pay a return premium.
 | doc | what |
 |---|---|
 | [docs/METHODOLOGY.md](docs/METHODOLOGY.md) | assumptions · how to read results · literature |
+| [docs/GLOSSARY.md](docs/GLOSSARY.md) | **every term in plain English** (no finance background needed) |
 | [docs/PIPELINE_STAGES.md](docs/PIPELINE_STAGES.md) | the 10-stage pipeline |
 | [docs/SYSTEM_REFERENCE.md](docs/SYSTEM_REFERENCE.md) | module map · findings · data map |
 | [docs/DATA_SUFFICIENCY.md](docs/DATA_SUFFICIENCY.md) | the anti-false-outcome power/coverage gate |
