@@ -99,8 +99,12 @@ def main() -> int:
     n = update_watchlist()
     DecisionLog().record("strategy_mailer", picks_added=n, markets=list(PICKS),
                          n_picks=sum(len(v) for v in PICKS.values()))
-    subject = f"📊 Strategy Digest — {sum(len(v) for v in PICKS.values())} validated value picks (IN/US/KR) · {ASOF}"
-    text = "Validated cheap+high-ROE longs across IN/US/KR + deployment matrix. Paper-track, not advice."
+    import datetime
+    npk = sum(len(v) for v in PICKS.values())
+    mkts = "/".join(m for m in ["IN", "US", "KR", "JP", "EU"] if PICKS.get(m))
+    subject = f"📊 Strategy Digest — {npk} playbook picks ({mkts}; CN passive) · {datetime.date.today().isoformat()}"
+    text = ("Per-market backtest-validated edges: IN trend+value, US/JP cheap-vs-market, KR value+quality "
+            "long/short, EU momentum; CN passive (value fails). Paper-track, not advice.")
     SM.send(subject, text, html())
     LOG.info(f"sent strategy digest ({n} new watchlist picks)")
     return 0
