@@ -11,6 +11,7 @@ A full-arc review from the platform's origin to the live paper-track: what we've
 5. **Explain** — fundamentals-vs-speculation (3 lenses + Damodaran + ROIC/WACC + country-ERP), PEAD routing, the confusion-matrix/information-asymmetry synthesis.
 6. **Evaluate** — 70 strategies (durability × access), screener.in popular screens, an audit of the prior working paper.
 7. **Operationalise** — the market playbook → live playbook screener → watchlist → daily mailer (sent). Research is now a running system.
+8. **Industrialise** (2026-07-27) — official-source fundamentals for JP/KR/CN (EDINET/DART/Eastmoney), one canonical global_fundamentals layer (237k rows, 14 markets), priority-balanced ETL with SQL quality gates + batch lineage, knowledge-graph over the repo, cloud-first raw archives (0 MB local).
 
 ## Consolidated findings
 
@@ -31,6 +32,10 @@ A full-arc review from the platform's origin to the live paper-track: what we've
 | China is BIMODAL — anchored SOE core (Utilities PB~ROE R²0.90) + speculative retail growth-periphery | 6/10 | validated (small-n caveat) |
 | Fundamentals-vs-speculation is MARKET×SECTOR-specific, not poolable across markets | 7/10 | validated |
 | EU value effect | 2/10 | underpowered — cannot conclude |
+| Official-source fundamentals now span 5 majors (EDGAR US · EDINET JP 99.97% · DART KR · Eastmoney CN · screener.in IN) — 237k-row unified layer | 9/10 | validated 2026-07-27 |
+| The right endpoint beats scraping: EDINET's real API host (api.*, not the website) + Eastmoney bulk (all A-shares in 3 calls/yr) replaced weeks of per-stock crawling | 8/10 | validated 2026-07-27 |
+| Source precedence belongs in the DBMS, not script order — SQL priority upsert + quality gates auto-rejected the eps-only CN feed on first contact | 8/10 | validated 2026-07-27 |
+| External validation gates earn their keep: screener.in check caught a stale INFY close (Friday price on a +3.7% Monday) before the mailer shipped it | 8/10 | validated 2026-07-27 |
 
 ## Gaps to fix (prioritised by impact ÷ effort)
 
@@ -38,18 +43,20 @@ A full-arc review from the platform's origin to the live paper-track: what we've
 |---|--:|--:|---|
 | valuation_clusters only IN/US/KR — JP/EU/CN have no peer clusters (screener falls back) | 8 | 3 | re-run valuation_clustering.py on JP_full/CN_full/EU_union (data now exists) → fills JP/EU picks |
 | EV/EBITDA sector map not run (dam_vebitda downloaded) | 5 | 2 | capital-structure-neutral re-do of the sector map — de-distorts financials/asset-heavy |
+| EU has no official-source fundamentals (no EDGAR-equivalent wired; EODHD key dormant on an env-var rename) | 5 | 2 | alias EODHD_KEY→EODHD_API_KEY to wake the wired 20-exchange fallback; longer term: per-country registries |
 | Short-borrow cost not modelled in KR/JP long/short returns | 6 | 3 | haircut the short leg by a locate+borrow estimate — the L/S t-stats are gross |
 | Full-universe fundamentals-vs-speculation incomplete (US-only preview) | 6 | 4 | join Damodaran sector map (48k, instant) to all markets → the cross-market speculation map |
 | Confusion matrix on SHORT-horizon signals (PEAD/momentum) not done | 6 | 4 | where the info-asymmetry tax actually bites — run the net-of-cost classifier on fast signals |
+| fx_usd in global_fundamentals is a static 2026-07 snapshot | 3 | 2 | wire FRED (key exists, unused) for live FX + macro regime in one step |
 | H2 Accumulation (prior paper) never re-tested this session | 5 | 4 | OBV/Chaikin accumulation backtest — auditable open item from the paper |
+| Time-series speculation only US 2017–2025, shallow | 5 | 4 | CN_em now holds 10y of full statements — extend the TS speculation study to CN (and JP via EDINET) next |
 | Regime (bull/bear) not wired into the LIVE screener (static filters) | 5 | 4 | condition the playbook screener on the breadth-regime proxy already built |
-| Time-series speculation only US 2017–2025, shallow | 5 | 5 | deeper history + other markets once sector collection completes |
 | Live forward performance = zero (paper-track just started) | 7 | 9 | TIME — the picks were only just watchlisted; needs weeks/months to validate out-of-sample |
 | EU depth pre-2021 paywalled → EU value stays underpowered | 4 | 7 | national registries / paid vendor — low priority, hard |
 
-### ✅ Cleared this pass
+### ✅ Cleared this pass (2026-07-27)
 
-1. Extended valuation clustering to JP/EU/CN (JP picks 3→8). 2. CN momentum backtested — fails at 6M (t−0.2), corrects the 'likely' claim. 3. Borrow-haircut on L/S — KR halves to +2.3%/6M t2.0, US turns negative. 4. Full-universe fund-vs-spec (all 6 markets, 95% sectors) — China-bimodal + not-poolable findings. 5. EV/EBITDA cross-check.
+1. JP fundamentals gap CLOSED — EDINET official API, 3,933 filings, 99.97% of the live universe FY2024+. 2. KR fundamentals gap CLOSED — DART official API, 6,352 filings FY2023-25. 3. CN statements gap CLOSED — Eastmoney bulk, 50k rows / 10y / 100% revenue fill (was eps-only). 4. Unified global_fundamentals (237k rows, 14 markets) + DBMS ETL (priority upsert, quality gates, lineage, watermarks). 5. Consistency hygiene: EU per-suffix currency + fx_usd, fy_end sanity filter, placeholder markets purged. Prior pass: valuation clustering JP/EU/CN, CN momentum null, borrow-haircut L/S, full-universe fund-vs-spec, EV/EBITDA.
 
 ### Residual backlog (bigger / time-gated)
 
