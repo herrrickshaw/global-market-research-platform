@@ -113,8 +113,17 @@ FAILURES=()
     step "[9/14] Correlation scan — NSE"
     $PY market_correlation_scan.py --market NSE --output-dir correlation_scan || { echo "  NSE correlation scan failed (continuing)"; FAILURES+=("NSE: correlation scan"); }
 
-    step "[10/14] Correlation scan — US"
-    $PY market_correlation_scan.py --market US --output-dir correlation_scan || { echo "  US correlation scan failed (continuing)"; FAILURES+=("US: correlation scan"); }
+    # US correlation is WEEKLY (Mondays) as of 2026-07-27: at 28.6 min it is
+    # the single most expensive step (~55% of a warm run) for a 7,000x7,000
+    # matrix whose clusters drift over weeks, not days. Same Monday cadence as
+    # the paper-track scorecard. Other markets stay daily (each <=5 min).
+    if [[ "$(date +%u)" == "1" ]]; then
+      step "[10/14] Correlation scan — US (weekly, Mondays)"
+      $PY market_correlation_scan.py --market US --output-dir correlation_scan || { echo "  US correlation scan failed (continuing)"; FAILURES+=("US: correlation scan"); }
+    else
+      step "[10/14] Correlation scan — US (skipped — weekly, next Monday)"
+      echo "  using last Monday's US correlation matrix (drifts slowly)"
+    fi
 
     step "[11/14] Correlation scan — Europe"
     $PY market_correlation_scan.py --market EUROPE --output-dir correlation_scan || { echo "  Europe correlation scan failed (continuing)"; FAILURES+=("Europe: correlation scan"); }
