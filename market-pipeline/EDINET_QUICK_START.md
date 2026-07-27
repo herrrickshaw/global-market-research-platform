@@ -19,13 +19,15 @@ All Japan fundamentals infrastructure has been built and committed:
 
 ## Challenge Encountered
 
-**Automated EDINET download doesn't work:**
-- EDINET API returns 403 Forbidden (not public)
-- Direct download URLs redirect to login pages
-- Bulk files require session/browser authentication
-- Website uses JavaScript rendering (not API-accessible)
+**EDINET access is restricted:**
+- No public bulk download API
+- Individual filing API returns HTML errors (not JSON)
+- API key does not grant programmatic access to XBRL files
+- All automated approaches (API, bulk ZIP, web scraping) failed
 
-**Solution**: Manual download + automated processing
+**Reality**: EDINET files must be downloaded manually via their website
+
+**Good news**: All downstream infrastructure is ready—just need to provide the files
 
 ---
 
@@ -52,41 +54,63 @@ This validates the entire pipeline end-to-end without waiting for real files.
 
 ---
 
-### Option B: Get Real EDINET Files (Manual)
+### Option B: Download Real EDINET Files (Manual → Batch Process)
 
-1. **Visit EDINET website:**
-   ```
-   https://disclosure2.edinet-fsa.go.jp/
-   ```
+**Step 1: Download from EDINET website (manual)**
 
-2. **Navigate to bulk download:**
-   - Click "Download" / "XBRL Bulk Data"
-   - Select period (FY2024 Q3, Q2, Q1 or FY2023 Annual)
-   - Download ZIP (~300-500 MB each)
+Visit: https://disclosure2.edinet-fsa.go.jp/
 
-3. **Move to temp directory:**
-   ```bash
-   mv ~/Downloads/EDINET_XBRL_*.zip /tmp/
-   ```
+Navigate to each period and download the XBRL ZIP file:
+- FY2023 Annual (2023-04-01 to 2024-03-31)
+- FY2024 Q1 (2024-04-01 to 2024-06-30)
+- FY2024 Q2 (2024-07-01 to 2024-09-30)
+- FY2024 Q3 (2024-10-01 to 2024-12-31)
 
-4. **Run automated processing:**
-   ```bash
-   bash /Users/umashankar/market-pipeline/scripts/edinet_process_and_archive.sh
-   ```
+Each file is ~500 MB. Save to `~/Downloads/`.
 
-   This will:
-   - Parse each ZIP into Postgres
-   - Archive to Dropbox + GDrive
-   - Delete /tmp files (zero local disk)
-   - Verify row counts
+**Step 2: Move to temp directory**
 
-5. **Verify coverage:**
-   ```bash
-   psql -d market_data -c "
-     SELECT fiscal_period, COUNT(*) as companies
-     FROM japan_fundamentals_history
-     GROUP BY fiscal_period;"
-   ```
+```bash
+mv ~/Downloads/EDINET_XBRL_*.zip /tmp/
+```
+
+**Step 3: Process all files into Postgres**
+
+```bash
+cd /Users/umashankar/market-pipeline
+python3 scripts/edinet_batch_process.py --src /tmp
+```
+
+This will:
+- Find all XBRL ZIPs in `/tmp`
+- Parse each into financials DataFrame
+- Load into `japan_fundamentals_history` table
+- Report row counts per period
+
+**Step 4: Verify coverage**
+
+```bash
+psql -d market_data -c "
+  SELECT fiscal_period, COUNT(*) as companies
+  FROM japan_fundamentals_history
+  GROUP BY fiscal_period;"
+```
+
+Expected:
+```
+ fiscal_period | companies
+---------------+-----------
+ FY2024Q3      |      ~2900-2937
+ FY2024Q2      |      ~2900-2937
+ FY2024Q1      |      ~2900-2937
+ FY2023        |      ~2900-2937
+```
+
+**Step 5: Archive to cloud (optional)**
+
+```bash
+rclone move /tmp/EDINET_XBRL_*.zip dropbox:/market-data-archive/edinet_xbrl/
+```
 
 ---
 
