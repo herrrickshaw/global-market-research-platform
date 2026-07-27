@@ -323,12 +323,15 @@ def _run_daily_scan(markets: list[str], scan_types: list[str]) -> dict:
     } for m in markets}
 
     # Process each market (data is cached per market, but scanner init is batched)
+    from scanners.market_regime import get_regime
+
     for market in markets:
         df = get_market_quotes_df(market)
         if df.empty:
             continue
 
         meta = market_meta[market]
+        regime = get_regime(market)
 
         # Run all scan types on this market's data
         for scan_type in scan_types:
@@ -348,6 +351,14 @@ def _run_daily_scan(markets: list[str], scan_types: list[str]) -> dict:
                 # Only include BUY and WATCH signals
                 if row.get('signal') not in ('BUY', 'WATCH'):
                     continue
+                # Regime gate (10y replay, price_prediction_backtest): breakout
+                # BUYs in a bear market regime are dead-to-negative — demote to
+                # WATCH and flag, so the UI still shows them but never as BUY.
+                row['market_regime'] = regime['trend']
+                if (scan_type == 'darvas' and row['signal'] == 'BUY'
+                        and regime['trend'] == 'bear'):
+                    row['signal'] = 'WATCH'
+                    row['regime_gated'] = True
                 row['market'] = market
                 row['market_label'] = meta['label']
                 row['currency'] = meta['currency']
