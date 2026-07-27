@@ -182,8 +182,16 @@ FAILURES=()
   step "[13c/14] refresh live market regime (zone_regime.json)"
   $PY strategy_regime_survival.py --refresh-regime || echo "  regime refresh failed (continuing)"
 
+  # [13d] Warehouse-first price reconcile (2026-07-27, SMOOTHNESS #3): spot-check
+  # EVERY market's scan LTPs against fresh quotes + the warehouse stale-cache
+  # signature — the INFY class (Friday close on a +3.7% Monday) now gates the
+  # mailer for all five markets, not just India's screener.in sample.
+  step "[13d/14] scan price reconcile (all markets)"
+  RECONCILE_OK=0
+  $PY scan_price_reconcile.py || { RECONCILE_OK=$?; echo "  ⚠ $RECONCILE_OK market(s) failed price reconcile"; FAILURES+=("reconcile: $RECONCILE_OK market(s) stale scan prices"); }
+
   step "[13b/14] validate brief against screener.in"
-  if $PY validate_brief.py --sample 6; then
+  if $PY validate_brief.py --sample 6 && [ "$RECONCILE_OK" -eq 0 ]; then
       step "[14/14] build + send mailer"
       $PY send_mailer.py "$@" || { echo "  mailer build/send failed"; FAILURES+=("mailer: build/send"); }
   else
