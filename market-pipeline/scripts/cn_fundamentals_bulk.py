@@ -84,7 +84,12 @@ def main():
     allf = allf.dropna(subset=['net_income', 'revenue'], how='all')
     allf = allf.drop_duplicates(subset=['ticker', 'fy_end'])
 
-    allf.to_parquet(OUT, index=False)
+    try:
+        allf.to_parquet(OUT, index=False)
+    except ImportError:
+        csv_out = OUT.with_suffix('.csv')  # pyarrow missing — never lose the fetch
+        allf.to_csv(csv_out, index=False)
+        print(f"⚠ pyarrow missing — wrote {csv_out} instead")
     filled = allf['revenue'].notna().mean() * 100
     print(f"\n✓ {OUT.name}: {len(allf)} rows, {allf['ticker'].nunique()} tickers, "
           f"{len(years)} years, revenue fill {filled:.0f}% "
