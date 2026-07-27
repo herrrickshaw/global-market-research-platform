@@ -91,6 +91,10 @@ def load_market(market: str) -> pd.DataFrame:
         frames.append(canonize(m, 'IN', 'screener_in'))
 
     elif market == 'CN':
+        # CN_em (Eastmoney bulk, full statements) wins; ratio-only sources fill gaps
+        if (FUND / 'CN_em.parquet').exists():
+            em = pd.read_parquet(FUND / 'CN_em.parquet')
+            frames.append(canonize(em, 'CN', 'eastmoney'))
         if (FUND / 'CN_baostock.parquet').exists():
             bs = pd.read_parquet(FUND / 'CN_baostock.parquet')
             frames.append(canonize(bs, 'CN', 'baostock'))
