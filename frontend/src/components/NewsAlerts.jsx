@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 
-const BASE_URL = 'http://localhost:8000'
+const BASE_URL = ''  // relative — goes through the vite /api proxy, tunnel-safe
 
 const EVENT_META = {
   PRICE_UP:       { label: '↑ Price Up',       color: 'bg-green-900 text-green-300 border-green-700' },
