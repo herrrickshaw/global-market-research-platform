@@ -13,18 +13,17 @@ Scored June signals (5d/21d fixed horizons, excess vs market median), joined to 
 
 ## B — Current watchlist through the prediction lens
 
-454 active names scored (deep-panel markets only; panel as-of dates shown). Verdict = market gate first, then stock-level Markov state + Kalman drift.
+446 active names scored (deep-panel markets only; panel as-of dates shown). Verdict = market gate first, then stock-level Markov state + Kalman drift.
 
 | market   | verdict                          |   n |
 |:---------|:---------------------------------|----:|
 | IN       | DEMOTE (market bear)             | 216 |
 | JP       | ENTER-OK                         |   3 |
 | JP       | HOLD-OK                          |   7 |
-| JP       | WEAK (stock bear-state, drift<0) |   2 |
 | KR       | DEMOTE (market bear)             |  27 |
 | US       | ENTER-OK                         | 103 |
 | US       | HOLD-OK                          |  58 |
-| US       | WEAK (stock bear-state, drift<0) |  38 |
+| US       | WEAK (stock bear-state, drift<0) |  32 |
 
 ### Strongest ENTER-OK names (by Kalman drift)
 
@@ -48,15 +47,15 @@ Scored June signals (5d/21d fixed horizons, excess vs market median), joined to 
 
 ### WEAK names (stock-level negatives despite market gate pass)
 
-| market   | symbol   | status    | mkt_trend   | mkt_vol   | stock_state   |   kalman_drift_ann_pct |   markov_e21d_pct | asof       | verdict                          |
-|:---------|:---------|:----------|:------------|:----------|:--------------|-----------------------:|------------------:|:-----------|:---------------------------------|
-| JP       | 7280.T   | playbook  | bull        | MID       | bear          |                  -44.5 |             -0.72 | 2026-07-01 | WEAK (stock bear-state, drift<0) |
-| JP       | 6047.T   | justified | bull        | MID       | bear          |                  -71.2 |              0.22 | 2026-07-01 | WEAK (stock bear-state, drift<0) |
-| US       | FACT     | signal    | bull        | MID       | bear          |                   -1.7 |              0.61 | 2026-07-17 | WEAK (stock bear-state, drift<0) |
-| US       | JCI      | held      | bull        | MID       | bear          |                   -3.2 |              0.99 | 2026-07-17 | WEAK (stock bear-state, drift<0) |
-| US       | RPM      | signal    | bull        | MID       | bear          |                   -5   |              0.05 | 2026-07-17 | WEAK (stock bear-state, drift<0) |
-| US       | SOJE     | playbook  | bull        | MID       | bear          |                   -8.3 |             -0.55 | 2026-07-17 | WEAK (stock bear-state, drift<0) |
-| US       | TXN      | held      | bull        | MID       | bear          |                  -16.7 |              2.76 | 2026-07-17 | WEAK (stock bear-state, drift<0) |
-| US       | TSM      | held      | bull        | MID       | bear          |                  -19.2 |              1.5  | 2026-07-17 | WEAK (stock bear-state, drift<0) |
-| US       | GLNG     | held      | bull        | MID       | bear          |                  -20.8 |              4.41 | 2026-07-17 | WEAK (stock bear-state, drift<0) |
-| US       | EMR      | held      | bull        | MID       | bear          |                  -28   |              0.44 | 2026-07-17 | WEAK (stock bear-state, drift<0) |
+| market   | symbol   | status   | mkt_trend   | mkt_vol   | stock_state   |   kalman_drift_ann_pct |   markov_e21d_pct | asof       | verdict                          |
+|:---------|:---------|:---------|:------------|:----------|:--------------|-----------------------:|------------------:|:-----------|:---------------------------------|
+| US       | JCI      | held     | bull        | MID       | bear          |                   -3.2 |              0.99 | 2026-07-17 | WEAK (stock bear-state, drift<0) |
+| US       | TXN      | held     | bull        | MID       | bear          |                  -16.7 |              2.76 | 2026-07-17 | WEAK (stock bear-state, drift<0) |
+| US       | TSM      | held     | bull        | MID       | bear          |                  -19.2 |              1.5  | 2026-07-17 | WEAK (stock bear-state, drift<0) |
+| US       | GLNG     | held     | bull        | MID       | bear          |                  -20.8 |              4.41 | 2026-07-17 | WEAK (stock bear-state, drift<0) |
+| US       | EMR      | held     | bull        | MID       | bear          |                  -28   |              0.44 | 2026-07-17 | WEAK (stock bear-state, drift<0) |
+| US       | GOOG     | held     | bull        | MID       | bear          |                  -28.8 |              2.71 | 2026-07-17 | WEAK (stock bear-state, drift<0) |
+| US       | FDX      | held     | bull        | MID       | bear          |                  -29.2 |              0.55 | 2026-07-17 | WEAK (stock bear-state, drift<0) |
+| US       | TSLA     | held     | bull        | MID       | bear          |                  -33.6 |              0.68 | 2026-07-17 | WEAK (stock bear-state, drift<0) |
+| US       | DIS      | held     | bull        | MID       | bear          |                  -34.8 |             -0.66 | 2026-07-17 | WEAK (stock bear-state, drift<0) |
+| US       | COST     | held     | bull        | MID       | bear          |                  -51.5 |              1.38 | 2026-07-17 | WEAK (stock bear-state, drift<0) |

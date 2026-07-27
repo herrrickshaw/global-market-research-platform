@@ -181,7 +181,7 @@ def purge_weak(scores: pd.DataFrame) -> None:
     for i in protected:
         note = str(wl.at[i, "note"])
         tag = f"weak {today} ({reason}) — protected status, not purged"
-        if tag not in note:
+        if f"weak {today}" not in note:
             wl.at[i, "note"] = (note + " | " if note not in ("nan", "") else "") + tag
     if droppable:
         arch = wl.loc[droppable].copy()
