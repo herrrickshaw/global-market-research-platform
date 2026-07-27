@@ -82,9 +82,12 @@ except ImportError:
     _VADER_OK = False
 
 # MARKET_CACHE: see symbol_master.py — lets the tree live outside ~/Downloads,
-# which macOS TCC makes unreadable to launchd-spawned processes.
+# which macOS TCC makes unreadable to launchd-spawned processes AND is wiped by
+# a parallel session (lost 2026-07-27) — default now lives inside the repo.
 CACHE_FILE = Path(os.environ.get(
-    "MARKET_CACHE", Path.home() / "Downloads" / "market_cache")) / "sentiment_cache.json"
+    "MARKET_CACHE",
+    Path(__file__).resolve().parent / "market_cache")) / "sentiment_cache.json"
+CACHE_FILE.parent.mkdir(parents=True, exist_ok=True)
 OUT_DIR    = Path("./sentiment_results"); OUT_DIR.mkdir(exist_ok=True)
 CACHE_TTL_HOURS = 6
 
