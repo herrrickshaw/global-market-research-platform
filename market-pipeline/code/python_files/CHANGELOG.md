@@ -2,6 +2,28 @@
 
 Decisions and material changes to the pipeline, newest first.
 
+## 2026-07-27 (night 3) — Performance: --post-only, weekly US correlation, session-aware gate
+
+- **Measured before fixing** (scan_timings.py / step_timings, per the
+  measure-don't-guess rule): US correlation 28.6 min (~55% of a warm run) ·
+  cloud backup 10 min · US scan 5–26 min · every other step ≤1.5 min. The day's
+  real waste: FOUR full pipeline runs where one full + three partials would do —
+  runs 2–4 rescanned five closed markets with identical inputs just to verify
+  small post-scan logic changes.
+- **`--post-only` flag** — skips scans+correlations [1–13], runs only the
+  post-scan block (screens → prediction/tiers/re-entry → gates → mailer).
+  VERIFIED: the full re-entry loop in **13m21s vs ~90 min** (7×). This is now
+  the way to verify pipeline-logic changes; full runs are for data refresh.
+- **US correlation → WEEKLY (Mondays)** — a ~7,000×7,000 matrix whose clusters
+  drift over weeks, not days; same Monday cadence as the paper-track scorecard.
+  Other markets stay daily (each ≤5 min). Tue–Fri warm runs drop ~50 → ~20 min.
+- **Session-aware reconcile tolerance** — when a market is in session (per-market
+  IST windows), scan-vs-fresh gaps are intraday drift, so [13d]'s tolerance
+  loosens 2×. Root-caused the first flags: ASML 3.6% during the EU session =
+  drift; **SKHY 9.4% = the gate being RIGHT** (scan captured Friday's close at
+  the 09:06 ET open, stock genuinely −9% intraday — a materially-off brief
+  price should block a send even when the cause is the market moving).
+
 ## 2026-07-27 (night 2) — Tier-3 anomaly backtest + the mean-reversion re-entry engine
 
 - **Backtest (`backtest_tier_anomalies.py`)** — replayed the live eviction presets
