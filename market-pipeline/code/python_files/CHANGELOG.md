@@ -2,6 +2,29 @@
 
 Decisions and material changes to the pipeline, newest first.
 
+## 2026-07-27 — Regime gate on scanner + mailer (10y replay-backed)
+
+- **`market_regime.py` (new, also mirrored to `backend/scanners/`)** — daily
+  point-in-time trend (bull/chop/bear) + vol (LOW/MID/HIGH) regime per market
+  from a trimmed top-20 blue-chip basket (EMA100 position+slope; trailing-252d
+  vol percentile). Cached one day in `reports/regime_cache.json`.
+  DECISION: basket index, NOT full-universe breadth median — the replay showed
+  breadth medians compound ~−98% over 10y in IN/KR/CN (sporadic microcaps +
+  decliner-heavy turnover tail) and label whole decades "bear".
+- **Backend daily scanner** (`routers/cassandra_router.py`): Darvas BUY →
+  WATCH demotion when the market's trend regime is bear (`regime_gated` flag,
+  `market_regime` on every row). Evidence: 10y replay, ~470k signals — bear-
+  regime breakout excess ≤0 in US/JP/IN (US −0.85%/21d), bull-gated excess
+  ~2x ungated (github.com/herrrickshaw/price_prediction_backtest).
+- **Mailer** (`build_mailer.py`): regime badge on each Darvas breakout
+  section (bear ⇒ explicit "watch-only, not entries" warning) + a six-market
+  regime-gate strip under the market snapshot.
+- REJECTED: hard-dropping bear-regime breakouts from the mailer — the sell/
+  breakdown leg is contrarian (bounces), and hiding rows loses information;
+  demote-and-flag preserves the audit trail.
+- Vol regime is informational for now (LOW/MID favoured in 4/5 markets);
+  gating on it is a candidate follow-up once the live tracker confirms.
+
 ## 2026-07-27 — Official fundamentals for JP/KR/CN; unified global layer; DBMS ETL
 
 - **Japan via EDINET (official FSA source)** — `scripts/edinet_api_downloader.py`
