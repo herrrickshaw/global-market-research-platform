@@ -179,6 +179,13 @@ FAILURES=()
   $PY watchlist_tiers.py \
     || FAILURES+=("watchlist tiers: sync/promote failed")
 
+  # Re-entry engine (mean-reversion discovery): fresh tier-3 anomalies, market
+  # not bear, RSI overbought veto → top-3/market re-enter tier 1 as
+  # status=reentry rows; the paper-track scores the engine out-of-sample.
+  # Backtested: excess +5-25%/63d, t 7-15 across IN/JP/KR/US.
+  $PY reentry_engine.py \
+    || FAILURES+=("reentry engine: rank/enroll failed")
+
   # [13x] Paper-track scorecard — accumulates every past mailer pick (signal
   # ledger) and marks to today, so the mailer carries a running report card.
   # Weekly (Mondays) — the forward horizons only move meaningfully week to

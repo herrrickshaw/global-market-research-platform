@@ -234,6 +234,18 @@ if __name__ == "__main__":
                 else:
                     _t += ' · anomalies (3): 0'
                 _rows += _t + '</div>'
+            _re = Path("reports/reentry_candidates.csv")
+            if _re.exists():
+                import datetime as _dtt
+                _fresh = (_dtt.date.today() - _dtt.date.fromtimestamp(
+                    _re.stat().st_mtime)).days <= 1
+                _rc = _pd.read_csv(_re) if _fresh else _pd.DataFrame()
+                if len(_rc):
+                    _names = ", ".join(f"{r.market}:{r.symbol} (rsi {r.rsi:.0f})"
+                                       for r in _rc.head(8).itertuples())
+                    _rows += (f'<div style="margin:4px 0"><b>↩ Re-entry queue '
+                              f'(mean-reversion engine):</b> {_names} — backtested '
+                              f'excess +5–25%/63d, t 7–15</div>')
             _pg = Path("watchlist_purged.csv")
             if _pg.exists():
                 _p = _pd.read_csv(_pg)

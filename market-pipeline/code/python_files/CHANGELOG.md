@@ -2,6 +2,29 @@
 
 Decisions and material changes to the pipeline, newest first.
 
+## 2026-07-27 (night 2) — Tier-3 anomaly backtest + the mean-reversion re-entry engine
+
+- **Backtest (`backtest_tier_anomalies.py`)** — replayed the live eviction presets
+  over 10y warehouse data (top-200 liquid × US/JP/KR/IN, monthly evals 2018+,
+  exact tier rules): **6,151 evictions, anomaly rates IN 75% / KR 63% / US 49% /
+  JP 45%**, median boomerang +11% in ~3–4 weeks. Evicting a bear-state dip DURING
+  a market bull is usually evicting the bounce. RSI at eviction has ZERO separating
+  power (median 41 vs 41 everywhere). BUG FIXED en route: label_states uses
+  −1=warm-up/0=bear — `states.min()` selected warm-up rows (31 events instead of
+  6,151).
+- **DECISION (user): keep thresholds as-is; tier 3 = RE-ENTRY QUEUE**, not a
+  failure log — the anomalies are the discovery output.
+- **Re-entry edge VALIDATED before building**: buying at the anomaly trigger,
+  excess vs a median-return market index — IN +12.9%/63d (t 14.2) · KR +24.9%
+  (t 14.8) · JP +6.1% (t 10.3) · US +5.1% (t 7.0); raw returns positive in all
+  four. CAVEAT: top-200-by-full-period-turnover panel is survivorship-lite; the
+  paper-track scores the live engine out-of-sample to settle it.
+- **`reentry_engine.py`** (pipeline [13w], after watchlist_tiers): fresh tier-3
+  anomalies (≤10d) → market-bear gate → per-market RSI overbought VETO → top-3
+  per market enrolled in watchlist.csv as `status=reentry` rows with entry
+  price/date so the paper-track scores the engine automatically. Stale tier-3
+  rows (>30d, never re-entered) age out. Mailer shows the ↩ re-entry queue.
+
 ## 2026-07-27 (night) — Prediction filter routine, per-market RSI layer, 3-tier watchlist
 
 - **`prediction_filter.py` as daily step [13w]** — the one-off mailer_prediction_audit
