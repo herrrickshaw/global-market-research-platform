@@ -2,6 +2,72 @@
 
 Decisions and material changes to the pipeline, newest first.
 
+## 2026-07-27 (evening) — Graph-driven screener hardening: scan_core, gates, reconcile
+
+- **`scan_core.py` — ONE Darvas implementation** (SMOOTHNESS #5, the big one). The
+  3-repo knowledge graph (10,754 nodes) found `compute_darvas_box()` in 13 copies;
+  a source diff showed they had ALREADY drifted the dangerous way: JP/KR carried the
+  trailing-NaN settled-close fix (Korea 2026-07-21: `.fillna(0)` → 2,472/2,480 false
+  BREAKDOWN_SELL) which **IN/US never received** — their variants returned IN_BOX
+  computed against a NaN current price on a missing final bar. EU had only the older
+  half (NO_DATA instead of settled-close). Unified on the fixed semantics,
+  parameterized only where markets genuinely differ (India bhavcopy `CH_*` columns,
+  `decimals=0` for ¥/₩); returns a SUPERSET of both historical key schemas so the
+  five monoliths became 2-line wrappers with zero call-site changes. Also unified:
+  `_retier` ×5, `_first_df` ×3, `style_sheet` ×2 (byte-identical, verified before
+  extraction). LEFT ALONE: `fundamental_scan` (legitimately market-specific),
+  `bulk_download_ohlc` (3 diverged variants), nested `_bq_fields`. Net −298 lines.
+  VERIFIED: differential test 5 markets × 4 cases ALL PASS, then a full pipeline
+  run — JP/KR/EU signal distributions IDENTICAL to pre-refactor baselines
+  (closed markets = same data); US deltas were live-market movement only.
+- **`preflight_scan_inputs.py` as step [0b]** (SMOOTHNESS #4): cache dirs writable,
+  universe row counts, bhavcopy freshness ≤5d, Postgres reachable — asserted BEFORE
+  compute. First production run: 0 fail / 3 warn (us/japan/korea lists are
+  scan-self-fetched — warn is the right severity).
+- **`scan_price_reconcile.py` as step [13d]** (SMOOTHNESS #3): the INFY class now
+  gates the mailer in ALL five markets — (1) free warehouse signature (scan LTP
+  exactly == yesterday's `market_daily.snapshots.ltp`), (2) fresh-session yfinance
+  spot-check of top-8 liquid names, >2% flags. First production run CAUGHT
+  ASML.AS 3.6% off and suppressed the send. CAVEAT: EU/US markets are OPEN during
+  evening runs, so part of such gaps is legitimate intraday drift — consider a
+  looser open-market tolerance if false blocks recur.
+- **~/Downloads wipe-hazard eradicated from the last 3 live paths** (SMOOTHNESS #2):
+  `market_data_cache.py` default → data_registry (was the last consumer defaulting
+  to Downloads), `darvas_breakouts.py` outputs → repo dir + dead mirror globs
+  removed, `scan_timings.py` stale log glob removed. Plus `sentiment_pipeline.py`
+  earlier the same day (the 3rd incident of this class).
+- **Weekly graph refresh** in `weekly_maintenance.sh` [3b] (SMOOTHNESS #1): graphify
+  incremental detect + 3-repo merge; manifests now saved so updates take seconds.
+- **Mailer: GDrive watchlist web link** — full watchlist uploads to
+  `gdrive:/Market-Reports/` on every send, share link at the top of the digest
+  (attachment stays). Dropbox link API returned `banned_member` → GDrive.
+  CORRECTION for the record: the "brief carries stale INFY" readout from the
+  evening run was a MISREAD of the afternoon log block — evening validation showed
+  all 6 names ≤0.06% with '27 Jul close' labels; the brief builder already uses
+  the scan's live prices, no fix was needed.
+- Retrospective + local RAG + knowledge graph (3,223 nodes, committed to git with
+  a targeted gitignore exception) all updated the same evening.
+- **Prediction strategy audited over the LIVE mailer output**
+  (`mailer_prediction_audit.py`, commit `666abe66`; scores in
+  `reports/watchlist_prediction_scores.csv`). Two headline results:
+  - **(A) The regime gate's cleanest validation yet** — June 12–26 signal window:
+    India's basket regime was never bull, US was bull throughout. The gate would
+    have **blocked all 6,855 India signals** (which lost −0.49% excess at 5d) and
+    **passed all 11,709 US signals** (+0.93% at 5d, +2.20% at 21d). It filtered
+    exactly the losing cohort and kept exactly the winning one — zero overlap,
+    whole live sample, no cherry-picking.
+  - **(B) Today's watchlist through the prediction lens** (454 active names):
+    DEMOTE-market-bear 216 IN + 27 KR (gate blocks all India/Korea entries today);
+    ENTER-OK 103 US + 3 JP; HOLD-OK 58 US + 7 JP; **WEAK 38 US + 2 JP — the
+    actionable purge candidates** (pass the market gate but own Markov state AND
+    Kalman drift negative) for the next eviction cycle.
+  - READING NOTES: extreme Kalman drifts on small biotechs (RTB +1040% annualized)
+    are rankings not forecasts — a parabolic run maxes the slope; several such
+    names carry NEGATIVE Markov 21d expectations (RTB −11.8%), so treat the
+    Markov column as a veto on ENTER-OK. Stock-level panels are stale (JP to
+    Jul 1, US to Jul 17) — verdicts there are a week+ old; the market-level
+    regime is live from yfinance.
+
 ## 2026-07-27 — Regime gate on scanner + mailer (10y replay-backed)
 
 - **`market_regime.py` (new, also mirrored to `backend/scanners/`)** — daily
