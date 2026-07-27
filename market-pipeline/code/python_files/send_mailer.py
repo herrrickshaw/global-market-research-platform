@@ -307,6 +307,19 @@ if __name__ == "__main__":
              'padding:14px;border-radius:8px">'
              + h.replace("\n\n", "<br>") + "</div>")
         attachments.append((f"bundle_validation_{_dt.date.today():%Y-%m}.html", h))
+    # Utility layer (2026-07-27): publish the brief to a STABLE GDrive URL on
+    # every send — availability (any device, no email client), latency
+    # (pre-rendered static HTML), UX (same designed page), zero cost. The edge
+    # layer (validated data, tested signals) already lives in the content;
+    # this closes the Google-Finance utility gap for our own data.
+    try:
+        import subprocess as _sp2
+        Path("brief_today.html").write_text(html)
+        _sp2.run(["rclone", "copy", "brief_today.html", "gdrive:/Market-Reports/"],
+                 capture_output=True, timeout=60)
+    except Exception as _e:
+        print(f"  brief publish skipped: {str(_e)[:60]}")
+
     if "--draft" in sys.argv:
         Path("brief_today.html").write_text(html)
         if digest_full:
