@@ -148,12 +148,22 @@ def main() -> int:
         if z == "SELL":
             continue                          # per-market overbought VETO
         px = float(c.iloc[-1])
+        # Marker scoring (reports/reentry_markers.md): the two validated
+        # markers are bounce SPEED (evict→trigger ≤16d → +13.0% vs +7.9%)
+        # and drawdown DEPTH at eviction (≤−20% → +12.0% vs +7.4%);
+        # FAST+DEEP = +14.3% (KR +24.2, IN +19.6). RSI stays veto-only.
+        days_to_trigger = (r.promoted - pd.Timestamp(r.enrolled)).days \
+            if pd.notna(r.promoted) else 99
+        dd = (px / float(c.rolling(252, min_periods=60).max().iloc[-1]) - 1) * 100
+        score = int(days_to_trigger <= 16) + int(dd <= -20)
         cands.append({
             "symbol": r.symbol, "market": mkt, "trigger": r.trigger,
             "promoted": str(r.promoted.date()), "ret_at_promotion": r.ret_pct,
             "rsi": rv, "rsi_zone": z, "price": px,
-            # rank: freshest promotion first, then strongest trigger return
-            "_rank": (-(pd.Timestamp.today() - r.promoted).days, r.ret_pct),
+            "days_to_trigger": days_to_trigger, "drawdown_pct": round(dd, 1),
+            "marker_score": score,
+            # rank: marker score first, then freshness, then bounce strength
+            "_rank": (score, -(pd.Timestamp.today() - r.promoted).days, r.ret_pct),
         })
 
     cands.sort(key=lambda x: x["_rank"], reverse=True)
