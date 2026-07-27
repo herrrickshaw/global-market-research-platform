@@ -68,3 +68,4 @@ pyportfolioopt>=1.6  # Modern Portfolio Theory (efficient frontier, Black-Litter
 # already-vetted one.
 gymnasium>=0.29
 stable_baselines3>=2.3
+zstandard

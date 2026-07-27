@@ -164,14 +164,31 @@ class MarketCache:
         self._save_meta()
 
     def _is_stale(self, key: str, stale_hours: float) -> bool:
-        """Return True if the cache entry is older than stale_hours."""
+        """Return True if the cache entry is older than stale_hours OR its DATA
+        is behind the last expected trading day.
+
+        Fetch-time is not bar-time (2026-07-28): a Sunday-evening seed stamped
+        7,669 symbols 'fresh' while every bar ended Friday — the 00:33 scans
+        then served Friday closes as LTP and the reconcile gate blocked the
+        mailer (SKHY, ASML). Freshness must be judged by the last BAR date.
+        """
         entry = self._meta.get(key)
         if not entry:
             return True
         try:
             updated = datetime.fromisoformat(entry["updated"])
             age_hours = (datetime.now() - updated).total_seconds() / 3600
-            return age_hours > stale_hours
+            if age_hours > stale_hours:
+                return True
+            to = entry.get("to")
+            if to:
+                last_bar = date.fromisoformat(str(to))
+                expected = date.today() - timedelta(days=1)
+                while expected.weekday() >= 5:      # roll back over weekends
+                    expected -= timedelta(days=1)
+                if last_bar < expected:
+                    return True
+            return False
         except Exception:
             return True
 

@@ -233,12 +233,17 @@ FAILURES=()
   $PY scan_price_reconcile.py || { RECONCILE_OK=$?; echo "  ⚠ $RECONCILE_OK market(s) failed price reconcile"; FAILURES+=("reconcile: $RECONCILE_OK market(s) stale scan prices"); }
 
   step "[13b/14] validate brief against screener.in"
-  if $PY validate_brief.py --sample 6 && [ "$RECONCILE_OK" -eq 0 ]; then
+  VALIDATE_OK=1
+  $PY validate_brief.py --sample 6 && VALIDATE_OK=0
+  if [ "$VALIDATE_OK" -eq 0 ] && [ "$RECONCILE_OK" -eq 0 ]; then
       step "[14/14] build + send mailer"
       $PY send_mailer.py "$@" || { echo "  mailer build/send failed"; FAILURES+=("mailer: build/send"); }
   else
-      echo "  ❌ external validation FAILED — sending SUPPRESSED, saving draft instead"
-      FAILURES+=("mailer: NOT SENT — brief failed screener.in validation (see above)")
+      # Name the ACTUAL blocker (2026-07-28: reconcile blocked the send but the
+      # alert said "failed screener.in validation" — validation had PASSED 6/6)
+      if [ "$VALIDATE_OK" -ne 0 ]; then WHY="brief failed screener.in validation"; else WHY="price reconcile flagged $RECONCILE_OK market(s) (validation itself PASSED)"; fi
+      echo "  ❌ send SUPPRESSED — $WHY; saving draft instead"
+      FAILURES+=("mailer: NOT SENT — $WHY")
       $PY send_mailer.py --draft || { echo "  draft save failed"; FAILURES+=("mailer: draft save"); }
   fi
 
