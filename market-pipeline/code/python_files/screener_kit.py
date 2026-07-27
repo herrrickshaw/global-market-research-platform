@@ -14,7 +14,7 @@
 #   kit.custom_screen({"rsi14": ("<",35), "above_200dma": ("==",True)}, "US")
 #
 # Markets: IN US JP KR CN SG EU.  Seeds live in cache_seed/ (committed, LFS);
-# the live working copy lives under $BHAV_CACHE (default ~/Downloads/.../bhavcopy_cache).
+# the live working copy lives under $BHAV_CACHE (default ~/market-pipeline/.../bhavcopy_cache).
 
 from __future__ import annotations
 
@@ -37,7 +37,7 @@ MARKETS = ["IN", "US", "JP", "KR", "CN", "SG", "EU",        # core official feed
            "BR", "CH", "ZA", "SE", "FI", "DK"]              # (Wikipedia top-20)
 SEED_DIR = Path(__file__).parent / "cache_seed"
 CACHE = Path(os.environ.get("BHAV_CACHE",
-                            Path.home() / "Downloads" / "data" / "bhavcopy_cache"))
+                            Path.home() / "market-pipeline" / "data" / "bhavcopy_cache"))
 CACHE.mkdir(parents=True, exist_ok=True)
 
 

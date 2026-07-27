@@ -18,7 +18,7 @@ from typing import Iterable, List, Set
 
 import os
 CACHE = Path(os.environ.get("BHAV_CACHE",
-                            Path.home() / "Downloads" / "data" / "bhavcopy_cache"))
+                            Path.home() / "market-pipeline" / "data" / "bhavcopy_cache"))
 CACHE.mkdir(parents=True, exist_ok=True)
 HOLIDAY_CACHE = CACHE / "nse_holidays.json"
 REFRESH_AFTER_DAYS = 14            # re-pull the live list at most this often

@@ -44,7 +44,7 @@ from typing import Dict, List, Optional
 import pandas as pd
 
 CACHE_DIR = Path(os.environ.get(
-    "BHAV_CACHE", Path.home() / "Downloads" / "data" / "bhavcopy_cache"))
+    "BHAV_CACHE", Path.home() / "market-pipeline" / "data" / "bhavcopy_cache"))
 CACHE_DIR.mkdir(parents=True, exist_ok=True)
 
 # Conservative on purpose — see the module docstring. Do not raise without
