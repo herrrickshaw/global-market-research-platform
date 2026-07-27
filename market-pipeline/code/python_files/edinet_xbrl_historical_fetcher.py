@@ -281,23 +281,29 @@ def store_postgres(df: pd.DataFrame, table_name: str = "japan_fundamentals_histo
 
         cursor = conn.cursor()
 
-        # Create table if not exists
+        # Create table if not exists (with _jpy suffixes to match consolidator schema)
         create_sql = f"""
         CREATE TABLE IF NOT EXISTS {table_name} (
             id SERIAL PRIMARY KEY,
             tse_code VARCHAR(6),
             fiscal_period VARCHAR(20),
             filing_date DATE,
-            revenue BIGINT,
-            operating_income BIGINT,
-            net_income BIGINT,
-            total_assets BIGINT,
-            total_liabilities BIGINT,
-            shareholders_equity BIGINT,
-            operating_cash_flow BIGINT,
-            free_cash_flow BIGINT,
+            revenue_jpy BIGINT,
+            operating_income_jpy BIGINT,
+            net_income_jpy BIGINT,
+            eps NUMERIC,
+            total_assets_jpy BIGINT,
+            total_liabilities_jpy BIGINT,
+            shareholders_equity_jpy BIGINT,
+            book_value NUMERIC,
             roe NUMERIC,
             roa NUMERIC,
+            debt_to_equity NUMERIC,
+            current_ratio NUMERIC,
+            quick_ratio NUMERIC,
+            operating_cf_jpy BIGINT,
+            free_cf_jpy BIGINT,
+            source VARCHAR(50),
             created_at TIMESTAMP DEFAULT NOW(),
             UNIQUE(tse_code, fiscal_period)
         );
@@ -309,18 +315,18 @@ def store_postgres(df: pd.DataFrame, table_name: str = "japan_fundamentals_histo
             if stmt.strip():
                 cursor.execute(stmt)
 
-        # Upsert rows
+        # Upsert rows (use _jpy suffixes to match existing schema)
         for _, row in df.iterrows():
             insert_sql = f"""
             INSERT INTO {table_name}
-            (tse_code, fiscal_period, filing_date, revenue, operating_income, net_income,
-             total_assets, total_liabilities, shareholders_equity, operating_cash_flow,
-             free_cash_flow, roe, roa)
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            (tse_code, fiscal_period, filing_date, revenue_jpy, operating_income_jpy, net_income_jpy,
+             total_assets_jpy, total_liabilities_jpy, shareholders_equity_jpy, operating_cf_jpy,
+             free_cf_jpy, roe, roa, source)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
             ON CONFLICT (tse_code, fiscal_period) DO UPDATE SET
-              revenue = EXCLUDED.revenue,
-              net_income = EXCLUDED.net_income,
-              total_assets = EXCLUDED.total_assets
+              revenue_jpy = EXCLUDED.revenue_jpy,
+              net_income_jpy = EXCLUDED.net_income_jpy,
+              total_assets_jpy = EXCLUDED.total_assets_jpy
             """
 
             cursor.execute(insert_sql, (
@@ -337,6 +343,7 @@ def store_postgres(df: pd.DataFrame, table_name: str = "japan_fundamentals_histo
                 row.get('free_cash_flow'),
                 row.get('roe'),
                 row.get('roa'),
+                'edinet',
             ))
 
         cursor.close()
