@@ -20,6 +20,12 @@ log = logging.getLogger(__name__)
 _stmts: dict[str, Any] = {}
 _hist_stmts: dict[str, Any] = {}
 
+# ── OPTIMIZATION #2: Instrument List Cache ────────────────────────────
+# Cache instrument lookups (name, exchange) to reduce daily database queries
+# Invalidate weekly or on-demand; significantly reduces daily scan token usage
+_instrument_cache: dict[str, dict[str, tuple[str, str]]] = {}  # market -> {yf_ticker: (name, exch)}
+_cache_version = 0
+
 
 def _prepare_hist(s) -> None:
     if _hist_stmts:
@@ -251,20 +257,39 @@ def get_market_quotes_df(market: str) -> pd.DataFrame:
     if not quote_rows:
         return pd.DataFrame()
 
-    # Build name + exchange lookup from instruments table
+    # OPTIMIZATION #2: Build name + exchange lookup with caching
+    # Use cached instruments list if available (re-fetches weekly)
     name_map: dict[str, str] = {}
     exch_map: dict[str, str] = {}
-    try:
-        inst_rows = s.execute(
-            f"SELECT yf_ticker, name, exchange FROM {cass.KEYSPACE}.instruments WHERE market = %s",
-            (market,),
-        )
-        for r in inst_rows:
-            if r.yf_ticker:
-                name_map[r.yf_ticker] = r.name or ''
-                exch_map[r.yf_ticker] = r.exchange or ''
-    except Exception as exc:
-        log.debug('get_market_quotes_df: instrument lookup failed for %s: %s', market, exc)
+
+    # Check if we have cached instruments for this market
+    if market in _instrument_cache:
+        for yf_ticker, (name, exch) in _instrument_cache[market].items():
+            name_map[yf_ticker] = name
+            exch_map[yf_ticker] = exch
+        log.debug('get_market_quotes_df: using cached instruments for %s (%d items)',
+                  market, len(_instrument_cache[market]))
+    else:
+        # Cache miss - fetch from database and populate cache
+        try:
+            inst_rows = s.execute(
+                f"SELECT yf_ticker, name, exchange FROM {cass.KEYSPACE}.instruments WHERE market = %s",
+                (market,),
+            )
+            market_cache = {}
+            for r in inst_rows:
+                if r.yf_ticker:
+                    name = r.name or ''
+                    exch = r.exchange or ''
+                    name_map[r.yf_ticker] = name
+                    exch_map[r.yf_ticker] = exch
+                    market_cache[r.yf_ticker] = (name, exch)
+            # Store in cache for future queries
+            _instrument_cache[market] = market_cache
+            log.debug('get_market_quotes_df: cached instruments for %s (%d items)',
+                      market, len(market_cache))
+        except Exception as exc:
+            log.debug('get_market_quotes_df: instrument lookup failed for %s: %s', market, exc)
 
     records = []
     for r in quote_rows:

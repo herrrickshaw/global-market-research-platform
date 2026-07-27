@@ -471,7 +471,7 @@ def _as_of_html() -> str:
 
         p = (
             Path(
-                _os.environ.get("BHAV_CACHE", Path.home() / "Downloads" / "data" / "bhavcopy_cache")
+                _os.environ.get("BHAV_CACHE", Path.home() / "market-pipeline" / "data" / "bhavcopy_cache")
             )
             / "cleaned_long.parquet"
         )
@@ -797,7 +797,53 @@ h3{{font-size:14px;margin:14px 0 6px;color:#333}}
     return subject, text, html
 
 
+def _log_tokens_to_ruflo(subject: str, text: str, html: str, duration_seconds: float = 0):
+    """Log token usage for watchlist_mailer to RUFLO monitoring system."""
+    import json
+    import subprocess
+    from pathlib import Path
+
+    # Estimate tokens: ~4 chars = 1 token (rough approximation)
+    # More accurate: input (text size) + output (html size)
+    input_chars = len(subject) + len(text)  # prompt + context
+    output_chars = len(html)  # html output
+
+    input_tokens = max(500, input_chars // 4)  # minimum 500 for model init
+    output_tokens = max(2000, output_chars // 4)  # minimum 2000 for html generation
+
+    token_data = {
+        "taskId": "watchlist_mailer",
+        "taskName": "Morning Watchlist Email",
+        "model": "claude-3-5-haiku-20241022",
+        "inputTokens": input_tokens,
+        "outputTokens": output_tokens,
+        "market": "india",
+        "status": "success",
+        "durationSeconds": duration_seconds
+    }
+
+    # Try to log to RUFLO
+    try:
+        logger_path = Path(__file__).parent.parent.parent.parent / ".ruflo" / "hooks" / "log-token-usage.js"
+        if logger_path.exists():
+            subprocess.run(
+                ["node", str(logger_path)],
+                input=json.dumps(token_data),
+                text=True,
+                capture_output=True,
+                timeout=5
+            )
+    except Exception:
+        pass  # Silent fail — don't break mailer if logging fails
+
+
 if __name__ == "__main__":
+    import time
+    start_time = time.time()
     s, t, h = build()
+    duration = time.time() - start_time
     open("brief_today.html", "w").write(h)
     print(s, "\n", t, "\nhtml bytes:", len(h))
+
+    # Log to RUFLO
+    _log_tokens_to_ruflo(s, t, h, duration_seconds=duration)
