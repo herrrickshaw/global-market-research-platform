@@ -1,0 +1,143 @@
+╔════════════════════════════════════════════════════════════════════════╗
+║        JAPAN EDINET FUNDAMENTALS — COMPLETE STEP-BY-STEP FLOW         ║
+╚════════════════════════════════════════════════════════════════════════╝
+
+PHASE 1: DOWNLOAD (Manual - Your Action)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  STEP 1: Open Browser
+  ───────────────────
+  → Navigate to: https://disclosure2.edinet-fsa.go.jp/
+  
+  STEP 2-5: Download 4 Periods
+  ───────────────────────────
+  ┌─────────────────────────────────────────┐
+  │ Period          │ Date Range    │ Size  │
+  ├─────────────────────────────────────────┤
+  │ FY2023 Annual   │ 04/01-03/31   │ ~500 MB │
+  │ FY2024 Q1       │ 04/01-06/30   │ ~500 MB │
+  │ FY2024 Q2       │ 07/01-09/30   │ ~500 MB │
+  │ FY2024 Q3       │ 10/01-12/31   │ ~500 MB │
+  └─────────────────────────────────────────┘
+  
+  STEP 6: Verify Downloads
+  ────────────────────────
+  → All 4 files in ~/Downloads/
+  → Total: ~2 GB
+  
+  STEP 7: Move to Processing Directory
+  ────────────────────────────────────
+  $ mv ~/Downloads/EDINET_XBRL_*.zip /tmp/
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+PHASE 2: PROCESS (Automated)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  STEP 8: Run Batch Processor
+  ──────────────────────────
+  $ cd /Users/umashankar/market-pipeline
+  $ python3 scripts/edinet_batch_process.py --src /tmp
+  
+  ┌──────────────────────────────────────────┐
+  │ [1/4] EDINET_XBRL_2023_all.zip           │
+  │  → Extract 2,937 companies               │
+  │  → Parse GL accounts                     │
+  │  → Insert into Postgres                  │
+  │  ✓ 2,937 rows loaded                     │
+  │                                          │
+  │ [2/4] EDINET_XBRL_2024Q1_all.zip         │
+  │  ✓ 2,937 rows loaded                     │
+  │                                          │
+  │ [3/4] EDINET_XBRL_2024Q2_all.zip         │
+  │  ✓ 2,937 rows loaded                     │
+  │                                          │
+  │ [4/4] EDINET_XBRL_2024Q3_all.zip         │
+  │  ✓ 2,937 rows loaded                     │
+  └──────────────────────────────────────────┘
+  
+  Processing Time: ~5-10 minutes
+  Postgres Rows Added: 11,748 (2,937 × 4 periods)
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+PHASE 3: VERIFY (Manual - Confirmation)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  STEP 9: Query Postgres
+  ─────────────────────
+  $ psql -d market_data -c "
+    SELECT fiscal_period, COUNT(*) as companies
+    FROM japan_fundamentals_history
+    GROUP BY fiscal_period;"
+  
+  Expected:
+  ┌──────────────┬───────────┐
+  │ fiscal_period│ companies │
+  ├──────────────┼───────────┤
+  │ FY2023       │   2,937   │
+  │ FY2024Q1     │   2,937   │
+  │ FY2024Q2     │   2,937   │
+  │ FY2024Q3     │   2,937   │
+  └──────────────┴───────────┘
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+PHASE 4: ARCHIVE (Optional)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  STEP 10: Cloud Backup
+  ─────────────────────
+  $ rclone move /tmp/EDINET_XBRL_*.zip dropbox:/market-data-archive/edinet_xbrl/
+  
+  ✓ Local /tmp/ cleaned up (0 MB)
+  ✓ Files in Dropbox (~2 GB backup)
+  ✓ Files in GDrive (~2 GB redundant copy)
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+PHASE 5: INTEGRATE (Automated)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  STEP 11: Resume Daily Pipeline
+  ──────────────────────────────
+  $ cd /Users/umashankar/market-pipeline
+  $ ./daily_pipeline.sh
+  
+  Step [1/14] India screening        → Complete
+  Step [2/14] US screening           → Complete
+  Step [3/14] Europe screening       → Complete
+  Step [4/14] Korea screening        → Complete
+  Step [5/14] China screening        → Complete
+  Step [6/14] Data validation        → Complete
+  ┌─────────────────────────────────────────┐
+  │ Step [7/14] JAPAN SCREENING             │
+  │  → japan_current (prices + signals)    │
+  │  → japan_fundamentals_history (EDINET) │  ← NEW!
+  │  → Full screening results               │
+  └─────────────────────────────────────────┘
+  Step [8/14] Correlation scans      → Complete
+  Step [9/14] Put-call parity        → Complete
+  Step [10-14] Reports & archival    → Complete
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+FINAL STATE
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  ✓ Postgres: japan_fundamentals_history (11,748 rows)
+  ✓ Dropbox: /market-data-archive/edinet_xbrl/ (~2 GB)
+  ✓ GDrive: /Market-Data-Archive/EDINET/ (~2 GB)
+  ✓ Local disk: 0 MB (all cleaned up)
+  ✓ Daily pipeline: Japan fundamentals integrated
+  ✓ Reports: Including Japan analysis
+
+╔════════════════════════════════════════════════════════════════════════╗
+║                              TOTAL TIME                                ║
+║                                                                        ║
+║  Manual Download:    ~1-2 hours (depends on your internet)           ║
+║  Batch Processing:   ~5-10 minutes (automated)                       ║
+║  Cloud Archival:     ~5-10 minutes (optional)                        ║
+║  ─────────────────────────────────                                    ║
+║  TOTAL:              ~1-2.5 hours                                     ║
+╚════════════════════════════════════════════════════════════════════════╝
