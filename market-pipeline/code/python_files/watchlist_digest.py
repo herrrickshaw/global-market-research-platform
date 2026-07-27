@@ -516,6 +516,25 @@ MIN_BARS_FOR_ZONE = 25     # below this EMA50 is noise; zone "?" and no eviction
 PURGE_SELL_SESSIONS = 15   # ≈ 3 trading weeks; strictly more → row removed
 PURGED_ARCHIVE = Path(__file__).resolve().parent / "watchlist_purged.csv"
 
+# Statuses no automated path may evict or purge (user, 2026-07-27, after an
+# audit-driven purge removed 32 held rows): the portfolio is not a tool's to
+# prune. Every purge/evict must pass through guard_droppable() — the zone
+# allowlist above is the first fence, this is the last one.
+PROTECTED_STATUSES = {"held", "value-hold", "sold"}
+
+
+def guard_droppable(wl: pd.DataFrame, idx: list) -> tuple[list, list]:
+    """Split candidate row indices into (droppable, protected).
+
+    Protected rows must never leave the watchlist automatically — callers
+    should keep them and surface the skip, not silently drop them.
+    """
+    droppable, protected = [], []
+    for i in idx:
+        status = (_text(wl.at[i, "status"]) or "held").lower()
+        (protected if status in PROTECTED_STATUSES else droppable).append(i)
+    return droppable, protected
+
 # Gmail clips messages around ~102KB, and the combined brief+digest ran 440KB
 # — most of it zone rows. Each zone shows its top N rows (the global sort
 # already puts green movers and held names first); every cap prints the hidden
@@ -757,6 +776,13 @@ def maintain(wl: pd.DataFrame) -> tuple:
                                     f"sessions in sell zone").strip(" |")
                 evicted.append(f"{sym} ({mkt}, {streak}d)")
                 changed = True
+    if drop_idx:
+        # last fence: even if the allowlist above ever widens, protected
+        # statuses cannot be dropped by this path.
+        drop_idx, _blocked = guard_droppable(wl, drop_idx)
+        purged = [f"{str(wl.at[i, 'symbol']).strip().upper()} "
+                  f"({(_text(wl.at[i, 'market']) or 'US').upper()})"
+                  for i in drop_idx]
     if drop_idx:
         # archive first, drop second — a purge is a deletion from the live
         # list, not from history.

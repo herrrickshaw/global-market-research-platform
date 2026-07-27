@@ -165,9 +165,41 @@ def part_b() -> tuple[str, pd.DataFrame]:
     return "\n".join(lines), df
 
 
+def purge_weak(scores: pd.DataFrame) -> None:
+    """Move WEAK-verdict names to watchlist_purged.csv — through the
+    held-status guard: protected rows (held/value-hold/sold) are flagged in
+    their note instead of being removed."""
+    from watchlist_digest import guard_droppable, PROTECTED_STATUSES
+
+    wl = pd.read_csv(HERE / "watchlist.csv")
+    weak_keys = set(zip(scores[scores.verdict.str.startswith("WEAK")].symbol,
+                        scores[scores.verdict.str.startswith("WEAK")].market))
+    idx = [i for i, r in wl.iterrows() if (r.symbol, r.market) in weak_keys]
+    droppable, protected = guard_droppable(wl, idx)
+    today = pd.Timestamp.today().strftime("%Y-%m-%d")
+    reason = "prediction audit: stock bear-state + negative Kalman drift"
+    for i in protected:
+        note = str(wl.at[i, "note"])
+        tag = f"weak {today} ({reason}) — protected status, not purged"
+        if tag not in note:
+            wl.at[i, "note"] = (note + " | " if note not in ("nan", "") else "") + tag
+    if droppable:
+        arch = wl.loc[droppable].copy()
+        arch["status"] = "purged"
+        arch["purged_date"] = today
+        arch["reason"] = reason
+        arch.to_csv(HERE / "watchlist_purged.csv", mode="a", index=False, header=False)
+        wl = wl.drop(index=droppable).reset_index(drop=True)
+    wl.to_csv(HERE / "watchlist.csv", index=False)
+    print(f"purged {len(droppable)}; protected (flagged only): {len(protected)} "
+          f"[{', '.join(sorted(PROTECTED_STATUSES))}]")
+
+
 def main():
     a_text, a_df = part_a()
     b_text, b_df = part_b()
+    if "--purge-weak" in sys.argv:
+        purge_weak(b_df)
     md = ("# Mailer picks × prediction strategy — audit "
           f"({pd.Timestamp.today().date()})\n\n" + a_text + "\n" + b_text + "\n")
     (HERE / "reports/mailer_prediction_audit.md").write_text(md)
