@@ -64,6 +64,13 @@ FAILURES=()
   step "[0/14] dependency check"
   $PY check_deps.py || FAILURES+=("STARTUP: missing required dependencies (see banner above)")
 
+  # [0b] Pre-flight input gates (2026-07-27, SCREENER_SMOOTHNESS_STRATEGIES #4):
+  # assert cache dirs writable, universe lists sane, bhavcopy fresh, Postgres up —
+  # BEFORE any scan computes. A hard failure here is loud but non-blocking, same
+  # guarded-step philosophy as everything else.
+  step "[0b] pre-flight: scan input gates"
+  $PY preflight_scan_inputs.py || FAILURES+=("STARTUP: pre-flight input gate(s) failed (see [0b] above)")
+
   step "[1/14] India EOD refresh (official bhavcopy, incremental)"
   $PY bhavcopy_history.py 400 || { echo "  bhavcopy refresh failed (will use cache)"; FAILURES+=("India: bhavcopy refresh"); }
 
