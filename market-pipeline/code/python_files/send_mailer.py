@@ -171,8 +171,32 @@ if __name__ == "__main__":
 
     subject, text, html = build()
     digest_html, digest_subj, digest_full, pngs = _digest_section()
+
+    # Web copy of the full watchlist (2026-07-27): upload to GDrive via rclone
+    # and put the share link at the top of the digest — the attachment stays,
+    # but the link opens on any device without downloading. Never fatal.
+    wl_link = ""
+    if digest_full:
+        try:
+            import subprocess as _sp
+            _wl = Path("watchlist_full.html")
+            _wl.write_text(digest_full)
+            _sp.run(["rclone", "copy", str(_wl), "gdrive:/Market-Reports/"],
+                    capture_output=True, timeout=60)
+            _r = _sp.run(["rclone", "link", "gdrive:/Market-Reports/watchlist_full.html"],
+                         capture_output=True, text=True, timeout=30)
+            _url = next((l.strip() for l in _r.stdout.splitlines()
+                         if l.startswith("http")), "")
+            if _url:
+                wl_link = (f'<p style="margin:10px 0"><a href="{_url}" '
+                           f'style="color:#0B2F4A;font-weight:bold">📋 Full watchlist '
+                           f'(web copy — always the latest send)</a></p>')
+        except Exception as _e:
+            print(f"  watchlist link skipped: {str(_e)[:60]}")
+
     html = (html
             + '<div style="margin:22px 0 10px;border-top:3px solid #0B2F4A"></div>'
+            + wl_link
             + digest_html)
     subject += digest_subj
     attachments = None
