@@ -2,6 +2,68 @@
 
 Decisions and material changes to the pipeline, newest first.
 
+## 2026-07-27 — Official fundamentals for JP/KR/CN; unified global layer; DBMS ETL
+
+- **Japan via EDINET (official FSA source)** — `scripts/edinet_api_downloader.py`
+  pulled 3,933 annual reports (FY-ends across Jul 2024–Jun 2025), 421 MB, 0 failures,
+  34 min. KEY FINDING after hours of dead ends: **the real API host is
+  `api.edinet-fsa.go.jp/api/v2`** — the `disclosure2` website's paths return HTML
+  error pages to every programmatic call (bulk URLs, "API" paths, scraping all
+  failed). `--format csv` (type=5) = EDINET's pre-extracted UTF-16 TSV, skipping
+  iXBRL parsing entirely. `japan_aggregate_all.py` merged 7 sources (fresh EDINET >
+  prior EDINET > jquants > yfinance) → `JP_master.parquet` + Postgres
+  `japan_fundamentals_history` (18,679 rows). **Live-universe coverage: 2,936/2,937
+  (99.97%) with FY2024+.** Raw ZIPs tarred → Dropbox + GDrive (verified byte-equal),
+  local deleted. DECISION: cloud-first — Postgres+parquet are the query layer, raw
+  filings are cold archive only, 0 MB local.
+- **Korea via DART (official FSS source)** — `scripts/dart_api_downloader.py` replays
+  the same playbook: corpCode map (3,979 listed cos) → `fnlttSinglAcntAll` annual
+  CFS-with-OFS-fallback, FY2023–25. 6,352 filings ok / 5,584 no-data / 1 error in
+  82 min (~145 req/min, quota-aware halt on status 020). BUG FIXED: `fs_div` is a
+  *request* param — response rows don't carry it; filtering rows on it silently
+  discards everything. Verified: Samsung ₩300.9T rev / ₩34.45T NI FY2024.
+  `korea_aggregate_all.py` → `KR_master.parquet` + `korea_fundamentals_history`
+  (10,143 rows). Raw JSONL → Dropbox + GDrive, local deleted.
+- **China via Eastmoney bulk (akshare)** — `scripts/cn_fundamentals_bulk.py`.
+  DECISION: rejected the per-stock collector pattern (old `cn_akshare_collect.py`,
+  600-stock LIMIT, eps/roe only) for `stock_lrb_em/zcfz_em/xjll_em` report-date
+  endpoints that return **all ~5,200 A-shares per call** — full statements
+  2016–2025 in 30 calls: 50,442 rows, 100% revenue fill (`CN_em.parquet`).
+  Verified: Moutai FY2024 rev ¥174.1B / NI ¥86.2B. LESSON: first run fetched 18 min
+  of data then lost it to a missing pyarrow on the final write — CSV fallback added
+  so serialization can never discard a fetch again.
+- **Unified layer `global_fundamentals`** — `scripts/global_fundamentals_merge.py`
+  maps every market parquet to ONE canonical schema, keyed
+  (market,ticker,fiscal_period): **236,999 rows / 14 real markets** (US 111k EDGAR
+  true-PIT, CN 67k, JP 19k, KR 18k, IN 14k…). Consistency hygiene baked in: fy_end
+  sanity filter (>today+1yr dropped — killed 12 US EDGAR rows dated 2029), EU
+  currency resolved per exchange suffix (.L=GBP, .ST=SEK, .CO=DKK, .OL=NOK, .SW=CHF,
+  .WA=PLN) + `fx_usd` static-snapshot column, CH/BR/SG/SE placeholder parquets
+  (≤4 tickers) skipped and purged. KNOWN QUIRK: US revenue only 42% filled (EDGAR
+  tag absent for financials) — screen on net_income (87%).
+- **DBMS-grade ETL** — `scripts/etl_fundamentals.py`: extract → stage
+  (`etl.stage_fundamentals`, UNLOGGED) → SQL quality gates → priority-balanced
+  upsert → `etl.load_batches` lineage. DECISION: source precedence lives in SQL
+  (`etl.source_registry`: EDGAR 95 > EDINET/DART 90 > Eastmoney 85 > screener.in 80
+  > baostock 55 > yfinance 30) via `WHERE EXCLUDED.src_priority >= src_priority` —
+  official data can overwrite yfinance, never the reverse, regardless of load
+  order. Gates proved out immediately: cn_full (eps-only) auto-REJECTED on the
+  net_income≥50% fill gate. `--incremental` uses per-source fy_end watermarks.
+- **Graphify knowledge graph** — `/graphify` skill installed; market-pipeline graph
+  built (3,170 nodes / 5,786 edges / 237 communities; AST free + docs via Gemini).
+  Verified a query answers "how does EDINET flow into Postgres" with file:line
+  citations in ~2k tokens vs ~100k naive. Used it to drive redundancy cleanup:
+  9 dead EDINET files (3 broken downloaders + 6 stale manual-download docs) deleted,
+  replaced by one `EDINET_README.md`.
+- **Pipeline run (`--draft`) + 2 failures fixed** — full 16-step run 15:36–17:05.
+  (1) India combined report crashed on `~/Downloads/market_cache/sentiment_cache.json`
+  — that tree is wiped by a parallel session (again); cache default moved into the
+  repo with mkdir self-healing. (2) Mailer send suppressed by external validation:
+  INFY ours ₹1,040.9 vs screener ₹1,079 — **validation was RIGHT, our scan carried
+  Friday's close** (INFY +3.7% Monday); scan rerun fixed it to 0.02% diff, brief
+  sent on explicit user go-ahead (452 picks · 214 buy-zone · 14 bundles). The
+  screener.in gate earned its keep today.
+
 ## 2026-07-24 — Weekly maintenance consolidated; correlation matrices → parquet; LFS
 
 - **`weekly_maintenance.sh`** — ONE weekly entry point chaining clean → dedup-verify →
