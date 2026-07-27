@@ -253,7 +253,26 @@ def reentry(q=""):
     return "\n".join(out)
 
 
+def pipeline_perf(_q=""):
+    """pipeline performance: measured step timings (market_daily.step_timings)
+    + the 2026-07-27 performance decisions."""
+    d = _psql_df("""SELECT step, ROUND(AVG(seconds)/60.0, 1) AS avg_min,
+        ROUND(MAX(seconds)/60.0, 1) AS max_min, COUNT(*) AS runs
+        FROM market_daily.step_timings WHERE source='measured'
+        GROUP BY step HAVING AVG(seconds) > 30 ORDER BY 2 DESC LIMIT 12""")
+    body = _md_table(d) if d is not None and len(d) else \
+        "step_timings unreachable — run `python scan_timings.py` first."
+    return ("**Pipeline step timings (measured, minutes, all runs):**\n\n" + body +
+            "\n\n> Performance decisions (2026-07-27): US correlation is WEEKLY "
+            "(Mondays; 28.6 min = 55% of a warm run, clusters drift over weeks); "
+            "`./daily_pipeline.sh --post-only` skips scans [1-13] to verify "
+            "post-scan logic in ~13 min vs ~90; reconcile tolerance loosens 2x "
+            "while a market is in session (intraday drift is not staleness). "
+            "Tue-Fri warm runs ≈20 min, Mondays ≈50.")
+
+
 INTENTS = [
+ (r"how long|slow|timing|performance|runtime|pipeline.*(time|fast|speed)|post.?only", pipeline_perf),
  (r"re.?ent(ry|er)|tier ?3|anomal(y|ies)|boomerang|mean.?reversion (queue|engine|discovery)", reentry),
  (r"playbook|what.*(do|strateg|trade|buy).*(india|us|korea|japan|europe|china|market)|recommend.*market", playbook),
  (r"edge|fat.?pitch|which filter|edge matrix|where.*edge", edge_map),

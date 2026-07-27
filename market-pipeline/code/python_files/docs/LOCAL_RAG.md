@@ -52,3 +52,16 @@ EDGAR US · EDINET JP · DART KR · Eastmoney CN · screener.in IN, priority-bal
 `etl.source_registry`) via `psql --csv` — no DB driver needed. `etl status` shows the batch
 audit trail; a `rejected` row means a quality gate blocked bad data before canonical
 (e.g. cn_full is eps-only and always fails the net_income-fill gate — by design).
+
+## Re-entry + performance intents (2026-07-27 night)
+```bash
+python local_rag.py "reentry names japan"        # -> tier-3 candidates + recent re-entry names
+python local_rag.py "tier 3 anomalies"           # -> the mean-reversion discovery queue
+python local_rag.py "why is the pipeline slow"   # -> measured step timings + perf decisions
+python local_rag.py "how long does the run take" # -> same (market_daily.step_timings)
+```
+`reentry` is grounded in `reports/reentry_candidates.csv` + `reports/reentry_recent.csv`
+(engine backtest: evictions boomerang 45-75% in bull markets; buy-at-trigger excess
++5-25%/63d, t 7-15). `pipeline_perf` reads `market_daily.step_timings` (measured, not
+estimated) and carries the 2026-07-27 decisions: US correlation weekly (Mondays),
+`--post-only` for ~13-min logic verification, session-aware reconcile tolerance.
