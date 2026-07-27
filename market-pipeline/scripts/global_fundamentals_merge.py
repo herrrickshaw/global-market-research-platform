@@ -40,6 +40,32 @@ CURRENCY = {'US': 'USD', 'IN': 'INR', 'JP': 'JPY', 'KR': 'KRW', 'CN': 'CNY',
             'DE': 'EUR', 'DK': 'DKK', 'FI': 'EUR', 'HK': 'HKD', 'SA': 'SAR',
             'SE': 'SEK', 'SG': 'SGD', 'TW': 'TWD', 'ZA': 'ZAR'}
 
+# Placeholder files (1-4 tickers) — skipped, not real coverage
+PLACEHOLDER_MARKETS = {'CH', 'BR', 'SG', 'SE'}
+
+# EU is multi-currency: resolve per exchange suffix
+EU_SUFFIX_CCY = {'.L': 'GBP', '.PA': 'EUR', '.AS': 'EUR', '.BR': 'EUR',
+                 '.MI': 'EUR', '.MC': 'EUR', '.LS': 'EUR', '.IR': 'EUR',
+                 '.DE': 'EUR', '.F': 'EUR', '.VI': 'EUR', '.AT': 'EUR',
+                 '.HE': 'EUR', '.ST': 'SEK', '.CO': 'DKK', '.OL': 'NOK',
+                 '.SW': 'CHF', '.WA': 'PLN'}
+
+# Static FX→USD snapshot (2026-07, approximate — refresh periodically).
+# Good enough for screening comparability; NOT for P&L accounting.
+FX_USD = {'USD': 1.0, 'EUR': 1.16, 'GBP': 1.34, 'JPY': 0.0068, 'KRW': 0.00072,
+          'INR': 0.0115, 'CNY': 0.14, 'AUD': 0.66, 'BRL': 0.18, 'CAD': 0.73,
+          'CHF': 1.24, 'DKK': 0.155, 'SEK': 0.105, 'NOK': 0.10, 'PLN': 0.27,
+          'SGD': 0.78, 'TWD': 0.034, 'HKD': 0.128, 'SAR': 0.267, 'ZAR': 0.056}
+
+MAX_FY_END = pd.Timestamp.today() + pd.DateOffset(years=1)
+
+
+def eu_currency(ticker: str) -> str:
+    for suf, ccy in EU_SUFFIX_CCY.items():
+        if ticker.endswith(suf):
+            return ccy
+    return 'EUR'
+
 
 def canonize(df: pd.DataFrame, market: str, source: str) -> pd.DataFrame:
     out = pd.DataFrame()
@@ -51,9 +77,19 @@ def canonize(df: pd.DataFrame, market: str, source: str) -> pd.DataFrame:
               'roe', 'roa']:
         out[c] = df[c] if c in df.columns else None
     out['market'] = market
-    out['currency'] = CURRENCY.get(market, 'local')
+    if market == 'EU':
+        out['currency'] = out['ticker'].map(eu_currency)
+    else:
+        out['currency'] = CURRENCY.get(market, 'local')
     out['source'] = source
-    return out[CANON].dropna(subset=['fy_end'])
+    out = out.dropna(subset=['fy_end'])
+    # Sanity date filter: bad source rows carry fy_end years in the future
+    # (seen in US EDGAR, dates out to 2029) — drop before they hit backtests.
+    bad = (out['fy_end'] > MAX_FY_END).sum()
+    if bad:
+        print(f"   ⚠ {market}: dropped {bad} rows with fy_end > today+1yr")
+        out = out[out['fy_end'] <= MAX_FY_END]
+    return out[CANON]
 
 
 def load_market(market: str) -> pd.DataFrame:
@@ -128,6 +164,9 @@ def main():
     print('-' * 72)
 
     for mkt in markets:
+        if mkt in PLACEHOLDER_MARKETS:
+            print(f"{mkt:4s} SKIPPED — placeholder file (≤4 tickers), not real coverage")
+            continue
         df = load_market(mkt)
         if df.empty:
             print(f"{mkt:4s} {'—':>7s}")
@@ -150,6 +189,9 @@ def main():
     g['roe'] = pd.to_numeric(g['roe'], errors='coerce').fillna((ni / eq).where(eq != 0)).round(4)
     g['roa'] = pd.to_numeric(g['roa'], errors='coerce').fillna((ni / ta).where(ta != 0)).round(4)
     g['fiscal_period'] = g['fy_end'].dt.strftime('FY%Y-%m')
+    g['fx_usd'] = g['currency'].map(FX_USD)   # NULL for unknown ccy — visible, not wrong
+    print(f"fx_usd coverage: {g['fx_usd'].notna().mean()*100:.1f}% of rows "
+          f"({sorted(g.loc[g['fx_usd'].isna(), 'currency'].unique().tolist())} unmapped)")
 
     print('-' * 72)
     print(f"TOTAL {len(g):,} rows · {g.groupby('market')['ticker'].nunique().sum():,} "
@@ -161,7 +203,7 @@ def main():
     cols = ['market', 'ticker', 'fiscal_period', 'fy_end', 'filed', 'revenue',
             'gross_profit', 'ebit', 'net_income', 'equity', 'total_assets',
             'total_liabilities', 'current_assets', 'current_liabilities',
-            'long_term_debt', 'cfo', 'shares', 'eps', 'roe', 'roa', 'currency', 'source']
+            'long_term_debt', 'cfo', 'shares', 'eps', 'roe', 'roa', 'currency', 'fx_usd', 'source']
     g[cols].to_csv(LOAD_CSV, index=False)
 
     sql = f"""
@@ -174,24 +216,28 @@ def main():
         cfo NUMERIC, shares NUMERIC, eps NUMERIC, roe NUMERIC, roa NUMERIC,
         currency VARCHAR(6), source VARCHAR(30), created_at TIMESTAMP DEFAULT NOW(),
         UNIQUE(market, ticker, fiscal_period));
+    ALTER TABLE global_fundamentals ADD COLUMN IF NOT EXISTS fx_usd NUMERIC;
     CREATE INDEX IF NOT EXISTS idx_gf_market ON global_fundamentals(market);
     CREATE INDEX IF NOT EXISTS idx_gf_ticker ON global_fundamentals(market, ticker);
+    -- Hygiene: purge placeholder markets + future-dated rows loaded by prior runs
+    DELETE FROM global_fundamentals WHERE market IN ('CH','BR','SG','SE');
+    DELETE FROM global_fundamentals WHERE fy_end > CURRENT_DATE + INTERVAL '1 year';
     CREATE TEMP TABLE _st (market TEXT, ticker TEXT, fiscal_period TEXT, fy_end DATE,
         filed DATE, revenue NUMERIC, gross_profit NUMERIC, ebit NUMERIC,
         net_income NUMERIC, equity NUMERIC, total_assets NUMERIC,
         total_liabilities NUMERIC, current_assets NUMERIC, current_liabilities NUMERIC,
         long_term_debt NUMERIC, cfo NUMERIC, shares NUMERIC, eps NUMERIC,
-        roe NUMERIC, roa NUMERIC, currency TEXT, source TEXT);
+        roe NUMERIC, roa NUMERIC, currency TEXT, fx_usd NUMERIC, source TEXT);
     \\copy _st FROM '{LOAD_CSV}' CSV HEADER
     INSERT INTO global_fundamentals
         (market, ticker, fiscal_period, fy_end, filed, revenue, gross_profit, ebit,
          net_income, equity, total_assets, total_liabilities, current_assets,
          current_liabilities, long_term_debt, cfo, shares, eps, roe, roa,
-         currency, source)
+         currency, fx_usd, source)
     SELECT DISTINCT ON (market, ticker, fiscal_period) market, ticker, fiscal_period,
         fy_end, filed, revenue, gross_profit, ebit, net_income, equity, total_assets,
         total_liabilities, current_assets, current_liabilities, long_term_debt,
-        cfo, shares, eps, roe, roa, currency, source
+        cfo, shares, eps, roe, roa, currency, fx_usd, source
     FROM _st ORDER BY market, ticker, fiscal_period, fy_end DESC
     ON CONFLICT (market, ticker, fiscal_period) DO UPDATE SET
         filed = EXCLUDED.filed, revenue = EXCLUDED.revenue,
@@ -203,7 +249,8 @@ def main():
         current_liabilities = EXCLUDED.current_liabilities,
         long_term_debt = EXCLUDED.long_term_debt, cfo = EXCLUDED.cfo,
         shares = EXCLUDED.shares, eps = EXCLUDED.eps, roe = EXCLUDED.roe,
-        roa = EXCLUDED.roa, source = EXCLUDED.source;
+        roa = EXCLUDED.roa, currency = EXCLUDED.currency,
+        fx_usd = EXCLUDED.fx_usd, source = EXCLUDED.source;
     SELECT market, COUNT(*) rows, COUNT(DISTINCT ticker) tickers,
            MIN(fy_end) min_fy, MAX(fy_end) max_fy
     FROM global_fundamentals GROUP BY market ORDER BY rows DESC;
