@@ -389,6 +389,16 @@ def _darvas_section(market: str, cap: int = 15) -> str:
             'regimes (10y replay: excess ≤0 in US/JP/IN); treat as watch-only, '
             'not entries</span>'
         )
+    elif _reg["trend"] == "chop" and _reg.get("vol") == "HIGH":
+        regime_html += (
+            ' <span style="color:#c62828">— chop + HIGH vol: weakest breakout '
+            'cell in the 10y replay; treat as watch-only</span>'
+        )
+    elif _reg.get("vol") == "HIGH":
+        regime_html += (
+            ' <span style="color:#b26a00">— HIGH vol: breakout follow-through '
+            'historically weaker (LOW/MID-vol wins 4 of 5 markets); size down</span>'
+        )
     head = (
         "<tr><th>Tier</th><th>Symbol</th><th>Name</th><th>Exch</th>"
         "<th>LTP</th><th>Day</th><th>Box Pos</th><th>Upside</th>"

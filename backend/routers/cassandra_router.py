@@ -351,14 +351,22 @@ def _run_daily_scan(markets: list[str], scan_types: list[str]) -> dict:
                 # Only include BUY and WATCH signals
                 if row.get('signal') not in ('BUY', 'WATCH'):
                     continue
-                # Regime gate (10y replay, price_prediction_backtest): breakout
-                # BUYs in a bear market regime are dead-to-negative — demote to
-                # WATCH and flag, so the UI still shows them but never as BUY.
+                # Regime gate (10y replay, price_prediction_backtest):
+                #  - bear trend: breakout BUYs are dead-to-negative -> demote
+                #  - chop + HIGH vol: weakest surviving cell -> demote
+                #  - bull + HIGH vol: still positive but weaker -> keep, flag
+                # Demoted rows stay visible as WATCH so the UI keeps the trail.
                 row['market_regime'] = regime['trend']
-                if (scan_type == 'darvas' and row['signal'] == 'BUY'
-                        and regime['trend'] == 'bear'):
-                    row['signal'] = 'WATCH'
-                    row['regime_gated'] = True
+                row['vol_regime'] = regime.get('vol', 'unknown')
+                if scan_type == 'darvas' and row['signal'] == 'BUY':
+                    if regime['trend'] == 'bear':
+                        row['signal'] = 'WATCH'
+                        row['regime_gated'] = 'trend'
+                    elif regime['trend'] == 'chop' and regime.get('vol') == 'HIGH':
+                        row['signal'] = 'WATCH'
+                        row['regime_gated'] = 'vol'
+                    elif regime['trend'] == 'bull' and regime.get('vol') == 'HIGH':
+                        row['vol_caution'] = True
                 row['market'] = market
                 row['market_label'] = meta['label']
                 row['currency'] = meta['currency']

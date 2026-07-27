@@ -22,8 +22,12 @@ Decisions and material changes to the pipeline, newest first.
 - REJECTED: hard-dropping bear-regime breakouts from the mailer — the sell/
   breakdown leg is contrarian (bounces), and hiding rows loses information;
   demote-and-flag preserves the audit trail.
-- Vol regime is informational for now (LOW/MID favoured in 4/5 markets);
-  gating on it is a candidate follow-up once the live tracker confirms.
+- **Vol gate added (same day):** graded, not binary — replay shows HIGH-vol
+  breakout excess is weaker everywhere but only flat in non-bull regimes.
+  Rule: bear ⇒ demote (any vol); chop+HIGH vol ⇒ demote
+  (`regime_gated='vol'`); bull+HIGH vol ⇒ keep BUY, `vol_caution` flag +
+  "size down" note in the mailer. REJECTED: demoting all HIGH-vol BUYs —
+  bull+HIGH cells are still solidly positive (KR +2.85, JP +0.64 at 21d).
 
 ## 2026-07-27 — Official fundamentals for JP/KR/CN; unified global layer; DBMS ETL
 
