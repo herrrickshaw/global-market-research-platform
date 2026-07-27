@@ -179,40 +179,8 @@ LGBBROSLTD,IN,signal,value_rerating 2026-07-27,2026-07-27,1547.7,2026-07-27,
 7280.T,JP,purged,value-reversion (LONG) | purged 2026-07-27 — prediction audit: stock bear-state + negative Kalman drift,2026-07-25,1172.0,2026-07-27,prediction audit: stock bear-state + negative Kalman drift
 6047.T,JP,purged,28.6 RSI @ 2026-07-22 | purged 2026-07-27 — prediction audit: stock bear-state + negative Kalman drift,2026-07-22,352.0,2026-07-27,prediction audit: stock bear-state + negative Kalman drift
 FACT,US,purged,technical 2026-07-22 | purged 2026-07-27 — prediction audit: stock bear-state + negative Kalman drift,2026-07-22,10.64,2026-07-27,prediction audit: stock bear-state + negative Kalman drift
-JCI,US,purged,purged 2026-07-27 — prediction audit: stock bear-state + negative Kalman drift,,,2026-07-27,prediction audit: stock bear-state + negative Kalman drift
 RPM,US,purged,tuned-model 2026-07-24 | purged 2026-07-27 — prediction audit: stock bear-state + negative Kalman drift,2026-07-24,107.0,2026-07-27,prediction audit: stock bear-state + negative Kalman drift
 SOJE,US,purged,cheap-vs-market (LONG) | purged 2026-07-27 — prediction audit: stock bear-state + negative Kalman drift,2026-07-25,16.67,2026-07-27,prediction audit: stock bear-state + negative Kalman drift
-TXN,US,purged,purged 2026-07-27 — prediction audit: stock bear-state + negative Kalman drift,,,2026-07-27,prediction audit: stock bear-state + negative Kalman drift
-TSM,US,purged,purged 2026-07-27 — prediction audit: stock bear-state + negative Kalman drift,,,2026-07-27,prediction audit: stock bear-state + negative Kalman drift
-GLNG,US,purged,purged 2026-07-27 — prediction audit: stock bear-state + negative Kalman drift,,,2026-07-27,prediction audit: stock bear-state + negative Kalman drift
-EMR,US,purged,purged 2026-07-27 — prediction audit: stock bear-state + negative Kalman drift,,,2026-07-27,prediction audit: stock bear-state + negative Kalman drift
-GOOG,US,purged,purged 2026-07-27 — prediction audit: stock bear-state + negative Kalman drift,,,2026-07-27,prediction audit: stock bear-state + negative Kalman drift
-FDX,US,purged,purged 2026-07-27 — prediction audit: stock bear-state + negative Kalman drift,,,2026-07-27,prediction audit: stock bear-state + negative Kalman drift
-TSLA,US,purged,purged 2026-07-27 — prediction audit: stock bear-state + negative Kalman drift,,,2026-07-27,prediction audit: stock bear-state + negative Kalman drift
-DIS,US,purged,purged 2026-07-27 — prediction audit: stock bear-state + negative Kalman drift,,,2026-07-27,prediction audit: stock bear-state + negative Kalman drift
-COST,US,purged,purged 2026-07-27 — prediction audit: stock bear-state + negative Kalman drift,,,2026-07-27,prediction audit: stock bear-state + negative Kalman drift
-MLAB,US,purged,purged 2026-07-27 — prediction audit: stock bear-state + negative Kalman drift,,,2026-07-27,prediction audit: stock bear-state + negative Kalman drift
-WMT,US,purged,purged 2026-07-27 — prediction audit: stock bear-state + negative Kalman drift,,,2026-07-27,prediction audit: stock bear-state + negative Kalman drift
 CHTR,US,purged,cheap-vs-market (LONG) | purged 2026-07-27 — prediction audit: stock bear-state + negative Kalman drift,2026-07-25,129.22,2026-07-27,prediction audit: stock bear-state + negative Kalman drift
-CME,US,purged,purged 2026-07-27 — prediction audit: stock bear-state + negative Kalman drift,,,2026-07-27,prediction audit: stock bear-state + negative Kalman drift
-SAP,US,purged,purged 2026-07-27 — prediction audit: stock bear-state + negative Kalman drift,,,2026-07-27,prediction audit: stock bear-state + negative Kalman drift
-KR,US,purged,purged 2026-07-27 — prediction audit: stock bear-state + negative Kalman drift,,,2026-07-27,prediction audit: stock bear-state + negative Kalman drift
-IBM,US,purged,purged 2026-07-27 — prediction audit: stock bear-state + negative Kalman drift,,,2026-07-27,prediction audit: stock bear-state + negative Kalman drift
-FLS,US,purged,purged 2026-07-27 — prediction audit: stock bear-state + negative Kalman drift,,,2026-07-27,prediction audit: stock bear-state + negative Kalman drift
-TTE,US,purged,purged 2026-07-27 — prediction audit: stock bear-state + negative Kalman drift,,,2026-07-27,prediction audit: stock bear-state + negative Kalman drift
-VZ,US,purged,purged 2026-07-27 — prediction audit: stock bear-state + negative Kalman drift,,,2026-07-27,prediction audit: stock bear-state + negative Kalman drift
-BKR,US,purged,purged 2026-07-27 — prediction audit: stock bear-state + negative Kalman drift,,,2026-07-27,prediction audit: stock bear-state + negative Kalman drift
-NTGR,US,purged,purged 2026-07-27 — prediction audit: stock bear-state + negative Kalman drift,,,2026-07-27,prediction audit: stock bear-state + negative Kalman drift
-T,US,purged,purged 2026-07-27 — prediction audit: stock bear-state + negative Kalman drift,,,2026-07-27,prediction audit: stock bear-state + negative Kalman drift
-GLW,US,purged,purged 2026-07-27 — prediction audit: stock bear-state + negative Kalman drift,,,2026-07-27,prediction audit: stock bear-state + negative Kalman drift
 SHOE,US,purged,cheap-vs-market (LONG) | purged 2026-07-27 — prediction audit: stock bear-state + negative Kalman drift,2026-07-25,14.73,2026-07-27,prediction audit: stock bear-state + negative Kalman drift
-LYB,US,purged,purged 2026-07-27 — prediction audit: stock bear-state + negative Kalman drift,,,2026-07-27,prediction audit: stock bear-state + negative Kalman drift
-RIO,US,purged,purged 2026-07-27 — prediction audit: stock bear-state + negative Kalman drift,,,2026-07-27,prediction audit: stock bear-state + negative Kalman drift
-GFI,US,purged,purged 2026-07-27 — prediction audit: stock bear-state + negative Kalman drift,,,2026-07-27,prediction audit: stock bear-state + negative Kalman drift
-MARA,US,purged,purged 2026-07-27 — prediction audit: stock bear-state + negative Kalman drift,,,2026-07-27,prediction audit: stock bear-state + negative Kalman drift
-INTC,US,purged,purged 2026-07-27 — prediction audit: stock bear-state + negative Kalman drift,,,2026-07-27,prediction audit: stock bear-state + negative Kalman drift
-WIT,US,purged,purged 2026-07-27 — prediction audit: stock bear-state + negative Kalman drift,,,2026-07-27,prediction audit: stock bear-state + negative Kalman drift
-FDP,US,purged,purged 2026-07-27 — prediction audit: stock bear-state + negative Kalman drift,,,2026-07-27,prediction audit: stock bear-state + negative Kalman drift
-FSLR,US,purged,purged 2026-07-27 — prediction audit: stock bear-state + negative Kalman drift,,,2026-07-27,prediction audit: stock bear-state + negative Kalman drift
-RKLB,US,purged,purged 2026-07-27 — prediction audit: stock bear-state + negative Kalman drift,,,2026-07-27,prediction audit: stock bear-state + negative Kalman drift
 NXTT,US,purged,cheap-vs-market (LONG) | purged 2026-07-27 — prediction audit: stock bear-state + negative Kalman drift,2026-07-25,0.77,2026-07-27,prediction audit: stock bear-state + negative Kalman drift
