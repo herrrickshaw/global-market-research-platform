@@ -2,6 +2,38 @@
 
 Decisions and material changes to the pipeline, newest first.
 
+## 2026-07-27 (night) — Prediction filter routine, per-market RSI layer, 3-tier watchlist
+
+- **`prediction_filter.py` as daily step [13w]** — the one-off mailer_prediction_audit
+  is now a STANDING eviction input: refresh regime×Markov×Kalman scores → auto-purge
+  non-held WEAK (bear state + negative drift) → held WEAK to
+  `reports/held_sell_review.csv` (SELL-REVIEW — portfolio rows are NEVER auto-purged,
+  same guardrail as zone eviction). Stale-panel guard: stock panels >7d old are
+  skipped (`--max-age` for deliberate one-offs). The one-time 40-name purge itself
+  ran in the parallel session (`8ee61e95`, PR #23) and included 32 held names —
+  the ROUTINE will not repeat that without the user.
+- **Per-market RSI layer, linked into the filter** — the SAME RSI-14 is read
+  differently per market character, mirroring the backtested zone rules (uniform
+  bands were wrong, KR t−2.5): momentum IN buys strength (50–75, exits <40/>80);
+  mean-revert US/JP/KR/EU buys oversold (≤35), sells overbought (≥70). Refinement:
+  ENTER-OK in an RSI SELL band → **ENTER-WAIT (RSI)**. First live pass: 453/454
+  priced, HOLD 269 / BUY 157 / SELL 27, 7 ENTER-OKs downgraded RSI-hot.
+- **Three-tier watchlist (`watchlist_tiers.py`, runs with [13w])**:
+  - **Tier 1** `watchlist.csv` — filter/screener-driven picks (unchanged).
+  - **Tier 2** `watchlist2.csv` — VALIDATION watchlist: every purged name
+    auto-enrolls with a baseline price and is tracked daily against the exact
+    criteria that evicted it (return since purge + live per-market RSI zone).
+    Seeded with 134 names (today's 40 prediction-purges + the historical
+    zone-purge archive). Names that behave as predicted age out (ret ≤ −15%
+    or 90d tracked): eviction VALIDATED, logged.
+  - **Tier 3** `watchlist3.csv` — ANOMALIES: tier-2 names whose price action
+    CONTRADICTS the eviction (ret ≥ +10%, or ≥ +5% while back in the RSI BUY
+    band) are MOVED here with the trigger recorded — the prediction model's
+    misses, i.e. the research queue. Full audit trail in
+    `reports/watchlist_tiers_log.csv`.
+  - Mailer's 🔮 Prediction-lens block now shows verdict counts, RSI zones,
+    SELL-REVIEW held names, today's purges, and tier-2/3 counts + latest anomalies.
+
 ## 2026-07-27 (evening) — Graph-driven screener hardening: scan_core, gates, reconcile
 
 - **`scan_core.py` — ONE Darvas implementation** (SMOOTHNESS #5, the big one). The

@@ -221,6 +221,19 @@ if __name__ == "__main__":
                     _rows += (f'<div style="margin:4px 0"><b>SELL-REVIEW (held, '
                               f'bear state + neg drift):</b> {_names}'
                               + (f" +{len(_h)-12} more" if len(_h) > 12 else "") + '</div>')
+            _w2p, _w3p = Path("watchlist2.csv"), Path("watchlist3.csv")
+            if _w2p.exists():
+                _w2 = _pd.read_csv(_w2p)
+                _w3 = _pd.read_csv(_w3p) if _w3p.exists() else _pd.DataFrame()
+                _t = (f'<div style="margin:4px 0"><b>Tiers:</b> '
+                      f'validation watchlist (2) {len(_w2)} names')
+                if len(_w3):
+                    _anoms = ", ".join(f"{r.symbol} ({r.trigger})"
+                                       for r in _w3.tail(5).itertuples())
+                    _t += f' · <b>anomalies (3): {len(_w3)}</b> — {_anoms}'
+                else:
+                    _t += ' · anomalies (3): 0'
+                _rows += _t + '</div>'
             _pg = Path("watchlist_purged.csv")
             if _pg.exists():
                 _p = _pd.read_csv(_pg)

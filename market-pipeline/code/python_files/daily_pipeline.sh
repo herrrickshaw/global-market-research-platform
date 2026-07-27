@@ -172,6 +172,13 @@ FAILURES=()
   $PY prediction_filter.py \
     || FAILURES+=("prediction filter: see [13w] above")
 
+  # Three-tier watchlist (2026-07-27): tier 2 = validation watchlist (every
+  # purged name tracked against the criteria that evicted it, per-market RSI
+  # zones); tier 3 = anomalies (price action CONTRADICTS the eviction — the
+  # prediction model's misses, i.e. the research queue).
+  $PY watchlist_tiers.py \
+    || FAILURES+=("watchlist tiers: sync/promote failed")
+
   # [13x] Paper-track scorecard — accumulates every past mailer pick (signal
   # ledger) and marks to today, so the mailer carries a running report card.
   # Weekly (Mondays) — the forward horizons only move meaningfully week to
