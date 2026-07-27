@@ -122,57 +122,97 @@ TOTEM,IN,signal,golden_cross 2026-07-15 (backfilled),2026-07-15,150.6,2026-07-23
 GALXBRG,IN,signal,golden_cross 2026-07-15 (backfilled),2026-07-15,910.7,2026-07-23,"not on current NSE EQ/BE/BZ list (delisted, merged, or non-equity instrument)"
 TRABI,IN,signal,golden_cross 2026-07-15 (backfilled),2026-07-15,3.16,2026-07-23,"not on current NSE EQ/BE/BZ list (delisted, merged, or non-equity instrument)"
 GKCONS,IN,evicted,golden_cross 2026-07-15 (backfilled) | evicted 2026-07-23 after 6 sessions in sell zone,2026-07-15,11.51,2026-07-23,"not on current NSE EQ/BE/BZ list (delisted, merged, or non-equity instrument)"
-OSWALGREEN,IN,watch,nan | renamed from BINDALAGRO (2026-07-23),2026-07-23,,2026-07-23
-GMDCLTD,IN,watch,nan | symbol corrected from GMDC (2026-07-23),2026-07-23,,2026-07-23
-PROZONER,IN,watch,nan | renamed from PROZONE (2026-07-23),2026-07-23,,2026-07-23
-TMPV,IN,evicted,evicted 2026-07-23 after 10 sessions in sell zone | renamed from TATAMOTORS (2026-07-23),,,2026-07-23
-RUDRA,IN,signal,golden_cross 2026-07-13 (backfilled) | symbol corrected from RUDRAGAS (2026-07-23),2026-07-13,73.8,2026-07-23
-RPOWER,IN,evicted,evicted 2026-07-23 after 15 sessions in sell zone,,,2026-07-24
-TTML,IN,evicted,evicted 2026-07-23 after 15 sessions in sell zone,,,2026-07-24
-CANBK,IN,signal,value_rerating 2026-07-24,2026-07-24,126.46,2026-07-24
-SSTK,US,justified,19.9 RSI @ 2026-07-24,2026-07-24,,2026-07-24
-KKRT,US,justified,23.9 RSI @ 2026-07-24,2026-07-24,,2026-07-24
-SPRY,US,justified,25.5 RSI @ 2026-07-24,2026-07-24,,2026-07-24
-TLRY,US,justified,25.5 RSI @ 2026-07-24,2026-07-24,,2026-07-24
-SNPS,US,justified,25.5 RSI @ 2026-07-24,2026-07-24,,2026-07-24
-LAC,US,justified,25.5 RSI @ 2026-07-24,2026-07-24,,2026-07-24
-INSG,US,justified,25.7 RSI @ 2026-07-24,2026-07-24,,2026-07-24
-ALB,US,justified,25.9 RSI @ 2026-07-24,2026-07-24,,2026-07-24
-T-PA,US,justified,26.4 RSI @ 2026-07-24,2026-07-24,,2026-07-24
-210980.KS,KR,justified,8.3 RSI @ 2026-07-24,2026-07-24,,2026-07-24
-051360.KQ,KR,justified,14.2 RSI @ 2026-07-24,2026-07-24,,2026-07-24
-102940.KQ,KR,justified,17.2 RSI @ 2026-07-24,2026-07-24,,2026-07-24
-106190.KQ,KR,justified,19.5 RSI @ 2026-07-24,2026-07-24,,2026-07-24
-950160.KQ,KR,justified,20.1 RSI @ 2026-07-24,2026-07-24,,2026-07-24
-002020.KS,KR,justified,20.4 RSI @ 2026-07-24,2026-07-24,,2026-07-24
-365340.KQ,KR,justified,21.6 RSI @ 2026-07-24,2026-07-24,,2026-07-24
-084680.KS,KR,justified,21.6 RSI @ 2026-07-24,2026-07-24,,2026-07-24
-179900.KQ,KR,justified,21.8 RSI @ 2026-07-24,2026-07-24,,2026-07-24
-7273.T,JP,justified,22.6 RSI @ 2026-07-24,2026-07-24,,2026-07-24
-9412.T,JP,justified,29.2 RSI @ 2026-07-24,2026-07-24,,2026-07-24
-6928.T,JP,justified,29.8 RSI @ 2026-07-24,2026-07-24,,2026-07-24
-ASTRAZEN,IN,signal,tuned-model 2026-07-24,2026-07-24,,2026-07-24
-BHARATRAS,IN,signal,tuned-model 2026-07-24,2026-07-24,,2026-07-24
-IRCON,IN,signal,tuned-model 2026-07-24,2026-07-24,,2026-07-24
-URJA,IN,signal,tuned-model 2026-07-24,2026-07-24,,2026-07-24
-FIRSTCRY,IN,signal,tuned-model 2026-07-24,2026-07-24,,2026-07-24
-INDIAMART,IN,signal,tuned-model 2026-07-24,2026-07-24,,2026-07-24
-CELLO,IN,signal,tuned-model 2026-07-24,2026-07-24,,2026-07-24
-NFL,IN,signal,tuned-model 2026-07-24,2026-07-24,,2026-07-24
-GSFC,IN,signal,tuned-model 2026-07-24,2026-07-24,,2026-07-24
-SJVN,IN,signal,tuned-model 2026-07-24,2026-07-24,,2026-07-24
-HSY,US,signal,tuned-model 2026-07-24,2026-07-24,,2026-07-24
-ASO,US,signal,tuned-model 2026-07-24,2026-07-24,,2026-07-24
-PEP,US,signal,tuned-model 2026-07-24,2026-07-24,,2026-07-24
-NRP,US,signal,tuned-model 2026-07-24,2026-07-24,,2026-07-24
-RAILTEL,IN,evicted,evicted 2026-07-23 after 14 sessions in sell zone,,,2026-07-27
-SKFINDIA,IN,evicted,evicted 2026-07-23 after 14 sessions in sell zone,,,2026-07-27
-CANBK,IN,signal,value_rerating 2026-07-27,2026-07-27,126.46,2026-07-27
-FINPIPE,IN,evicted,evicted 2026-07-23 after 13 sessions in sell zone,,,2026-07-27
-LOYALTEX,IN,evicted,evicted 2026-07-23 after 13 sessions in sell zone,,,2026-07-27
-SCI,IN,evicted,evicted 2026-07-23 after 13 sessions in sell zone,,,2026-07-27
-SUPREME,IN,evicted,nan | symbol corrected from SUPREMEPETRO (2026-07-23) | evicted 2026-07-23 after 13 sessions in sell zone,2026-07-23,,2026-07-27
-VBL,IN,evicted,evicted 2026-07-23 after 13 sessions in sell zone,,,2026-07-27
-LGBBROSLTD,IN,evicted,value_rerating 2026-07-23 | evicted 2026-07-23 after 13 sessions in sell zone,2026-07-23,1547.7,2026-07-27
-CANBK,IN,signal,value_rerating 2026-07-27,2026-07-27,126.46,2026-07-27
-LGBBROSLTD,IN,signal,value_rerating 2026-07-27,2026-07-27,1547.7,2026-07-27
+OSWALGREEN,IN,watch,nan | renamed from BINDALAGRO (2026-07-23),2026-07-23,,2026-07-23,
+GMDCLTD,IN,watch,nan | symbol corrected from GMDC (2026-07-23),2026-07-23,,2026-07-23,
+PROZONER,IN,watch,nan | renamed from PROZONE (2026-07-23),2026-07-23,,2026-07-23,
+TMPV,IN,evicted,evicted 2026-07-23 after 10 sessions in sell zone | renamed from TATAMOTORS (2026-07-23),,,2026-07-23,
+RUDRA,IN,signal,golden_cross 2026-07-13 (backfilled) | symbol corrected from RUDRAGAS (2026-07-23),2026-07-13,73.8,2026-07-23,
+RPOWER,IN,evicted,evicted 2026-07-23 after 15 sessions in sell zone,,,2026-07-24,
+TTML,IN,evicted,evicted 2026-07-23 after 15 sessions in sell zone,,,2026-07-24,
+CANBK,IN,signal,value_rerating 2026-07-24,2026-07-24,126.46,2026-07-24,
+SSTK,US,justified,19.9 RSI @ 2026-07-24,2026-07-24,,2026-07-24,
+KKRT,US,justified,23.9 RSI @ 2026-07-24,2026-07-24,,2026-07-24,
+SPRY,US,justified,25.5 RSI @ 2026-07-24,2026-07-24,,2026-07-24,
+TLRY,US,justified,25.5 RSI @ 2026-07-24,2026-07-24,,2026-07-24,
+SNPS,US,justified,25.5 RSI @ 2026-07-24,2026-07-24,,2026-07-24,
+LAC,US,justified,25.5 RSI @ 2026-07-24,2026-07-24,,2026-07-24,
+INSG,US,justified,25.7 RSI @ 2026-07-24,2026-07-24,,2026-07-24,
+ALB,US,justified,25.9 RSI @ 2026-07-24,2026-07-24,,2026-07-24,
+T-PA,US,justified,26.4 RSI @ 2026-07-24,2026-07-24,,2026-07-24,
+210980.KS,KR,justified,8.3 RSI @ 2026-07-24,2026-07-24,,2026-07-24,
+051360.KQ,KR,justified,14.2 RSI @ 2026-07-24,2026-07-24,,2026-07-24,
+102940.KQ,KR,justified,17.2 RSI @ 2026-07-24,2026-07-24,,2026-07-24,
+106190.KQ,KR,justified,19.5 RSI @ 2026-07-24,2026-07-24,,2026-07-24,
+950160.KQ,KR,justified,20.1 RSI @ 2026-07-24,2026-07-24,,2026-07-24,
+002020.KS,KR,justified,20.4 RSI @ 2026-07-24,2026-07-24,,2026-07-24,
+365340.KQ,KR,justified,21.6 RSI @ 2026-07-24,2026-07-24,,2026-07-24,
+084680.KS,KR,justified,21.6 RSI @ 2026-07-24,2026-07-24,,2026-07-24,
+179900.KQ,KR,justified,21.8 RSI @ 2026-07-24,2026-07-24,,2026-07-24,
+7273.T,JP,justified,22.6 RSI @ 2026-07-24,2026-07-24,,2026-07-24,
+9412.T,JP,justified,29.2 RSI @ 2026-07-24,2026-07-24,,2026-07-24,
+6928.T,JP,justified,29.8 RSI @ 2026-07-24,2026-07-24,,2026-07-24,
+ASTRAZEN,IN,signal,tuned-model 2026-07-24,2026-07-24,,2026-07-24,
+BHARATRAS,IN,signal,tuned-model 2026-07-24,2026-07-24,,2026-07-24,
+IRCON,IN,signal,tuned-model 2026-07-24,2026-07-24,,2026-07-24,
+URJA,IN,signal,tuned-model 2026-07-24,2026-07-24,,2026-07-24,
+FIRSTCRY,IN,signal,tuned-model 2026-07-24,2026-07-24,,2026-07-24,
+INDIAMART,IN,signal,tuned-model 2026-07-24,2026-07-24,,2026-07-24,
+CELLO,IN,signal,tuned-model 2026-07-24,2026-07-24,,2026-07-24,
+NFL,IN,signal,tuned-model 2026-07-24,2026-07-24,,2026-07-24,
+GSFC,IN,signal,tuned-model 2026-07-24,2026-07-24,,2026-07-24,
+SJVN,IN,signal,tuned-model 2026-07-24,2026-07-24,,2026-07-24,
+HSY,US,signal,tuned-model 2026-07-24,2026-07-24,,2026-07-24,
+ASO,US,signal,tuned-model 2026-07-24,2026-07-24,,2026-07-24,
+PEP,US,signal,tuned-model 2026-07-24,2026-07-24,,2026-07-24,
+NRP,US,signal,tuned-model 2026-07-24,2026-07-24,,2026-07-24,
+RAILTEL,IN,evicted,evicted 2026-07-23 after 14 sessions in sell zone,,,2026-07-27,
+SKFINDIA,IN,evicted,evicted 2026-07-23 after 14 sessions in sell zone,,,2026-07-27,
+CANBK,IN,signal,value_rerating 2026-07-27,2026-07-27,126.46,2026-07-27,
+FINPIPE,IN,evicted,evicted 2026-07-23 after 13 sessions in sell zone,,,2026-07-27,
+LOYALTEX,IN,evicted,evicted 2026-07-23 after 13 sessions in sell zone,,,2026-07-27,
+SCI,IN,evicted,evicted 2026-07-23 after 13 sessions in sell zone,,,2026-07-27,
+SUPREME,IN,evicted,nan | symbol corrected from SUPREMEPETRO (2026-07-23) | evicted 2026-07-23 after 13 sessions in sell zone,2026-07-23,,2026-07-27,
+VBL,IN,evicted,evicted 2026-07-23 after 13 sessions in sell zone,,,2026-07-27,
+LGBBROSLTD,IN,evicted,value_rerating 2026-07-23 | evicted 2026-07-23 after 13 sessions in sell zone,2026-07-23,1547.7,2026-07-27,
+CANBK,IN,signal,value_rerating 2026-07-27,2026-07-27,126.46,2026-07-27,
+LGBBROSLTD,IN,signal,value_rerating 2026-07-27,2026-07-27,1547.7,2026-07-27,
+7280.T,JP,purged,value-reversion (LONG) | purged 2026-07-27 — prediction audit: stock bear-state + negative Kalman drift,2026-07-25,1172.0,2026-07-27,prediction audit: stock bear-state + negative Kalman drift
+6047.T,JP,purged,28.6 RSI @ 2026-07-22 | purged 2026-07-27 — prediction audit: stock bear-state + negative Kalman drift,2026-07-22,352.0,2026-07-27,prediction audit: stock bear-state + negative Kalman drift
+FACT,US,purged,technical 2026-07-22 | purged 2026-07-27 — prediction audit: stock bear-state + negative Kalman drift,2026-07-22,10.64,2026-07-27,prediction audit: stock bear-state + negative Kalman drift
+JCI,US,purged,purged 2026-07-27 — prediction audit: stock bear-state + negative Kalman drift,,,2026-07-27,prediction audit: stock bear-state + negative Kalman drift
+RPM,US,purged,tuned-model 2026-07-24 | purged 2026-07-27 — prediction audit: stock bear-state + negative Kalman drift,2026-07-24,107.0,2026-07-27,prediction audit: stock bear-state + negative Kalman drift
+SOJE,US,purged,cheap-vs-market (LONG) | purged 2026-07-27 — prediction audit: stock bear-state + negative Kalman drift,2026-07-25,16.67,2026-07-27,prediction audit: stock bear-state + negative Kalman drift
+TXN,US,purged,purged 2026-07-27 — prediction audit: stock bear-state + negative Kalman drift,,,2026-07-27,prediction audit: stock bear-state + negative Kalman drift
+TSM,US,purged,purged 2026-07-27 — prediction audit: stock bear-state + negative Kalman drift,,,2026-07-27,prediction audit: stock bear-state + negative Kalman drift
+GLNG,US,purged,purged 2026-07-27 — prediction audit: stock bear-state + negative Kalman drift,,,2026-07-27,prediction audit: stock bear-state + negative Kalman drift
+EMR,US,purged,purged 2026-07-27 — prediction audit: stock bear-state + negative Kalman drift,,,2026-07-27,prediction audit: stock bear-state + negative Kalman drift
+GOOG,US,purged,purged 2026-07-27 — prediction audit: stock bear-state + negative Kalman drift,,,2026-07-27,prediction audit: stock bear-state + negative Kalman drift
+FDX,US,purged,purged 2026-07-27 — prediction audit: stock bear-state + negative Kalman drift,,,2026-07-27,prediction audit: stock bear-state + negative Kalman drift
+TSLA,US,purged,purged 2026-07-27 — prediction audit: stock bear-state + negative Kalman drift,,,2026-07-27,prediction audit: stock bear-state + negative Kalman drift
+DIS,US,purged,purged 2026-07-27 — prediction audit: stock bear-state + negative Kalman drift,,,2026-07-27,prediction audit: stock bear-state + negative Kalman drift
+COST,US,purged,purged 2026-07-27 — prediction audit: stock bear-state + negative Kalman drift,,,2026-07-27,prediction audit: stock bear-state + negative Kalman drift
+MLAB,US,purged,purged 2026-07-27 — prediction audit: stock bear-state + negative Kalman drift,,,2026-07-27,prediction audit: stock bear-state + negative Kalman drift
+WMT,US,purged,purged 2026-07-27 — prediction audit: stock bear-state + negative Kalman drift,,,2026-07-27,prediction audit: stock bear-state + negative Kalman drift
+CHTR,US,purged,cheap-vs-market (LONG) | purged 2026-07-27 — prediction audit: stock bear-state + negative Kalman drift,2026-07-25,129.22,2026-07-27,prediction audit: stock bear-state + negative Kalman drift
+CME,US,purged,purged 2026-07-27 — prediction audit: stock bear-state + negative Kalman drift,,,2026-07-27,prediction audit: stock bear-state + negative Kalman drift
+SAP,US,purged,purged 2026-07-27 — prediction audit: stock bear-state + negative Kalman drift,,,2026-07-27,prediction audit: stock bear-state + negative Kalman drift
+KR,US,purged,purged 2026-07-27 — prediction audit: stock bear-state + negative Kalman drift,,,2026-07-27,prediction audit: stock bear-state + negative Kalman drift
+IBM,US,purged,purged 2026-07-27 — prediction audit: stock bear-state + negative Kalman drift,,,2026-07-27,prediction audit: stock bear-state + negative Kalman drift
+FLS,US,purged,purged 2026-07-27 — prediction audit: stock bear-state + negative Kalman drift,,,2026-07-27,prediction audit: stock bear-state + negative Kalman drift
+TTE,US,purged,purged 2026-07-27 — prediction audit: stock bear-state + negative Kalman drift,,,2026-07-27,prediction audit: stock bear-state + negative Kalman drift
+VZ,US,purged,purged 2026-07-27 — prediction audit: stock bear-state + negative Kalman drift,,,2026-07-27,prediction audit: stock bear-state + negative Kalman drift
+BKR,US,purged,purged 2026-07-27 — prediction audit: stock bear-state + negative Kalman drift,,,2026-07-27,prediction audit: stock bear-state + negative Kalman drift
+NTGR,US,purged,purged 2026-07-27 — prediction audit: stock bear-state + negative Kalman drift,,,2026-07-27,prediction audit: stock bear-state + negative Kalman drift
+T,US,purged,purged 2026-07-27 — prediction audit: stock bear-state + negative Kalman drift,,,2026-07-27,prediction audit: stock bear-state + negative Kalman drift
+GLW,US,purged,purged 2026-07-27 — prediction audit: stock bear-state + negative Kalman drift,,,2026-07-27,prediction audit: stock bear-state + negative Kalman drift
+SHOE,US,purged,cheap-vs-market (LONG) | purged 2026-07-27 — prediction audit: stock bear-state + negative Kalman drift,2026-07-25,14.73,2026-07-27,prediction audit: stock bear-state + negative Kalman drift
+LYB,US,purged,purged 2026-07-27 — prediction audit: stock bear-state + negative Kalman drift,,,2026-07-27,prediction audit: stock bear-state + negative Kalman drift
+RIO,US,purged,purged 2026-07-27 — prediction audit: stock bear-state + negative Kalman drift,,,2026-07-27,prediction audit: stock bear-state + negative Kalman drift
+GFI,US,purged,purged 2026-07-27 — prediction audit: stock bear-state + negative Kalman drift,,,2026-07-27,prediction audit: stock bear-state + negative Kalman drift
+MARA,US,purged,purged 2026-07-27 — prediction audit: stock bear-state + negative Kalman drift,,,2026-07-27,prediction audit: stock bear-state + negative Kalman drift
+INTC,US,purged,purged 2026-07-27 — prediction audit: stock bear-state + negative Kalman drift,,,2026-07-27,prediction audit: stock bear-state + negative Kalman drift
+WIT,US,purged,purged 2026-07-27 — prediction audit: stock bear-state + negative Kalman drift,,,2026-07-27,prediction audit: stock bear-state + negative Kalman drift
+FDP,US,purged,purged 2026-07-27 — prediction audit: stock bear-state + negative Kalman drift,,,2026-07-27,prediction audit: stock bear-state + negative Kalman drift
+FSLR,US,purged,purged 2026-07-27 — prediction audit: stock bear-state + negative Kalman drift,,,2026-07-27,prediction audit: stock bear-state + negative Kalman drift
+RKLB,US,purged,purged 2026-07-27 — prediction audit: stock bear-state + negative Kalman drift,,,2026-07-27,prediction audit: stock bear-state + negative Kalman drift
+NXTT,US,purged,cheap-vs-market (LONG) | purged 2026-07-27 — prediction audit: stock bear-state + negative Kalman drift,2026-07-25,0.77,2026-07-27,prediction audit: stock bear-state + negative Kalman drift

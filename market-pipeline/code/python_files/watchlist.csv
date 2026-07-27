@@ -11,64 +11,44 @@ AVGO,US,held,,,
 BABA,US,held,,,
 BAC,US,held,,,
 BATRK,US,held,,,
-BKR,US,held,,,
 BRK.B,US,held,,,
 CL,US,held,,,
 CLH,US,held,,,
-CME,US,held,,,
 COP,US,held,,,
 CORN,US,held,,,
-COST,US,held,,,
 CTRA,US,held,,,
 CVX,US,held,,,
 CWK,US,held,,,
 CWT,US,held,,,
 DELL,US,held,,,
 DHR,US,held,,,
-DIS,US,held,,,
 DXC,US,held,,,
 ECL,US,held,,,
 EEM,US,held,,,
-EMR,US,held,,,
 EQH,US,held,,,
 ES,US,held,,,
 EWJ,US,held,,,
 EWT,US,held,,,
 EWY,US,held,,,
-FDP,US,held,,,
-FDX,US,held,,,
 FL,US,held,,,
-FLS,US,held,,,
-FSLR,US,held,,,
-GFI,US,held,,,
-GLNG,US,held,,,
-GLW,US,held,,,
 GNK,US,held,,,
-GOOG,US,held,,,
 GTLB,US,held,,,
 HD,US,held,,,
 HSBC,US,held,,,
-IBM,US,held,,,
 INFY,US,held,,,
-INTC,US,held,,,
 IR,US,held,,,
 IWM,US,held,,,
 IZRL,US,held,,,
-JCI,US,held,,,
 JHML,US,held,,,
 JNJ,US,held,,,
 KHC,US,held,,,
 KO,US,held,,,
-KR,US,held,,,
 KSA,US,held,,,
 LNG,US,held,,,
-LYB,US,held,,,
-MARA,US,held,,,
 MCO,US,held,,,
 MELI,US,held,,,
 MET,US,held,,,
 META,US,held,,,
-MLAB,US,held,,,
 MNDY,US,held,,,
 MNKD,US,held,,,
 MSCI,US,held,,,
@@ -76,16 +56,12 @@ MT,US,held,,,
 MTCH,US,held,,,
 MTD,US,held,,,
 NEXT,US,held,,,
-NTGR,US,held,,,
 NVDA,US,held,,,
 NVO,US,held,,,
 OXY,US,held,,,
 PEGA,US,held,,,
 PG,US,held,,,
-RIO,US,held,,,
-RKLB,US,held,,,
 RWR,US,held,,,
-SAP,US,held,,,
 SE,US,held,,,
 SHEL,US,held,,,
 SOXL,US,held,,,
@@ -93,23 +69,15 @@ SPGI,US,held,,,
 SU,US,held,,,
 SWK,US,held,,,
 SYK,US,held,,,
-T,US,held,,,
 TFLO,US,held,,,
 TMO,US,held,,,
 TMUS,US,held,,,
-TSLA,US,held,,,
-TSM,US,held,,,
-TTE,US,held,,,
-TXN,US,held,,,
 UBS,US,held,,,
 UGI,US,held,,,
 V,US,held,,,
 VLO,US,held,,,
 VVV,US,held,,,
-VZ,US,held,,,
-WIT,US,held,,,
 WM,US,held,,,
-WMT,US,held,,,
 XOM,US,held,,,
 ADM,US,sold,,,
 AMC,US,sold,,,
@@ -696,7 +664,6 @@ SDF.F,EU,signal,technical 2026-07-22,2026-07-22,
 SMJF,US,signal,technical 2026-07-22,2026-07-22,5.53
 HVII,US,signal,technical 2026-07-22,2026-07-22,10.475
 KCHV,US,signal,technical 2026-07-22,2026-07-22,10.4
-FACT,US,signal,technical 2026-07-22,2026-07-22,10.64
 6138,JP,signal,technical 2026-07-22,2026-07-22,1216.0
 ANSC,US,signal,technical 2026-07-22,2026-07-22,11.45
 4249,JP,signal,technical 2026-07-22,2026-07-22,2546.0
@@ -728,7 +695,6 @@ IONS,US,evicted,24.3 RSI @ 2026-07-22 | evicted 2026-07-23 after 9 sessions in s
 SNEX,US,evicted,24.7 RSI @ 2026-07-22 | evicted 2026-07-23 after 7 sessions in sell zone,2026-07-22,74.53
 006490.KS,KR,justified,20.9 RSI @ 2026-07-22,2026-07-22,1002.0
 5393.T,JP,evicted,28.2 RSI @ 2026-07-22 | evicted 2026-07-23 after 8 sessions in sell zone,2026-07-22,3311.0
-6047.T,JP,justified,28.6 RSI @ 2026-07-22,2026-07-22,352.0
 6616.T,JP,evicted,29.0 RSI @ 2026-07-22 | evicted 2026-07-23 after 13 sessions in sell zone,2026-07-22,1896.0
 PLSE,US,signal,recurring x2 +14.2% since 2026-07-21,2026-07-21,30.26
 RAND.AS,EU,signal,recurring x2 +13.1% since 2026-07-21,2026-07-21,31.86
@@ -767,7 +733,6 @@ ASALCBR,IN,evicted,tuned-model 2026-07-24 | evicted 2026-07-24 after 12 sessions
 PEG,US,evicted,tuned-model 2026-07-24 | evicted 2026-07-24 after 7 sessions in sell zone,2026-07-24,
 ASLE,US,evicted,tuned-model 2026-07-24 | evicted 2026-07-24 after 12 sessions in sell zone,2026-07-24,
 AOS,US,signal,tuned-model 2026-07-24,2026-07-24,60.78
-RPM,US,signal,tuned-model 2026-07-24,2026-07-24,107.0
 FERG,US,evicted,tuned-model 2026-07-24 | evicted 2026-07-27 after 6 sessions in sell zone,2026-07-24,230.67
 AFYA,US,evicted,tuned-model 2026-07-24 | evicted 2026-07-24 after 9 sessions in sell zone,2026-07-24,
 PCYO,US,evicted,tuned-model 2026-07-24 | evicted 2026-07-27 after 6 sessions in sell zone,2026-07-24,10.68
@@ -796,13 +761,9 @@ SANGHVIMOV,IN,playbook,trend+value/quality (LONG),2026-07-25,429.75
 INDNIPPON,IN,playbook,trend+value/quality (LONG),2026-07-25,1213.7
 ASHAPURMIN,IN,playbook,trend+value/quality (LONG),2026-07-25,676.7
 MAYURUNIQ,IN,playbook,trend+value/quality (LONG),2026-07-25,798.15
-CHTR,US,playbook,cheap-vs-market (LONG),2026-07-25,129.22
-NXTT,US,playbook,cheap-vs-market (LONG),2026-07-25,0.77
 AFGC,US,playbook,cheap-vs-market (LONG),2026-07-25,17.85
 AFGB,US,playbook,cheap-vs-market (LONG),2026-07-25,20.72
 ENR,US,playbook,cheap-vs-market (LONG),2026-07-25,20.5
-SOJE,US,playbook,cheap-vs-market (LONG),2026-07-25,16.67
-SHOE,US,playbook,cheap-vs-market (LONG),2026-07-25,14.73
 ACCO,US,playbook,cheap-vs-market (LONG),2026-07-25,4.07
 CMSC,US,playbook,cheap-vs-market (LONG),2026-07-25,21.91
 100220.KS,KR,playbook,cheap∩hi-ROE (LONG),2026-07-25,4705.0
@@ -832,7 +793,6 @@ CMSC,US,playbook,cheap-vs-market (LONG),2026-07-25,21.91
 BBVA.MC,EU,playbook,12M-momentum (LONG),2026-07-25,22.94
 8338.T,JP,playbook,value-reversion (LONG),2026-07-25,670.0
 8387.T,JP,playbook,value-reversion (LONG),2026-07-25,3290.0
-7280.T,JP,playbook,value-reversion (LONG),2026-07-25,1172.0
 7102.T,JP,playbook,value-reversion (LONG),2026-07-25,3695.0
 2112.T,JP,playbook,value-reversion (LONG),2026-07-25,
 7231.T,JP,playbook,value-reversion (LONG),2026-07-25,2922.0
