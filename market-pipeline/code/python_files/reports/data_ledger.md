@@ -23,14 +23,14 @@ Living catalog; re-run `data_ledger.py` to refresh volume/latest/updated from di
 | KR | fundamentals | 6,825 | 1,564 | 2026-03-31 | 2026-07-24 | DART (FSS) | `dart_history_collect.py` | off-hours | DART_KEY; ~20k/day quota; XBRL from ~2019 |
 | JP | fundamentals | 5,263 | 1,295 | 2026-03-31 | 2026-07-18 | yfinance (J-Quants planned) | `(J-Quants fins/statements)` | off-hours | JQUANTS_API_KEY set; tier-limited history |
 | EU | fundamentals | 4,666 | 1,159 | 2026-05-31 | 2026-07-24 | yfinance (DE/DK/CH/FI/SE union) | `build EU_union` | after 21:30 IST | 5y only; pre-2021 needs registries |
-| CN | fundamentals | 0 | 0 | — | — | akshare indicators | `cn_akshare_collect.py` | after 15:00 CST / 12:30 IST | akshare; sleep 0.3s/req |
+| CN | fundamentals | 4,677 | 426 | 2025-12-31 | 2026-07-25 | akshare indicators | `cn_akshare_collect.py` | after 15:00 CST / 12:30 IST | akshare; sleep 0.3s/req |
 
 ## Derived
 
 | scope | rows | updated | builder | note |
 |---|--:|--:|---|---|
-| IN/US/KR | 7,590 | 2026-07-24 | `financial_ratios.py` | rebuilt daily [15b] |
-| 6 markets | 10,202 | 2026-07-24 | `build_all_ratios.py` | adds JP/EU/CN |
+| IN/US/KR | 9,083 | 2026-07-27 | `financial_ratios.py` | rebuilt daily [15b] |
+| 6 markets | 10,202 | 2026-07-27 | `build_all_ratios.py` | adds JP/EU/CN |
 
 ## Reference (free exchange masters)
 
