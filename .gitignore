@@ -5,6 +5,9 @@ __pycache__/
 nse_bse_data/
 *.json
 !package.json
+# knowledge graph: track the durable artifact, never the .graphify_* temps
+!market-pipeline/graphify-out/graph.json
+market-pipeline/graphify-out/.graphify_*
 
 # NSE/BSE extractor runtime artifacts
 *.log
