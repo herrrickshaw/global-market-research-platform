@@ -31,6 +31,12 @@ cd "$(dirname "$0")"
 PY="$(dirname "$0")/.venv/bin/python3"
 [ -x "$PY" ] || PY=python3
 LOG="daily_pipeline_$(date +%Y%m%d).log"
+# --post-only (2026-07-27): skip scans+correlations (steps 1-13) and run only
+# the post-scan block — screens, prediction/tier/reentry chain, validation,
+# mailer. For verifying pipeline-logic changes without 45-90 min of redundant
+# rescans of unchanged closed-market data (this cost 3 extra full runs today).
+POST_ONLY=0
+for _a in "$@"; do [ "$_a" = "--post-only" ] && POST_ONLY=1; done
 mkdir -p correlation_scan
 # ── step timing ───────────────────────────────────────────────────────────────
 # Emits a machine-readable marker before every step so run times are MEASURED, not
@@ -71,50 +77,54 @@ FAILURES=()
   step "[0b] pre-flight: scan input gates"
   $PY preflight_scan_inputs.py || FAILURES+=("STARTUP: pre-flight input gate(s) failed (see [0b] above)")
 
-  step "[1/14] India EOD refresh (official bhavcopy, incremental)"
-  $PY bhavcopy_history.py 400 || { echo "  bhavcopy refresh failed (will use cache)"; FAILURES+=("India: bhavcopy refresh"); }
+  if [ "$POST_ONLY" = "1" ]; then
+    echo "— post-only: skipping scans+correlations [1-13] —"
+  else
+    step "[1/14] India EOD refresh (official bhavcopy, incremental)"
+    $PY bhavcopy_history.py 400 || { echo "  bhavcopy refresh failed (will use cache)"; FAILURES+=("India: bhavcopy refresh"); }
 
-  step "[2/14] India full screener scan"
-  $PY scan_bhavcopy.py || { echo "  scan failed (will use latest cache)"; FAILURES+=("India: full screener scan"); }
+    step "[2/14] India full screener scan"
+    $PY scan_bhavcopy.py || { echo "  scan failed (will use latest cache)"; FAILURES+=("India: full screener scan"); }
 
-  step "[3/14] India combined report (fundamentals + street talk)"
-  $PY daily_combined_report.py --market IN --html || { echo "  combined report failed"; FAILURES+=("India: combined report"); }
+    step "[3/14] India combined report (fundamentals + street talk)"
+    $PY daily_combined_report.py --market IN --html || { echo "  combined report failed"; FAILURES+=("India: combined report"); }
 
-  step "[3b] refresh India CCC screen (screener.in)"
-  $PY -c "import screener_in as s; s.ccc_screen().to_parquet('cache_seed/india_ccc_screen.parquet', index=False)" || { echo "  CCC refresh skipped"; FAILURES+=("India: CCC screen refresh"); }
+    step "[3b] refresh India CCC screen (screener.in)"
+    $PY -c "import screener_in as s; s.ccc_screen().to_parquet('cache_seed/india_ccc_screen.parquet', index=False)" || { echo "  CCC refresh skipped"; FAILURES+=("India: CCC screen refresh"); }
 
-  step "[3c] daily test: validate screener.in CCC scrape"
-  $PY test_screener_in.py || { echo "  ⚠️  screener.in CCC test FAILED — see checks above. CCC section will show n/a until this is fixed."; FAILURES+=("India: CCC scrape test"); }
+    step "[3c] daily test: validate screener.in CCC scrape"
+    $PY test_screener_in.py || { echo "  ⚠️  screener.in CCC test FAILED — see checks above. CCC section will show n/a until this is fixed."; FAILURES+=("India: CCC scrape test"); }
 
-  step "[4/14] US full market scan (fresh, NASDAQ+NYSE, min-price \$2)"
-  $PY full_us_market_scan.py --workers 10 --min-price 2 || { echo "  US full market scan failed (continuing)"; FAILURES+=("US: full market scan"); }
+    step "[4/14] US full market scan (fresh, NASDAQ+NYSE, min-price \$2)"
+    $PY full_us_market_scan.py --workers 10 --min-price 2 || { echo "  US full market scan failed (continuing)"; FAILURES+=("US: full market scan"); }
 
-  step "[5/14] US combined report (fundamentals + street talk, reuses fresh US scan)"
-  $PY daily_combined_report.py --market US --html || { echo "  US combined report failed (continuing)"; FAILURES+=("US: combined report"); }
+    step "[5/14] US combined report (fundamentals + street talk, reuses fresh US scan)"
+    $PY daily_combined_report.py --market US --html || { echo "  US combined report failed (continuing)"; FAILURES+=("US: combined report"); }
 
-  step "[6/14] Europe full market scan (broad 17-exchange / 966-stock universe)"
-  $PY full_european_market_scan.py --universe data/europe_broad_list.csv --label broad || { echo "  Europe full market scan failed (continuing)"; FAILURES+=("Europe: full market scan"); }
+    step "[6/14] Europe full market scan (broad 17-exchange / 966-stock universe)"
+    $PY full_european_market_scan.py --universe data/europe_broad_list.csv --label broad || { echo "  Europe full market scan failed (continuing)"; FAILURES+=("Europe: full market scan"); }
 
-  step "[7/14] Japan full market scan (TSE)"
-  $PY full_japan_market_scan.py --workers 10 || { echo "  Japan full market scan failed (continuing)"; FAILURES+=("Japan: full market scan"); }
+    step "[7/14] Japan full market scan (TSE)"
+    $PY full_japan_market_scan.py --workers 10 || { echo "  Japan full market scan failed (continuing)"; FAILURES+=("Japan: full market scan"); }
 
-  step "[8/14] Korea full market scan (KOSPI+KOSDAQ)"
-  $PY full_korea_market_scan.py --workers 10 || { echo "  Korea full market scan failed (continuing)"; FAILURES+=("Korea: full market scan"); }
+    step "[8/14] Korea full market scan (KOSPI+KOSDAQ)"
+    $PY full_korea_market_scan.py --workers 10 || { echo "  Korea full market scan failed (continuing)"; FAILURES+=("Korea: full market scan"); }
 
-  step "[9/14] Correlation scan — NSE"
-  $PY market_correlation_scan.py --market NSE --output-dir correlation_scan || { echo "  NSE correlation scan failed (continuing)"; FAILURES+=("NSE: correlation scan"); }
+    step "[9/14] Correlation scan — NSE"
+    $PY market_correlation_scan.py --market NSE --output-dir correlation_scan || { echo "  NSE correlation scan failed (continuing)"; FAILURES+=("NSE: correlation scan"); }
 
-  step "[10/14] Correlation scan — US"
-  $PY market_correlation_scan.py --market US --output-dir correlation_scan || { echo "  US correlation scan failed (continuing)"; FAILURES+=("US: correlation scan"); }
+    step "[10/14] Correlation scan — US"
+    $PY market_correlation_scan.py --market US --output-dir correlation_scan || { echo "  US correlation scan failed (continuing)"; FAILURES+=("US: correlation scan"); }
 
-  step "[11/14] Correlation scan — Europe"
-  $PY market_correlation_scan.py --market EUROPE --output-dir correlation_scan || { echo "  Europe correlation scan failed (continuing)"; FAILURES+=("Europe: correlation scan"); }
+    step "[11/14] Correlation scan — Europe"
+    $PY market_correlation_scan.py --market EUROPE --output-dir correlation_scan || { echo "  Europe correlation scan failed (continuing)"; FAILURES+=("Europe: correlation scan"); }
 
-  step "[12/14] Correlation scan — Japan"
-  $PY market_correlation_scan.py --market JAPAN --output-dir correlation_scan || { echo "  Japan correlation scan failed (continuing)"; FAILURES+=("Japan: correlation scan"); }
+    step "[12/14] Correlation scan — Japan"
+    $PY market_correlation_scan.py --market JAPAN --output-dir correlation_scan || { echo "  Japan correlation scan failed (continuing)"; FAILURES+=("Japan: correlation scan"); }
 
-  step "[13/14] Correlation scan — Korea"
-  $PY market_correlation_scan.py --market KOREA --output-dir correlation_scan || { echo "  Korea correlation scan failed (continuing)"; FAILURES+=("Korea: correlation scan"); }
+    step "[13/14] Correlation scan — Korea"
+    $PY market_correlation_scan.py --market KOREA --output-dir correlation_scan || { echo "  Korea correlation scan failed (continuing)"; FAILURES+=("Korea: correlation scan"); }
+  fi
 
   # [13b] External validation — the gate between "built" and "sent".
   #
