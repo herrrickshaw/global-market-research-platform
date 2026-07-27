@@ -246,6 +246,19 @@ if __name__ == "__main__":
                     _rows += (f'<div style="margin:4px 0"><b>↩ Re-entry queue '
                               f'(mean-reversion engine):</b> {_names} — backtested '
                               f'excess +5–25%/63d, t 7–15</div>')
+            _rr = Path("reports/reentry_recent.csv")
+            if _rr.exists():
+                _rrd = _pd.read_csv(_rr, parse_dates=["trigger_date"])
+                if len(_rrd):
+                    _by = _rrd.groupby("market").size().to_dict()
+                    _top = "; ".join(
+                        f"{r.market} {r.symbol} ({r.trigger_date:%d %b}, "
+                        f"+{r.ret_at_trigger:.0f}%)"
+                        for r in _rrd.head(10).itertuples())
+                    _rows += (f'<div style="margin:4px 0"><b>Recent re-entry names '
+                              f'(last 45d):</b> {sum(_by.values())} — '
+                              + " · ".join(f"{k} {v}" for k, v in _by.items())
+                              + f'<br><span style="font-size:12px">{_top}</span></div>')
             _pg = Path("watchlist_purged.csv")
             if _pg.exists():
                 _p = _pd.read_csv(_pg)

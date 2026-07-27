@@ -51,6 +51,44 @@ def market_regime() -> dict:
         return {}
 
 
+RECENT = HERE / "reports/reentry_recent.csv"
+BACKTEST_EVENTS = HERE / "reports/tier_anomaly_events.csv"
+RECENT_DAYS = 45
+
+
+def write_recent_reentries():
+    """reports/reentry_recent.csv — re-entry names from the previous few weeks,
+    shown in every mailer: live tier-3 promotions UNION recent backtest anomaly
+    triggers (the replayed history seeds this until live promotions accumulate)."""
+    frames = []
+    if W3.exists():
+        w3 = pd.read_csv(W3)
+        if len(w3):
+            w3["trigger_date"] = pd.to_datetime(w3["promoted"], errors="coerce")
+            w3["ret_at_trigger"] = w3.get("ret_pct")
+            w3["source"] = "live"
+            frames.append(w3[["market", "symbol", "trigger_date",
+                              "ret_at_trigger", "source"]])
+    if BACKTEST_EVENTS.exists():
+        ev = pd.read_csv(BACKTEST_EVENTS, parse_dates=["evict_date"])
+        an = ev[ev.outcome == "ANOMALY"].copy()
+        an["trigger_date"] = an.evict_date + pd.to_timedelta(an.days, unit="D")
+        an["ret_at_trigger"] = an.exit_ret_pct
+        an["source"] = "backtest"
+        frames.append(an[["market", "symbol", "trigger_date",
+                          "ret_at_trigger", "source"]])
+    if not frames:
+        return 0
+    r = pd.concat(frames, ignore_index=True)
+    r = r[r.trigger_date >= pd.Timestamp.today() - pd.Timedelta(days=RECENT_DAYS)]
+    r = (r.sort_values("trigger_date", ascending=False)
+          .drop_duplicates(subset=["market", "symbol"], keep="first"))
+    r.to_csv(RECENT, index=False)
+    print(f"  recent re-entries ({RECENT_DAYS}d): {len(r)} names "
+          f"({r.source.value_counts().to_dict()}) → reports/reentry_recent.csv")
+    return len(r)
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--dry-run", action="store_true")
@@ -59,6 +97,7 @@ def main() -> int:
     from prediction_filter import rsi14, rsi_zone
 
     print("[reentry-engine] tier 3 → ranked re-entry candidates")
+    write_recent_reentries()
     if not W3.exists():
         print("  no watchlist3.csv — nothing to do")
         return 0

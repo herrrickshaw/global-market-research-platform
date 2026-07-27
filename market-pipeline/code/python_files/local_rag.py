@@ -229,7 +229,32 @@ def etl_status(_q=""):
             "(by design — e.g. cn_full is eps-only and always fails the net_income fill gate).")
 
 
+def reentry(q=""):
+    """re-entry queue: tier-3 anomalies + recent re-entry names (2026-07-27)."""
+    out = []
+    p = REP / "reentry_candidates.csv"
+    if p.exists():
+        d = pd.read_csv(p)
+        out.append("**↩ Re-entry candidates (fresh tier-3 anomalies, RSI-vetoed):**\n\n"
+                   + (_md_table(d) if len(d) else "_none today_"))
+    p = REP / "reentry_recent.csv"
+    if p.exists():
+        d = pd.read_csv(p)
+        mk = _market_from_q(q)
+        if mk and "market" in d.columns:
+            d = d[d.market == mk]
+        out.append(f"\n**Recent re-entry names (last 45d, {len(d)}):**\n\n"
+                   + _md_table(d.head(20)))
+    if not out:
+        return "run `python reentry_engine.py` first."
+    out.append("\n> Evictions in bull markets boomerang 45-75%; buying the +10% "
+               "trigger carried excess +5-25%/63d (t 7-15) in backtest. "
+               "Survivorship-lite caveat — paper-track validates live.")
+    return "\n".join(out)
+
+
 INTENTS = [
+ (r"re.?ent(ry|er)|tier ?3|anomal(y|ies)|boomerang|mean.?reversion (queue|engine|discovery)", reentry),
  (r"playbook|what.*(do|strateg|trade|buy).*(india|us|korea|japan|europe|china|market)|recommend.*market", playbook),
  (r"edge|fat.?pitch|which filter|edge matrix|where.*edge", edge_map),
  (r"speculat|fundamentals? rule|sector.*(fundamental|speculat)|pb.?roe|pricing regime", speculation),

@@ -36,6 +36,9 @@ A full-arc review from the platform's origin to the live paper-track: what we've
 | The right endpoint beats scraping: EDINET's real API host (api.*, not the website) + Eastmoney bulk (all A-shares in 3 calls/yr) replaced weeks of per-stock crawling | 8/10 | validated 2026-07-27 |
 | Source precedence belongs in the DBMS, not script order — SQL priority upsert + quality gates auto-rejected the eps-only CN feed on first contact | 8/10 | validated 2026-07-27 |
 | External validation gates earn their keep: screener.in check caught a stale INFY close (Friday price on a +3.7% Monday) before the mailer shipped it | 8/10 | validated 2026-07-27 |
+| Evictions during market-bull BOOMERANG 45-75% (IN 75/KR 63/US 49/JP 45, 6,151 events) — a bear-state dip in a bull market is usually the bounce | 8/10 | validated 2026-07-27 |
+| RSI at eviction has ZERO power to predict which evictions return (median 41 vs 41, all markets) — RSI is a re-entry trigger, not an eviction filter | 8/10 | validated 2026-07-27 |
+| Re-entry at the anomaly trigger carries real edge: excess +12.9%/63d IN (t14.2), +24.9% KR (t14.8), +6.1% JP, +5.1% US — survivorship-lite caveat, paper-track settling live | 7/10 | validated 2026-07-27 (live OOS pending) |
 
 ## Gaps to fix (prioritised by impact ÷ effort)
 
@@ -52,6 +55,7 @@ A full-arc review from the platform's origin to the live paper-track: what we've
 | Time-series speculation only US 2017–2025, shallow | 5 | 4 | CN_em now holds 10y of full statements — extend the TS speculation study to CN (and JP via EDINET) next |
 | Regime (bull/bear) not wired into the LIVE screener (static filters) | 5 | 4 | condition the playbook screener on the breadth-regime proxy already built |
 | Live forward performance = zero (paper-track just started) | 7 | 9 | TIME — the picks were only just watchlisted; needs weeks/months to validate out-of-sample |
+| Re-entry engine edge is backtest-only (survivorship-lite top-200 panel) | 6 | 8 | TIME — status=reentry rows now feed the paper-track; judge after 1-2 months of live triggers |
 | EU depth pre-2021 paywalled → EU value stays underpowered | 4 | 7 | national registries / paid vendor — low priority, hard |
 
 ### ✅ Cleared this pass (2026-07-27)
