@@ -163,6 +163,15 @@ FAILURES=()
   $PY playbook_screener.py \
     || FAILURES+=("screen: playbook (validated edges)")
 
+  # [13w] Prediction filter (2026-07-27): the mailer_prediction_audit lens as a
+  # ROUTINE eviction input — refresh regime×Markov×Kalman scores, auto-purge
+  # non-held WEAK names (bear state + negative drift), write held WEAK to
+  # reports/held_sell_review.csv for the mailer's SELL-REVIEW block. Stale
+  # stock panels (>7d) are skipped, held rows are never auto-purged.
+  step "[13w/14] prediction filter (regime x Markov x Kalman -> evictions)"
+  $PY prediction_filter.py \
+    || FAILURES+=("prediction filter: see [13w] above")
+
   # [13x] Paper-track scorecard — accumulates every past mailer pick (signal
   # ledger) and marks to today, so the mailer carries a running report card.
   # Weekly (Mondays) — the forward horizons only move meaningfully week to

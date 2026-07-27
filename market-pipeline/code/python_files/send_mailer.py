@@ -194,9 +194,59 @@ if __name__ == "__main__":
         except Exception as _e:
             print(f"  watchlist link skipped: {str(_e)[:60]}")
 
+    # Prediction-lens block (2026-07-27): verdict counts from the routine
+    # prediction filter + held SELL-REVIEW names + today's prediction purges.
+    pred_html = ""
+    try:
+        import pandas as _pd
+        _sc = Path("reports/watchlist_prediction_scores.csv")
+        if _sc.exists():
+            _s = _pd.read_csv(_sc)
+            _vc = _s["verdict"].str.split(" ").str[0].value_counts()
+            _cnt = " · ".join(f"{k} {v}" for k, v in _vc.items())
+            _rows = ""
+            if "rsi_zone" in _s.columns:
+                _rz = _s["rsi_zone"].value_counts()
+                _rows += ('<div style="margin:4px 0"><b>RSI zones</b> '
+                          '(per-market read: momentum IN, mean-revert US/JP/KR/EU): '
+                          + " · ".join(f"{k} {v}" for k, v in _rz.items()
+                                       if k != "?") + '</div>')
+            _sr = Path("reports/held_sell_review.csv")
+            if _sr.exists():
+                _h = _pd.read_csv(_sr)
+                if len(_h):
+                    _names = ", ".join(
+                        f"{r.symbol} ({r.kalman_drift_ann_pct:+.0f}%/yr)"
+                        for r in _h.head(12).itertuples())
+                    _rows += (f'<div style="margin:4px 0"><b>SELL-REVIEW (held, '
+                              f'bear state + neg drift):</b> {_names}'
+                              + (f" +{len(_h)-12} more" if len(_h) > 12 else "") + '</div>')
+            _pg = Path("watchlist_purged.csv")
+            if _pg.exists():
+                _p = _pd.read_csv(_pg)
+                _today = _p[_p["note"].astype(str).str.contains("prediction", case=False)
+                            & _p["note"].astype(str).str.contains(
+                                _pd.Timestamp.today().strftime("%Y-%m-%d"))]
+                if len(_today):
+                    _rows += (f'<div style="margin:4px 0"><b>Purged today '
+                              f'(prediction filter):</b> {len(_today)} names — '
+                              + ", ".join(_today["symbol"].head(10))
+                              + (" …" if len(_today) > 10 else "") + '</div>')
+            pred_html = (
+                '<div style="background:#f4f0e8;border-left:4px solid #8a6d3b;'
+                'padding:10px 14px;margin:12px 0;border-radius:6px;font-size:13px">'
+                '<b>🔮 Prediction lens</b> (market regime × stock Markov state × '
+                f'Kalman drift): {_cnt}' + _rows +
+                '<div style="color:#777;font-size:11px;margin-top:4px">Kalman drift '
+                'is a ranking, not a forecast; Markov 21d column vetoes ENTER-OK. '
+                'Held names are never auto-purged — SELL-REVIEW is advisory.</div></div>')
+    except Exception as _e:
+        print(f"  prediction section skipped: {str(_e)[:60]}")
+
     html = (html
             + '<div style="margin:22px 0 10px;border-top:3px solid #0B2F4A"></div>'
             + wl_link
+            + pred_html
             + digest_html)
     subject += digest_subj
     attachments = None
