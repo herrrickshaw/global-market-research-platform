@@ -31,6 +31,7 @@ from datetime import datetime
 from pathlib import Path
 
 import pandas as pd
+import scan_core as _scan_core
 import yfinance as yf
 
 # ── percentile re-tier (adaptive_liquidity) ──────────────────────────────────
@@ -41,13 +42,8 @@ import yfinance as yf
 # the same thing in every market and each market self-calibrates.
 # Percentiles need the whole universe, so this runs once on the assembled frame
 # rather than inside the per-symbol map.
-def _retier(_df, _col):
-    try:
-        import adaptive_liquidity as _AL
-        return _AL.retier(_df, turnover_col=_col)
-    except Exception as _e:      # never let tiering break a scan
-        print(f"  retier skipped: {str(_e)[:60]}")
-        return _df
+# unified in scan_core.py (2026-07-27) — thin wrapper, call sites unchanged
+_retier = _scan_core._retier
 
 
 # 50/200-DMA golden cross — one shared implementation (golden_cross.py). This scan
@@ -221,12 +217,8 @@ def bulk_download(symbols: list, batch_size: int) -> dict:
 
 
 # ── Financials Extractors ─────────────────────────────────────────────────────
-def _first_df(ticker, *attrs):
-    for attr in attrs:
-        df = getattr(ticker, attr, None)
-        if df is not None and isinstance(df, pd.DataFrame) and not df.empty:
-            return df
-    return None
+# unified in scan_core.py (2026-07-27) — thin wrapper, call sites unchanged
+_first_df = _scan_core._first_df
 
 def _row(df, *row_names, col: int = 0):
     if df is None or df.empty:
@@ -262,87 +254,12 @@ def _series(df, *rows):
     return []
 
 # ── Technical Scans ───────────────────────────────────────────────────────────
+# unified in scan_core.py (2026-07-27) — thin wrapper, call sites unchanged
+# NOTE 2026-07-27: EU now inherits the JP/KR settled-close rule — a trailing
+# NaN bar is dropped to the last valid close instead of returning NO_DATA
+# (strictly more coverage; the documented-correct semantics).
 def compute_darvas_box(df: pd.DataFrame, confirm: int = DARVAS_CONFIRM) -> dict:
-    """Detect Darvas Box from historical Close/High/Low series."""
-    if df is None or df.empty or len(df) < confirm + 5:
-        return {"signal": "INSUFFICIENT_DATA", "box_top": None, "box_bottom": None}
-    # 🔴 Trailing NaN bars must be DROPPED, never zero-filled.
-    # .fillna(0) turned a missing final close into current=0, and 0 is below
-    # every box bottom — so the whole universe reported BREAKDOWN_SELL. Korea
-    # 2026-07-21: 2,472 of 2,480 rows, with Position_in_Box% reading -1990.9
-    # ((0-2190)/110*100) instead of the true 59.1. The zero also never reached
-    # LTP, which is computed with .dropna(), so the sheet showed a real price
-    # beside a signal derived from zero — self-contradictory and hard to spot.
-    # Zero is a PRICE here, not a null; coercing missing data to a valid-looking
-    # value is what made this silent.
-
-    highs  = pd.to_numeric(df["High"],  errors="coerce").tolist()
-    lows   = pd.to_numeric(df["Low"],   errors="coerce").tolist()
-    closes = pd.to_numeric(df["Close"], errors="coerce").tolist()
-
-    current = closes[-1]
-    if current is None or current != current or current <= 0:
-        # Explicit: a missing final bar is NO_DATA. Falling through would make
-        # every comparison False and silently report IN_BOX — a different wrong
-        # answer, not a right one.
-        return {"signal": "NO_DATA", "box_top": None, "box_bottom": None,
-                "current_price": None}
-    highs_h = highs[:-1]  # Exclude current bar to avoid lookahead contamination
-    lows_h  = lows[:-1]
-    n       = len(highs_h)
-
-    # Step 1: Box Top
-    box_top_idx = box_top = None
-    for i in range(n - confirm - 1, -1, -1):
-        c = highs_h[i]
-        if c == 0:
-            continue
-        w = highs_h[i + 1 : i + 1 + confirm]
-        if len(w) == confirm and all(h < c for h in w):
-            box_top_idx, box_top = i, c
-            break
-
-    if box_top is None:
-        return {"signal": "NO_BOX", "box_top": None, "box_bottom": None}
-
-    # Step 2: Box Bottom (historical segment starting from the box top)
-    seg = lows_h[box_top_idx:]
-    box_bottom = None
-    for i in range(len(seg) - confirm):
-        c = seg[i]
-        if c == 0:
-            continue
-        w = seg[i + 1 : i + 1 + confirm]
-        if len(w) == confirm and all(l > c for l in w):
-            box_bottom = c
-            break
-    if box_bottom is None:
-        valid = [l for l in seg if l > 0]
-        box_bottom = min(valid) if valid else None
-
-    if box_bottom is None:
-        return {"signal": "NO_BOX", "box_top": round(box_top, 2), "box_bottom": None}
-
-    # Step 3: Classify Signal
-    if current > box_top:
-        signal = "BREAKOUT_BUY"
-    elif current < box_bottom:
-        signal = "BREAKDOWN_SELL"
-    else:
-        signal = "IN_BOX"
-
-    rng        = box_top - box_bottom
-    upside_pct = (box_top - current) / current * 100 if current else 0
-    pos_in_box = (current - box_bottom) / rng * 100 if rng else 0
-
-    return {
-        "signal":        signal,
-        "box_top":       round(box_top,    2),
-        "box_bottom":    round(box_bottom, 2),
-        "current_price": round(current,    2),
-        "upside_pct":    round(upside_pct, 2),
-        "pos_in_box":    round(pos_in_box, 1),
-    }
+    return _scan_core.compute_darvas_box(df, confirm=confirm, decimals=2)
 
 # ── Fundamental Scan ──────────────────────────────────────────────────────────
 def fundamental_scan(symbol: str) -> dict:

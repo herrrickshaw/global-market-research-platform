@@ -31,6 +31,12 @@ cd "$(dirname "$0")"
 PY="$(dirname "$0")/.venv/bin/python3"
 [ -x "$PY" ] || PY=python3
 LOG="daily_pipeline_$(date +%Y%m%d).log"
+# --post-only (2026-07-27): skip scans+correlations (steps 1-13) and run only
+# the post-scan block — screens, prediction/tier/reentry chain, validation,
+# mailer. For verifying pipeline-logic changes without 45-90 min of redundant
+# rescans of unchanged closed-market data (this cost 3 extra full runs today).
+POST_ONLY=0
+for _a in "$@"; do [ "$_a" = "--post-only" ] && POST_ONLY=1; done
 mkdir -p correlation_scan
 # ── step timing ───────────────────────────────────────────────────────────────
 # Emits a machine-readable marker before every step so run times are MEASURED, not
@@ -64,50 +70,70 @@ FAILURES=()
   step "[0/14] dependency check"
   $PY check_deps.py || FAILURES+=("STARTUP: missing required dependencies (see banner above)")
 
-  step "[1/14] India EOD refresh (official bhavcopy, incremental)"
-  $PY bhavcopy_history.py 400 || { echo "  bhavcopy refresh failed (will use cache)"; FAILURES+=("India: bhavcopy refresh"); }
+  # [0b] Pre-flight input gates (2026-07-27, SCREENER_SMOOTHNESS_STRATEGIES #4):
+  # assert cache dirs writable, universe lists sane, bhavcopy fresh, Postgres up —
+  # BEFORE any scan computes. A hard failure here is loud but non-blocking, same
+  # guarded-step philosophy as everything else.
+  step "[0b] pre-flight: scan input gates"
+  $PY preflight_scan_inputs.py || FAILURES+=("STARTUP: pre-flight input gate(s) failed (see [0b] above)")
 
-  step "[2/14] India full screener scan"
-  $PY scan_bhavcopy.py || { echo "  scan failed (will use latest cache)"; FAILURES+=("India: full screener scan"); }
+  if [ "$POST_ONLY" = "1" ]; then
+    echo "— post-only: skipping scans+correlations [1-13] —"
+  else
+    step "[1/14] India EOD refresh (official bhavcopy, incremental)"
+    $PY bhavcopy_history.py 400 || { echo "  bhavcopy refresh failed (will use cache)"; FAILURES+=("India: bhavcopy refresh"); }
 
-  step "[3/14] India combined report (fundamentals + street talk)"
-  $PY daily_combined_report.py --market IN --html || { echo "  combined report failed"; FAILURES+=("India: combined report"); }
+    step "[2/14] India full screener scan"
+    $PY scan_bhavcopy.py || { echo "  scan failed (will use latest cache)"; FAILURES+=("India: full screener scan"); }
 
-  step "[3b] refresh India CCC screen (screener.in)"
-  $PY -c "import screener_in as s; s.ccc_screen().to_parquet('cache_seed/india_ccc_screen.parquet', index=False)" || { echo "  CCC refresh skipped"; FAILURES+=("India: CCC screen refresh"); }
+    step "[3/14] India combined report (fundamentals + street talk)"
+    $PY daily_combined_report.py --market IN --html || { echo "  combined report failed"; FAILURES+=("India: combined report"); }
 
-  step "[3c] daily test: validate screener.in CCC scrape"
-  $PY test_screener_in.py || { echo "  ⚠️  screener.in CCC test FAILED — see checks above. CCC section will show n/a until this is fixed."; FAILURES+=("India: CCC scrape test"); }
+    step "[3b] refresh India CCC screen (screener.in)"
+    $PY -c "import screener_in as s; s.ccc_screen().to_parquet('cache_seed/india_ccc_screen.parquet', index=False)" || { echo "  CCC refresh skipped"; FAILURES+=("India: CCC screen refresh"); }
 
-  step "[4/14] US full market scan (fresh, NASDAQ+NYSE, min-price \$2)"
-  $PY full_us_market_scan.py --workers 10 --min-price 2 || { echo "  US full market scan failed (continuing)"; FAILURES+=("US: full market scan"); }
+    step "[3c] daily test: validate screener.in CCC scrape"
+    $PY test_screener_in.py || { echo "  ⚠️  screener.in CCC test FAILED — see checks above. CCC section will show n/a until this is fixed."; FAILURES+=("India: CCC scrape test"); }
 
-  step "[5/14] US combined report (fundamentals + street talk, reuses fresh US scan)"
-  $PY daily_combined_report.py --market US --html || { echo "  US combined report failed (continuing)"; FAILURES+=("US: combined report"); }
+    step "[4/14] US full market scan (fresh, NASDAQ+NYSE, min-price \$2)"
+    $PY full_us_market_scan.py --workers 10 --min-price 2 || { echo "  US full market scan failed (continuing)"; FAILURES+=("US: full market scan"); }
 
-  step "[6/14] Europe full market scan (broad 17-exchange / 966-stock universe)"
-  $PY full_european_market_scan.py --universe data/europe_broad_list.csv --label broad || { echo "  Europe full market scan failed (continuing)"; FAILURES+=("Europe: full market scan"); }
+    step "[5/14] US combined report (fundamentals + street talk, reuses fresh US scan)"
+    $PY daily_combined_report.py --market US --html || { echo "  US combined report failed (continuing)"; FAILURES+=("US: combined report"); }
 
-  step "[7/14] Japan full market scan (TSE)"
-  $PY full_japan_market_scan.py --workers 10 || { echo "  Japan full market scan failed (continuing)"; FAILURES+=("Japan: full market scan"); }
+    step "[6/14] Europe full market scan (broad 17-exchange / 966-stock universe)"
+    $PY full_european_market_scan.py --universe data/europe_broad_list.csv --label broad || { echo "  Europe full market scan failed (continuing)"; FAILURES+=("Europe: full market scan"); }
 
-  step "[8/14] Korea full market scan (KOSPI+KOSDAQ)"
-  $PY full_korea_market_scan.py --workers 10 || { echo "  Korea full market scan failed (continuing)"; FAILURES+=("Korea: full market scan"); }
+    step "[7/14] Japan full market scan (TSE)"
+    $PY full_japan_market_scan.py --workers 10 || { echo "  Japan full market scan failed (continuing)"; FAILURES+=("Japan: full market scan"); }
 
-  step "[9/14] Correlation scan — NSE"
-  $PY market_correlation_scan.py --market NSE --output-dir correlation_scan || { echo "  NSE correlation scan failed (continuing)"; FAILURES+=("NSE: correlation scan"); }
+    step "[8/14] Korea full market scan (KOSPI+KOSDAQ)"
+    $PY full_korea_market_scan.py --workers 10 || { echo "  Korea full market scan failed (continuing)"; FAILURES+=("Korea: full market scan"); }
 
-  step "[10/14] Correlation scan — US"
-  $PY market_correlation_scan.py --market US --output-dir correlation_scan || { echo "  US correlation scan failed (continuing)"; FAILURES+=("US: correlation scan"); }
+    step "[9/14] Correlation scan — NSE"
+    $PY market_correlation_scan.py --market NSE --output-dir correlation_scan || { echo "  NSE correlation scan failed (continuing)"; FAILURES+=("NSE: correlation scan"); }
 
-  step "[11/14] Correlation scan — Europe"
-  $PY market_correlation_scan.py --market EUROPE --output-dir correlation_scan || { echo "  Europe correlation scan failed (continuing)"; FAILURES+=("Europe: correlation scan"); }
+    # US correlation is WEEKLY (Mondays) as of 2026-07-27: at 28.6 min it is
+    # the single most expensive step (~55% of a warm run) for a 7,000x7,000
+    # matrix whose clusters drift over weeks, not days. Same Monday cadence as
+    # the paper-track scorecard. Other markets stay daily (each <=5 min).
+    if [[ "$(date +%u)" == "1" ]]; then
+      step "[10/14] Correlation scan — US (weekly, Mondays)"
+      $PY market_correlation_scan.py --market US --output-dir correlation_scan || { echo "  US correlation scan failed (continuing)"; FAILURES+=("US: correlation scan"); }
+    else
+      step "[10/14] Correlation scan — US (skipped — weekly, next Monday)"
+      echo "  using last Monday's US correlation matrix (drifts slowly)"
+    fi
 
-  step "[12/14] Correlation scan — Japan"
-  $PY market_correlation_scan.py --market JAPAN --output-dir correlation_scan || { echo "  Japan correlation scan failed (continuing)"; FAILURES+=("Japan: correlation scan"); }
+    step "[11/14] Correlation scan — Europe"
+    $PY market_correlation_scan.py --market EUROPE --output-dir correlation_scan || { echo "  Europe correlation scan failed (continuing)"; FAILURES+=("Europe: correlation scan"); }
 
-  step "[13/14] Correlation scan — Korea"
-  $PY market_correlation_scan.py --market KOREA --output-dir correlation_scan || { echo "  Korea correlation scan failed (continuing)"; FAILURES+=("Korea: correlation scan"); }
+    step "[12/14] Correlation scan — Japan"
+    $PY market_correlation_scan.py --market JAPAN --output-dir correlation_scan || { echo "  Japan correlation scan failed (continuing)"; FAILURES+=("Japan: correlation scan"); }
+
+    step "[13/14] Correlation scan — Korea"
+    $PY market_correlation_scan.py --market KOREA --output-dir correlation_scan || { echo "  Korea correlation scan failed (continuing)"; FAILURES+=("Korea: correlation scan"); }
+  fi
 
   # [13b] External validation — the gate between "built" and "sent".
   #
@@ -129,11 +155,85 @@ FAILURES=()
   # with NO liquidity gate when the FX fetch failed; India momentum-only) was
   # invisible in its own scan and obvious side by side. Non-fatal: it registers a
   # FAILURE so the alert fires, without blocking a brief that is mostly sound.
+  # [13y] Watchlist repair — fixes data gaps at the ROOT before anything
+  # renders: NSE renames applied (symbolchange.csv, chain-resolved), wrong
+  # symbols corrected against the current EQUITY list, ETFs/delisted names
+  # archived with reasons (EDGAR registry check for US). Cheap: two cached
+  # downloads, refreshed weekly.
+  step "[13y/14] watchlist repair (renames/delists/ETFs)"
+  $PY watchlist_repair.py \
+    || FAILURES+=("repair: watchlist renames/delists")
+
+  # [13z] Value re-rating screen (India) — the combined signal the PE
+  # backtests earned (2026-07-23): cheap vs own sector ∩ expanding 12M PE,
+  # ₹1cr/day liquidity-gated at source, top-15 promoted to watchlist.csv as
+  # `signal` rows BEFORE the mailer builds, so today's picks are in today's
+  # email. Reads only local parquets (screener history + adjusted panel).
+  step "[13z/14] value re-rating screen (India)"
+  $PY screen_value_rerating.py \
+    || FAILURES+=("screen: value re-rating (India)")
+
+  # [13y] Playbook screener — apply each market's BACKTEST-VALIDATED edge as a live
+  # filter (IN trend+value/quality · US/JP cheap-vs-market · KR value+quality L/S ·
+  # EU momentum · CN none-value-fails) -> reports/playbook_picks.csv, promoted to
+  # watchlist.csv as `playbook` rows (entry price+date) so the paper-track scores them.
+  # Runs BEFORE the mailer so today's playbook picks are in today's digest.
+  step "[13y/14] playbook screener (validated edges -> picks -> watchlist)"
+  $PY playbook_screener.py \
+    || FAILURES+=("screen: playbook (validated edges)")
+
+  # [13w] Prediction filter (2026-07-27): the mailer_prediction_audit lens as a
+  # ROUTINE eviction input — refresh regime×Markov×Kalman scores, auto-purge
+  # non-held WEAK names (bear state + negative drift), write held WEAK to
+  # reports/held_sell_review.csv for the mailer's SELL-REVIEW block. Stale
+  # stock panels (>7d) are skipped, held rows are never auto-purged.
+  step "[13w/14] prediction filter (regime x Markov x Kalman -> evictions)"
+  $PY prediction_filter.py \
+    || FAILURES+=("prediction filter: see [13w] above")
+
+  # Three-tier watchlist (2026-07-27): tier 2 = validation watchlist (every
+  # purged name tracked against the criteria that evicted it, per-market RSI
+  # zones); tier 3 = anomalies (price action CONTRADICTS the eviction — the
+  # prediction model's misses, i.e. the research queue).
+  $PY watchlist_tiers.py \
+    || FAILURES+=("watchlist tiers: sync/promote failed")
+
+  # Re-entry engine (mean-reversion discovery): fresh tier-3 anomalies, market
+  # not bear, RSI overbought veto → top-3/market re-enter tier 1 as
+  # status=reentry rows; the paper-track scores the engine out-of-sample.
+  # Backtested: excess +5-25%/63d, t 7-15 across IN/JP/KR/US.
+  $PY reentry_engine.py \
+    || FAILURES+=("reentry engine: rank/enroll failed")
+
+  # [13x] Paper-track scorecard — accumulates every past mailer pick (signal
+  # ledger) and marks to today, so the mailer carries a running report card.
+  # Weekly (Mondays) — the forward horizons only move meaningfully week to
+  # week, and it reads the same panels the digest already loads.
+  if [[ "$(date +%u)" == "1" ]]; then
+    step "[13x/14] paper-track scorecard (weekly)"
+    $PY paper_track.py > /dev/null 2>&1 \
+      || FAILURES+=("scorecard: paper_track")
+  fi
+
   step "[13a/14] cross-market consistency audit"
   $PY consistency_audit.py || FAILURES+=("consistency: cross-market anomaly (see audit above)")
 
+  # fast daily refresh of the LIVE market regime (bull/bear per market) so the
+  # digest's regime-conditional Buy/Hold/Sell rule uses today's breadth. Cheap
+  # (~2y panel per market); the monthly [16d] rebuilds the bull/bear rule table.
+  step "[13c/14] refresh live market regime (zone_regime.json)"
+  $PY strategy_regime_survival.py --refresh-regime || echo "  regime refresh failed (continuing)"
+
+  # [13d] Warehouse-first price reconcile (2026-07-27, SMOOTHNESS #3): spot-check
+  # EVERY market's scan LTPs against fresh quotes + the warehouse stale-cache
+  # signature — the INFY class (Friday close on a +3.7% Monday) now gates the
+  # mailer for all five markets, not just India's screener.in sample.
+  step "[13d/14] scan price reconcile (all markets)"
+  RECONCILE_OK=0
+  $PY scan_price_reconcile.py || { RECONCILE_OK=$?; echo "  ⚠ $RECONCILE_OK market(s) failed price reconcile"; FAILURES+=("reconcile: $RECONCILE_OK market(s) stale scan prices"); }
+
   step "[13b/14] validate brief against screener.in"
-  if $PY validate_brief.py --sample 6; then
+  if $PY validate_brief.py --sample 6 && [ "$RECONCILE_OK" -eq 0 ]; then
       step "[14/14] build + send mailer"
       $PY send_mailer.py "$@" || { echo "  mailer build/send failed"; FAILURES+=("mailer: build/send"); }
   else
@@ -172,6 +272,24 @@ FAILURES=()
   /usr/bin/python3 financial_ratios.py \
     || FAILURES+=("ratios: financial_ratios rebuild")
 
+  # [15c] All-market ratio derivation + data-quality gate. build_all_ratios derives
+  # PE/PB/ROE across ALL warehouse markets (adds JP/EU/CN from already-collected
+  # fundamentals, no fetch); data_quality runs GE/dbt-style expectations (unique,
+  # not-null, accepted-range, freshness), back-fills missing ratios, and reports
+  # coverage — a validation gate that fails loudly on regressions.
+  $PY build_all_ratios.py > /dev/null 2>&1 \
+    && $PY data_quality.py > /dev/null 2>&1 \
+    && echo "  ratios extended (6 markets) + data-quality validated" \
+    || FAILURES+=("data-quality: ratio build / validation gate")
+
+  # [15d] Data ledger refresh — re-inspect every source (prices/fundamentals/derived)
+  # for volume + freshness (latest data date, last-fetch date) so the catalog always
+  # reflects disk. reports/data_ledger.md answers "which market is up to date at what
+  # level, and how/when to top it up off-peak" without hitting rate throttles.
+  $PY data_ledger.py > /dev/null 2>&1 \
+    && echo "  data ledger refreshed" \
+    || FAILURES+=("data-ledger: refresh")
+
   # [16] Cloud copy — rclone-sync the data trees (market_cache, bhavcopy_cache,
   # cache_seed, gmd cache_seed, warehouse duckdb) to Google Drive with dated
   # history, replacing GitHub LFS as the off-machine store (LFS budget is
@@ -182,6 +300,97 @@ FAILURES=()
   step "[16/16] cloud backup (rclone -> Google Drive)"
   /Users/umashankar/scripts/cloud_backup.sh \
     || FAILURES+=("cloud: rclone backup (see cloud_backup.log)")
+
+  # [16d] Monthly refresh of the per-market zone rules + PE anomaly stats
+  # (backtests over 10y panels; slow-ish, monthly is plenty). Same marker
+  # pattern. zone_rules.json feeds the digest's per-market Buy/Hold/Sell.
+  ZR_MARK="$HOME/.local/state/zone_rules_last_build"
+  if [[ "$(cat "$ZR_MARK" 2>/dev/null)" != "$(date +%Y-%m)" ]]; then
+    step "[16d] monthly zone-rule + regime-survival + PE-anomaly backtests"
+    $PY backtest_zone_rules.py > /dev/null 2>&1 \
+      && $PY strategy_regime_survival.py > /dev/null 2>&1 \
+      && $PY backtest_pe_anomalies.py > /dev/null 2>&1 \
+      && { mkdir -p "$(dirname "$ZR_MARK")" && date +%Y-%m > "$ZR_MARK"; \
+           echo "  zone rules + regime survival + PE anomalies refreshed"; } \
+      || FAILURES+=("backtest: zone rules / regime survival / PE anomalies")
+  fi
+
+  # [16c] Monthly bundle validation vs public benchmarks (user, 2026-07-23).
+  # Runs the first pipeline run of each month, AFTER the mailer step has done
+  # the monthly bundle rebuild — validates the fresh bundles against SPDR
+  # holdings + NSE constituent lists (network, so it lives HERE and never
+  # inside the mailer path). Same exactly-once marker pattern as [16b].
+  # [16e] Monthly full sector-cache rebuild — re-attempts every name incl. the
+  # yfinance blanks the daily budget caches and skips, so a sector that becomes
+  # available later is picked up. Slow (full yfinance sweep), monthly only.
+  SEC_MARK="$HOME/.local/state/sector_cache_last_rebuild"
+  if [[ "$(cat "$SEC_MARK" 2>/dev/null)" != "$(date +%Y-%m)" ]]; then
+    step "[16e] monthly sector-cache rebuild"
+    $PY watchlist_digest.py --build-sectors --no-maintain --out /dev/null > /dev/null 2>&1 \
+      && { mkdir -p "$(dirname "$SEC_MARK")" && date +%Y-%m > "$SEC_MARK"; } \
+      || FAILURES+=("sector: monthly rebuild")
+  fi
+
+  BV_MARK="$HOME/.local/state/bundle_validation_last_run"
+  if [[ -f cache_seed/portfolio_bundles.json && "$(cat "$BV_MARK" 2>/dev/null)" != "$(date +%Y-%m)" ]]; then
+    step "[16c] monthly bundle validation vs benchmarks"
+    if $PY bundle_validation.py > /dev/null; then
+      mkdir -p "$(dirname "$BV_MARK")" && date +%Y-%m > "$BV_MARK"
+      echo "  bundle validation refreshed -> reports/bundle_validation.md"
+    else
+      FAILURES+=("validate: bundle benchmark comparison")
+    fi
+  fi
+
+  # [16b] Monthly snapshot of the purged-watchlist archive to Dropbox (user,
+  # 2026-07-23). Rides the pipeline instead of owning a monthly schedule: the
+  # pmset 00:25 wake guarantees THIS job fires, while a standalone monthly
+  # cron on a sleeping Mac is silently skipped and runs a month late. The
+  # marker file makes it exactly-once per calendar month — the first pipeline
+  # run of a new month uploads the cumulative CSV as watchlist_purged_YYYY-MM.csv.
+  PURGE_MARK="$HOME/.local/state/watchlist_purged_last_archive"
+  THIS_MONTH="$(date +%Y-%m)"
+  if [[ -f watchlist_purged.csv && "$(cat "$PURGE_MARK" 2>/dev/null)" != "$THIS_MONTH" ]]; then
+    step "[16b] monthly purged-watchlist snapshot -> Dropbox"
+    if /opt/homebrew/bin/rclone copyto watchlist_purged.csv \
+         "dropbox:market-data-archive/watchlist_purged/watchlist_purged_${THIS_MONTH}.csv" \
+         --retries 3; then
+      mkdir -p "$(dirname "$PURGE_MARK")" && printf '%s' "$THIS_MONTH" > "$PURGE_MARK"
+      echo "  archived watchlist_purged.csv -> Dropbox (${THIS_MONTH})"
+    else
+      FAILURES+=("archive: purged watchlist -> Dropbox")
+    fi
+  fi
+
+  # [17] IUDX flood-sensor archive — pulls latest readings for the 77-sensor
+  # EnvFlood fleet (Pune/Chennai/Kalyan-Dombivli) into ~/iudx-flood-collector/
+  # flood.duckdb. Until the 3 provider access requests (PENDING since
+  # 2026-07-23) are approved this collects 0 rows but doubles as the daily
+  # approval-checker: the run after an approval starts archiving automatically.
+  # IUDX serves live snapshots only, so the accumulated history IS the asset
+  # (bhavcopy thesis). /usr/bin/python3, not $PY — duckdb, same as step [15].
+  # Riding this run for the same reason as [16]: a separate schedule would
+  # fire while the Mac sleeps.
+  step "[17/17] IUDX flood-sensor collect"
+  /usr/bin/python3 /Users/umashankar/iudx-flood-collector/collector.py \
+    || FAILURES+=("iudx: flood collector (see access_log in flood.duckdb)")
+
+  # [18] Annual IMD rainfall refresh — self-guarded: no-ops except in Jan/Feb
+  # and only once per year (marker analysis/data/.refresh_done_<Y>). When IMD
+  # finalizes last year it re-pulls the revised grids, rewrites the 12-city
+  # series, recomputes metrics, mails the summary, and pushes kalki_flooding.
+  # Riding this run for the usual reason: a standalone January schedule would
+  # fire while the Mac sleeps and silently never happen. $PY (venv), not
+  # /usr/bin/python3 — imdlib's numpy/xarray chain lives there + ./pkgs.
+  step "[18/18] annual IMD rainfall refresh (Jan/Feb no-op guard)"
+  $PY /Users/umashankar/iudx-flood-collector/annual_refresh.py \
+    || FAILURES+=("rain: annual IMD refresh (see kalki_flooding)")
+
+  # NOTE: the watchlist digest no longer has its own step. It rides INSIDE
+  # send_mailer.py at [14/14] — brief + digest are ONE email (user,
+  # 2026-07-23) — and that call also runs watchlist hygiene (entry backfill,
+  # sell-zone eviction, >3-week purge). The old 07:00 n8n schedule stays
+  # deactivated; a second sender would double-mail.
 
   if [[ ${#FAILURES[@]} -gt 0 ]]; then
     echo "[ALERT] ${#FAILURES[@]} step(s) failed: ${FAILURES[*]}"

@@ -22,6 +22,7 @@ from datetime import datetime
 from pathlib import Path
 
 import pandas as pd
+import scan_core as _scan_core
 
 warnings.filterwarnings("ignore")
 
@@ -37,13 +38,8 @@ from stock_utils import parallel_map, pct_change
 # the same thing in every market and each market self-calibrates.
 # Percentiles need the whole universe, so this runs once on the assembled frame
 # rather than inside the per-symbol map.
-def _retier(_df, _col):
-    try:
-        import adaptive_liquidity as _AL
-        return _AL.retier(_df, turnover_col=_col)
-    except Exception as _e:      # never let tiering break a scan
-        print(f"  retier skipped: {str(_e)[:60]}")
-        return _df
+# unified in scan_core.py (2026-07-27) — thin wrapper, call sites unchanged
+_retier = _scan_core._retier
 
 
 OUT_DIR = Path("indian_full_scan"); OUT_DIR.mkdir(exist_ok=True)

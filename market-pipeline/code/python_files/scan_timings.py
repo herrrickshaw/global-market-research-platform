@@ -38,8 +38,9 @@ import sys
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
-LOG_GLOBS = [str(HERE / "daily_pipeline_*.log"),
-             str(Path.home() / "Downloads/code/python_files/daily_pipeline_*.log")]
+LOG_GLOBS = [str(HERE / "daily_pipeline_*.log")]
+# (the ~/Downloads/code mirror glob is retired — abandoned tree, wiped by a
+#  parallel session; reading it risks timing stats from stale pre-migration logs)
 DSN = "dbname=market_data host=/tmp user=umashankar"
 
 STEP_RE = re.compile(r"^\[STEP\] (\d+) (\S+) (\[[^\]]+\][^\n]*)")

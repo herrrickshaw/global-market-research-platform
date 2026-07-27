@@ -15,7 +15,7 @@
 # Unified columns used: TradDt, TckrSymb, SctySrs, FinInstrmTp,
 #                       OpnPric, HghPric, LwPric, ClsPric, TtlTradgVol
 #
-# Caches raw CSVs under  ~/Downloads/data/bhavcopy_cache/{nse,bse}/<date>.csv
+# Caches raw CSVs under  ~/market-pipeline/data/bhavcopy_cache/{nse,bse}/<date>.csv
 # so re-runs only fetch the newest missing day.
 
 from __future__ import annotations

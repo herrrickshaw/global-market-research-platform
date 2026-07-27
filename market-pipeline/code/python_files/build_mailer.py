@@ -371,6 +371,34 @@ def _darvas_section(market: str, cap: int = 15) -> str:
     n1 = int((df["Tier"] == 1).sum())
     n2 = int((df["Tier"] == 2).sum())
     shown_note = f", top {cap} of {len(df)} shown" if len(df) > cap else ""
+    # Regime gate (10y replay, price_prediction_backtest): bear-regime
+    # breakouts are dead-to-negative — keep the table but say so up front.
+    try:
+        from market_regime import get_regime
+        _reg = get_regime(market)
+    except Exception:
+        _reg = {"trend": "unknown", "vol": "unknown"}
+    _badge_color = {"bull": "#1a7f37", "bear": "#c62828", "chop": "#b26a00"}.get(_reg["trend"], "#777")
+    regime_html = (
+        f'<span style="font-weight:600;color:{_badge_color}">'
+        f'{_reg["trend"].upper()} regime · {_reg.get("vol", "?")} vol</span>'
+    )
+    if _reg["trend"] == "bear":
+        regime_html += (
+            ' <span style="color:#c62828">— breakouts historically dead in bear '
+            'regimes (10y replay: excess ≤0 in US/JP/IN); treat as watch-only, '
+            'not entries</span>'
+        )
+    elif _reg["trend"] == "chop" and _reg.get("vol") == "HIGH":
+        regime_html += (
+            ' <span style="color:#c62828">— chop + HIGH vol: weakest breakout '
+            'cell in the 10y replay; treat as watch-only</span>'
+        )
+    elif _reg.get("vol") == "HIGH":
+        regime_html += (
+            ' <span style="color:#b26a00">— HIGH vol: breakout follow-through '
+            'historically weaker (LOW/MID-vol wins 4 of 5 markets); size down</span>'
+        )
     head = (
         "<tr><th>Tier</th><th>Symbol</th><th>Name</th><th>Exch</th>"
         "<th>LTP</th><th>Day</th><th>Box Pos</th><th>Upside</th>"
@@ -380,6 +408,7 @@ def _darvas_section(market: str, cap: int = 15) -> str:
     return (
         f"<h3>📈 {label} — Darvas Breakouts "
         f'<span style="font-weight:400;color:#777" class="mut">({n1} Tier-1 · {n2} Tier-2{shown_note})</span></h3>'
+        f'<p style="font-size:12px;margin:2px 0 6px">{regime_html}</p>'
         f'<div class="trail" style="overflow-x:auto">'
         f'<table style="border-collapse:collapse;width:100%;font-size:12.5px">'
         f"{head}{body}</table></div>"
@@ -471,7 +500,7 @@ def _as_of_html() -> str:
 
         p = (
             Path(
-                _os.environ.get("BHAV_CACHE", Path.home() / "Downloads" / "data" / "bhavcopy_cache")
+                _os.environ.get("BHAV_CACHE", Path.home() / "market-pipeline" / "data" / "bhavcopy_cache")
             )
             / "cleaned_long.parquet"
         )
@@ -561,7 +590,29 @@ def _market_snapshot_html() -> str:
             f"<div style='font-size:11px;color:{col50}'>{stance50} · 50-DMA "
             f"{'n/a' if dma50 is None else f'{dma50:,.0f}'}{cross_note}</div></td>"
         )
-    return f"<table style='border-collapse:collapse;width:100%'><tr>{''.join(cells)}</tr></table>"
+    # Regime strip: per-market trend/vol gate state (10y-replay-backed).
+    try:
+        from market_regime import get_regime
+        _rc = {"bull": "#1a7f37", "bear": "#c62828", "chop": "#b26a00"}
+        chips = []
+        for code, flag in [("IN", "🇮🇳"), ("US", "🇺🇸"), ("EU", "🇪🇺"),
+                           ("JP", "🇯🇵"), ("KR", "🇰🇷"), ("CN", "🇨🇳")]:
+            r = get_regime(code)
+            c = _rc.get(r["trend"], "#777")
+            chips.append(
+                f"<span style='margin-right:12px'>{flag} "
+                f"<b style='color:{c}'>{r['trend'].upper()}</b>"
+                f"<span style='color:#888'>/{r.get('vol', '?')}</span></span>")
+        regime_strip = (
+            "<div style='font-size:11.5px;margin:6px 0 0;padding:6px 10px;"
+            "background:#f5f5f5;border-radius:4px'>"
+            "<b>Regime gate:</b> " + "".join(chips) +
+            "<span style='color:#888'>— breakout entries only in BULL "
+            "(bear breakouts dead, 10y replay)</span></div>")
+    except Exception:
+        regime_strip = ""
+    return (f"<table style='border-collapse:collapse;width:100%'><tr>{''.join(cells)}</tr></table>"
+            f"{regime_strip}")
 
 
 def build():
@@ -797,7 +848,53 @@ h3{{font-size:14px;margin:14px 0 6px;color:#333}}
     return subject, text, html
 
 
+def _log_tokens_to_ruflo(subject: str, text: str, html: str, duration_seconds: float = 0):
+    """Log token usage for watchlist_mailer to RUFLO monitoring system."""
+    import json
+    import subprocess
+    from pathlib import Path
+
+    # Estimate tokens: ~4 chars = 1 token (rough approximation)
+    # More accurate: input (text size) + output (html size)
+    input_chars = len(subject) + len(text)  # prompt + context
+    output_chars = len(html)  # html output
+
+    input_tokens = max(500, input_chars // 4)  # minimum 500 for model init
+    output_tokens = max(2000, output_chars // 4)  # minimum 2000 for html generation
+
+    token_data = {
+        "taskId": "watchlist_mailer",
+        "taskName": "Morning Watchlist Email",
+        "model": "claude-3-5-haiku-20241022",
+        "inputTokens": input_tokens,
+        "outputTokens": output_tokens,
+        "market": "india",
+        "status": "success",
+        "durationSeconds": duration_seconds
+    }
+
+    # Try to log to RUFLO
+    try:
+        logger_path = Path(__file__).parent.parent.parent.parent / ".ruflo" / "hooks" / "log-token-usage.js"
+        if logger_path.exists():
+            subprocess.run(
+                ["node", str(logger_path)],
+                input=json.dumps(token_data),
+                text=True,
+                capture_output=True,
+                timeout=5
+            )
+    except Exception:
+        pass  # Silent fail — don't break mailer if logging fails
+
+
 if __name__ == "__main__":
+    import time
+    start_time = time.time()
     s, t, h = build()
+    duration = time.time() - start_time
     open("brief_today.html", "w").write(h)
     print(s, "\n", t, "\nhtml bytes:", len(h))
+
+    # Log to RUFLO
+    _log_tokens_to_ruflo(s, t, h, duration_seconds=duration)

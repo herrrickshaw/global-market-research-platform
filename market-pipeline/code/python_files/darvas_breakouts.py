@@ -54,23 +54,19 @@ HERE = Path(__file__).resolve().parent
 HOME = Path(os.path.expanduser("~"))
 DOWNLOADS = HOME / "Downloads"
 
-# Latest-scan glob patterns, most-specific first. Both the local (code/python_files)
-# and the mirrored ~/Downloads/data locations are searched.
+# Latest-scan glob patterns (repo-local only — the ~/Downloads/data mirrors are
+# retired: wipe-prone abandoned tree).
 SCAN_GLOBS = {
     "IN": [
         str(HERE / "indian_full_scan" / "indian_full_scan_*.xlsx"),
-        str(DOWNLOADS / "data" / "indian_full_scan" / "indian_full_scan_*.xlsx"),
         str(HERE / "indian_full_scan_*.xlsx"),
     ],
     "US": [
         str(HERE / "us_full_scan" / "us_full_scan_*.xlsx"),
-        str(DOWNLOADS / "data" / "us_full_scan" / "us_full_scan_*.xlsx"),
-        str(DOWNLOADS / "us_full_scan" / "us_full_scan_*.xlsx"),
         str(HERE / "us_full_scan_*.xlsx"),
     ],
     "EU": [
         str(HERE / "european_scan" / "european_market_scan_*.xlsx"),
-        str(DOWNLOADS / "data" / "european_scan" / "european_market_scan_*.xlsx"),
         str(HERE / "european_market_scan_*.xlsx"),
     ],
 }
@@ -315,7 +311,9 @@ def build(market: str, write_csv: bool = True) -> tuple[str, pd.DataFrame]:
     market = market.upper()
     df = extract(market)
     if write_csv and not df.empty:
-        out = DOWNLOADS / f"{CSV_TAG[market]}_darvas_breakouts_{date.today():%Y%m%d}.csv"
+        # Repo-relative output (was ~/Downloads — wipe-prone tree, retired 2026-07-27)
+        out_dir = HERE / "darvas_breakouts"; out_dir.mkdir(exist_ok=True)
+        out = out_dir / f"{CSV_TAG[market]}_darvas_breakouts_{date.today():%Y%m%d}.csv"
         df.drop(columns=[c for c in ("_score",) if c in df.columns]).to_csv(out, index=False)
         print(f"  [darvas:{market}] {len(df)} fresh breakouts → {out}")
     return to_html(df, market), df

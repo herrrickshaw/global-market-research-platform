@@ -5,6 +5,7 @@ export default defineConfig({
   plugins: [react()],
   server: {
     port: 5173,
+    allowedHosts: true,  // tunnel (cloudflared/tailscale) sends its own Host header
     proxy: {
       '/api': 'http://localhost:8000',
     },

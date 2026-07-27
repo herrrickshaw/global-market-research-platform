@@ -29,7 +29,7 @@ warnings.filterwarnings("ignore")
 from universe_sources import PROVIDERS, get_universe
 
 CACHE = Path(os.environ.get("BHAV_CACHE",
-                            Path.home() / "Downloads" / "data" / "bhavcopy_cache"))
+                            Path.home() / "market-pipeline" / "data" / "bhavcopy_cache"))
 SNAP_DIR = CACHE / "universe_snapshots"
 SNAP_DIR.mkdir(parents=True, exist_ok=True)
 LOG = CACHE / "new_listings.json"

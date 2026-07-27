@@ -85,11 +85,13 @@ except ImportError:
 # ~/Downloads, so a hardcoded root here is unwritable to the scheduled 00:30 run:
 # on 2026-07-20 this module was the ONLY MARKET_CACHE consumer still hardcoding it,
 # and _save_meta() died with PermissionError partway through the US bulk download,
-# taking the whole US scan with it. Default stays on the old path so nothing
-# changes for interactive use.
+# taking the whole US scan with it. 2026-07-27: the ~/Downloads default itself is
+# retired — that tree is ALSO wiped by a parallel session (3rd incident today) —
+# default now follows data_registry (repo-relative), same as every sibling.
 import os as _os
-CACHE_ROOT   = Path(_os.environ.get(
-    "MARKET_CACHE", Path.home() / "Downloads" / "market_cache"))
+from data_registry import MARKET_CACHE as _REG_CACHE
+CACHE_ROOT   = Path(_os.environ.get("MARKET_CACHE", _REG_CACHE))
+CACHE_ROOT.mkdir(parents=True, exist_ok=True)
 OHLC_DIR     = CACHE_ROOT / "ohlc"
 FUND_DIR     = CACHE_ROOT / "fundamentals"
 INDEX_DIR    = CACHE_ROOT / "index"

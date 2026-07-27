@@ -36,6 +36,7 @@ from datetime import datetime, timedelta
 from pathlib import Path
 
 import pandas as pd
+import scan_core as _scan_core
 import requests
 import yfinance as yf
 
@@ -47,13 +48,8 @@ import yfinance as yf
 # the same thing in every market and each market self-calibrates.
 # Percentiles need the whole universe, so this runs once on the assembled frame
 # rather than inside the per-symbol map.
-def _retier(_df, _col):
-    try:
-        import adaptive_liquidity as _AL
-        return _AL.retier(_df, turnover_col=_col)
-    except Exception as _e:      # never let tiering break a scan
-        print(f"  retier skipped: {str(_e)[:60]}")
-        return _df
+# unified in scan_core.py (2026-07-27) — thin wrapper, call sites unchanged
+_retier = _scan_core._retier
 
 
 # 50/200-DMA golden cross — one shared implementation (golden_cross.py). This scan
@@ -284,105 +280,15 @@ def fetch_krx_ohlc(universe: list[dict], months: int = 3) -> dict[str, pd.DataFr
 
 # ── Darvas Box ────────────────────────────────────────────────────────────────
 
+# unified in scan_core.py (2026-07-27) — thin wrapper, call sites unchanged
 def compute_darvas_box(df: pd.DataFrame, confirm: int = DARVAS_CONFIRM) -> dict:
-    if df is None or df.empty or len(df) < confirm + 5:
-        return {"signal": "INSUFFICIENT_DATA", "box_top": None, "box_bottom": None}
-    # Drop trailing bars with no close BEFORE anything else. pykrx/yfinance
-    # append a row for the current session as soon as the date exists, so a scan
-    # run before the market prints sees a NaN final bar. The correct "current
-    # price" is then the last SETTLED close, not a null and certainly not zero.
-    try:
-        _c = pd.to_numeric(df["Close"], errors="coerce")
-        _last = _c.last_valid_index()
-        if _last is None:
-            return {"signal": "NO_DATA", "box_top": None, "box_bottom": None,
-                    "current_price": None}
-        df = df.loc[:_last]
-    except Exception:
-        pass
-    # 🔴 Trailing NaN bars must be DROPPED, never zero-filled.
-    # .fillna(0) turned a missing final close into current=0, and 0 is below
-    # every box bottom — so the whole universe reported BREAKDOWN_SELL. Korea
-    # 2026-07-21: 2,472 of 2,480 rows, with Position_in_Box% reading -1990.9
-    # ((0-2190)/110*100) instead of the true 59.1. The zero also never reached
-    # LTP, which is computed with .dropna(), so the sheet showed a real price
-    # beside a signal derived from zero — self-contradictory and hard to spot.
-    # Zero is a PRICE here, not a null; coercing missing data to a valid-looking
-    # value is what made this silent.
-
-    highs  = pd.to_numeric(df["High"],  errors="coerce").tolist()
-    lows   = pd.to_numeric(df["Low"],   errors="coerce").tolist()
-    closes = pd.to_numeric(df["Close"], errors="coerce").tolist()
-
-    current = closes[-1]
-    if current is None or current != current or current <= 0:
-        # Explicit: a missing final bar is NO_DATA. Falling through would make
-        # every comparison False and silently report IN_BOX — a different wrong
-        # answer, not a right one.
-        return {"signal": "NO_DATA", "box_top": None, "box_bottom": None,
-                "current_price": None}
-    h = highs[:-1]   # exclude current bar from box formation
-    l = lows[:-1]
-    n = len(h)
-
-    box_top_idx = box_top = None
-    for i in range(n - confirm - 1, -1, -1):
-        c = h[i]
-        if c == 0:
-            continue
-        w = h[i + 1: i + 1 + confirm]
-        if len(w) == confirm and all(x < c for x in w):
-            box_top_idx, box_top = i, c
-            break
-
-    if box_top is None:
-        return {"signal": "NO_BOX", "box_top": None, "box_bottom": None,
-                "current_price": current}
-
-    seg = l[box_top_idx:]
-    box_bottom = None
-    for i in range(len(seg) - confirm):
-        c = seg[i]
-        if c == 0:
-            continue
-        w = seg[i + 1: i + 1 + confirm]
-        if len(w) == confirm and all(x > c for x in w):
-            box_bottom = c
-            break
-    if box_bottom is None:
-        valid = [x for x in seg if x > 0]
-        box_bottom = min(valid) if valid else None
-
-    if box_bottom is None:
-        return {"signal": "NO_BOX", "box_top": round(box_top, 0), "box_bottom": None,
-                "current_price": round(current, 0)}
-
-    signal = ("BREAKOUT_BUY"   if current > box_top   else
-              "BREAKDOWN_SELL" if current < box_bottom else "IN_BOX")
-
-    rng    = box_top - box_bottom
-    upside = ((box_top - current) / current * 100) if current else 0
-    pos    = ((current - box_bottom) / rng * 100)  if rng    else 0
-
-    return {
-        "signal":       signal,
-        "box_top":      round(box_top,    0),
-        "box_bottom":   round(box_bottom, 0),
-        "current_price":round(current,    0),
-        "upside_pct":   round(upside, 2),
-        "pos_in_box":   round(pos,    1),
-        "data_points":  len(closes),
-    }
+    return _scan_core.compute_darvas_box(df, confirm=confirm, decimals=0)
 
 
 # ── Fundamental helpers ───────────────────────────────────────────────────────
 
-def _first_df(ticker, *attrs):
-    for attr in attrs:
-        df = getattr(ticker, attr, None)
-        if df is not None and isinstance(df, pd.DataFrame) and not df.empty:
-            return df
-    return None
+# unified in scan_core.py (2026-07-27) — thin wrapper, call sites unchanged
+_first_df = _scan_core._first_df
 
 
 def _row(df, *names, col: int = 0):
@@ -571,47 +477,8 @@ def fundamental_scan(code: str, yf_suffix: str) -> dict:
 
 # ── Excel styling ─────────────────────────────────────────────────────────────
 
-def style_sheet(ws):
-    if not OPENPYXL_OK:
-        return
-    fill_hdr  = PatternFill(start_color="1A3A5C", end_color="1A3A5C", fill_type="solid")
-    fill_alt  = PatternFill(start_color="F0F4F8", end_color="F0F4F8", fill_type="solid")
-    font_hdr  = Font(name="Calibri", size=11, bold=True,  color="FFFFFF")
-    font_body = Font(name="Calibri", size=11, bold=False, color="000000")
-    thin = Border(
-        left=Side(style="thin", color="CBD5E0"), right=Side(style="thin", color="CBD5E0"),
-        top=Side(style="thin", color="CBD5E0"),  bottom=Side(style="thin", color="CBD5E0"),
-    )
-    for col_idx in range(1, ws.max_column + 1):
-        cell = ws.cell(row=1, column=col_idx)
-        cell.font = font_hdr; cell.fill = fill_hdr; cell.border = thin
-        cell.alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
-
-    for row_idx in range(2, ws.max_row + 1):
-        for col_idx in range(1, ws.max_column + 1):
-            cell = ws.cell(row=row_idx, column=col_idx)
-            cell.font = font_body; cell.border = thin
-            if row_idx % 2 == 1:
-                cell.fill = fill_alt
-            hdr = str(ws.cell(row=1, column=col_idx).value or "").upper()
-            val = cell.value
-            if isinstance(val, (int, float)):
-                cell.alignment = Alignment(horizontal="right", vertical="center")
-                if any(k in hdr for k in ["%", "CAGR", "ROCE", "YIELD"]):
-                    cell.number_format = '0.00"%"'
-                elif any(k in hdr for k in ["CAP", "LTP", "BOX", "PRICE", "200"]):
-                    cell.number_format = '#,##0'
-                else:
-                    cell.number_format = '0.00'
-            else:
-                cell.alignment = Alignment(horizontal="left", vertical="center")
-
-    ws.row_dimensions[1].height = 28
-    for r in range(2, ws.max_row + 1):
-        ws.row_dimensions[r].height = 20
-    for col in ws.columns:
-        max_len = max(len(str(cell.value or "")) for cell in col)
-        ws.column_dimensions[get_column_letter(col[0].column)].width = max(max_len + 4, 12)
+# unified in scan_core.py (2026-07-27) — thin wrapper, call sites unchanged
+style_sheet = _scan_core.style_sheet
 
 
 # ── Main ──────────────────────────────────────────────────────────────────────

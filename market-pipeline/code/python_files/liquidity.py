@@ -256,7 +256,7 @@ def gate(df, ticker: str):
 
 
 FX_CACHE_PATH = Path(os.environ.get(
-    "BHAV_CACHE", Path.home() / "Downloads" / "data" / "bhavcopy_cache")) / "fx_usd.json"
+    "BHAV_CACHE", Path.home() / "market-pipeline" / "data" / "bhavcopy_cache")) / "fx_usd.json"
 FX_STALE_DAYS = 7
 
 

@@ -316,7 +316,9 @@ def run(
 
     out = Path(output_dir)
     prefix = market.lower()
-    corr.to_csv(out / f"{prefix}_correlation_matrix.csv")
+    # zstd-compress the full matrix (~8x smaller). pandas infers compression from
+    # the .zst suffix on write and read, so `pd.read_csv(path)` round-trips unchanged.
+    corr.to_csv(out / f"{prefix}_correlation_matrix.csv.zst")
     pairs_df = top_pairs(corr, n=30)
     pairs_df.to_csv(out / f"{prefix}_top_correlated_pairs.csv", index=False)
 

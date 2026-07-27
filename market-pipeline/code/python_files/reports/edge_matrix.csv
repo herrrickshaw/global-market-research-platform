@@ -1,0 +1,8 @@
+strategy,IN,US,KR,JP,EU,CN
+"Value-reversion (cheap−rich, 6M)",+5.3% t2.5,+1.7%/3M t2.3,+3.9% t1.5,+6.6% t4.8,— underpwr,≈0 t0.0 FAILS
+Value+Quality L/S (cheap∩hiROE − rich∩loROE),−1.0% FAILS,+1.7% t1.0,+4.8% t4.2,— untested,— no fund,— untested
+"Momentum / Trend (bull, Deflated-Sharpe)",trend DSR.99,mom DSR.90 frag,breakout DSR.99,no DSR survivor,mom DSR.99,— untested
+Mean-reversion (bear regime),weak,fails DSR,fails DSR,fails DSR,fails DSR,—
+Darvas breakout (paper-track excess),−0.29%,+1.11%,— thin,— thin,+1.58%,—
+Golden cross 50>200 (paper-track),+0.61%,— thin,— thin,— thin,— thin,—
+Piotroski F-score / quality,liq-gated,INVERTED,—,—,—,—

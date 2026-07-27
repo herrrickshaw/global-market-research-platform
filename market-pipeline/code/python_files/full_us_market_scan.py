@@ -51,6 +51,7 @@ from datetime import datetime
 from pathlib import Path
 
 import pandas as pd
+import scan_core as _scan_core
 import requests
 
 # ── percentile re-tier (adaptive_liquidity) ──────────────────────────────────
@@ -61,13 +62,8 @@ import requests
 # the same thing in every market and each market self-calibrates.
 # Percentiles need the whole universe, so this runs once on the assembled frame
 # rather than inside the per-symbol map.
-def _retier(_df, _col):
-    try:
-        import adaptive_liquidity as _AL
-        return _AL.retier(_df, turnover_col=_col)
-    except Exception as _e:      # never let tiering break a scan
-        print(f"  retier skipped: {str(_e)[:60]}")
-        return _df
+# unified in scan_core.py (2026-07-27) — thin wrapper, call sites unchanged
+_retier = _scan_core._retier
 
 
 # Persistent cache (avoids re-downloading on subsequent runs)
@@ -440,89 +436,9 @@ def bulk_download_ohlc(tickers: list[str], period: str = "1y") -> dict[str, pd.D
 
 # ── Darvas Box ─────────────────────────────────────────────────────────────────
 
+# unified in scan_core.py (2026-07-27) — thin wrapper, call sites unchanged
 def compute_darvas_box(df: pd.DataFrame, confirm: int = DARVAS_CONFIRM) -> dict:
-    """Darvas Box detection. Current bar excluded from box formation."""
-    def find_col(df, candidates):
-        for c in candidates:
-            m = next((col for col in df.columns if c.upper() in col.upper()), None)
-            if m:
-                return m
-        return None
-
-    h_col = find_col(df, ["High"])
-    l_col = find_col(df, ["Low"])
-    c_col = find_col(df, ["Close"])
-
-    if not all([h_col, l_col, c_col]) or len(df) < confirm + 5:
-        return {"signal": "INSUFFICIENT_DATA", "box_top": None, "box_bottom": None}
-    # 🔴 Trailing NaN bars must be DROPPED, never zero-filled.
-    # .fillna(0) turned a missing final close into current=0, and 0 is below
-    # every box bottom — so the whole universe reported BREAKDOWN_SELL. Korea
-    # 2026-07-21: 2,472 of 2,480 rows, with Position_in_Box% reading -1990.9
-    # ((0-2190)/110*100) instead of the true 59.1. The zero also never reached
-    # LTP, which is computed with .dropna(), so the sheet showed a real price
-    # beside a signal derived from zero — self-contradictory and hard to spot.
-    # Zero is a PRICE here, not a null; coercing missing data to a valid-looking
-    # value is what made this silent.
-
-    all_highs  = pd.to_numeric(df[h_col], errors="coerce").tolist()
-    all_lows   = pd.to_numeric(df[l_col], errors="coerce").tolist()
-    all_closes = pd.to_numeric(df[c_col], errors="coerce").tolist()
-
-    current = all_closes[-1]
-    highs   = all_highs[:-1]
-    lows    = all_lows[:-1]
-    n       = len(highs)
-
-    box_top_idx, box_top = None, None
-    for i in range(n - confirm - 1, -1, -1):
-        candidate = highs[i]
-        if candidate == 0:
-            continue
-        window = highs[i + 1: i + 1 + confirm]
-        if len(window) == confirm and all(h < candidate for h in window):
-            box_top_idx, box_top = i, candidate
-            break
-
-    if box_top is None:
-        return {"signal": "NO_BOX", "box_top": None, "box_bottom": None,
-                "current_price": round(current, 2)}
-
-    segment    = lows[box_top_idx:]
-    box_bottom = None
-    for i in range(len(segment) - confirm):
-        candidate = segment[i]
-        if candidate == 0:
-            continue
-        window = segment[i + 1: i + 1 + confirm]
-        if len(window) == confirm and all(l > candidate for l in window):
-            box_bottom = candidate
-            break
-
-    if box_bottom is None:
-        valid = [l for l in segment if l > 0]
-        box_bottom = min(valid) if valid else None
-
-    if box_bottom is None:
-        return {"signal": "NO_BOX", "box_top": round(box_top, 2), "box_bottom": None,
-                "current_price": round(current, 2)}
-
-    signal = ("BREAKOUT_BUY" if current > box_top else
-              "BREAKDOWN_SELL" if current < box_bottom else "IN_BOX")
-    box_range     = box_top - box_bottom
-    upside_to_top = ((box_top - current) / current * 100) if current else 0
-    pos_in_box    = ((current - box_bottom) / box_range * 100) if box_range else 0
-
-    return {
-        "signal":              signal,
-        "box_top":             round(box_top,    2),
-        "box_bottom":          round(box_bottom, 2),
-        "current_price":       round(current,    2),
-        "box_range":           round(box_range,  2),
-        "upside_to_top_pct":   round(upside_to_top, 2),
-        "position_in_box_pct": round(pos_in_box,    1),
-        "data_points":         len(all_closes),
-    }
+    return _scan_core.compute_darvas_box(df, confirm=confirm, decimals=2)
 
 
 # ── Golden Crossover ──────────────────────────────────────────────────────────
