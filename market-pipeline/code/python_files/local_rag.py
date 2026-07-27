@@ -178,10 +178,63 @@ def speculation(q=""):
             "low=speculation):**\n\n" + _md_table(d.head(20)))
 
 
+def _psql_df(sql: str) -> pd.DataFrame | None:
+    """Grounded read from Postgres market_data via psql CSV (no driver needed)."""
+    try:
+        r = subprocess.run(["psql", "-d", "market_data", "--csv", "-c", sql],
+                           capture_output=True, text=True, timeout=20)
+        if r.returncode != 0 or not r.stdout.strip():
+            return None
+        from io import StringIO
+        return pd.read_csv(StringIO(r.stdout))
+    except Exception:
+        return None
+
+
+def global_fund(q=""):
+    """official fundamentals (global_fundamentals, 2026-07-27): EDINET JP / DART KR /
+    Eastmoney CN / EDGAR US / screener.in IN — one canonical table, local ccy + fx_usd."""
+    mk = _market_from_q(q)
+    where = f"WHERE market='{mk}'" if mk else ""
+    if re.search(r"roe|return on equity|leaders|best", q.lower()):
+        d = _psql_df(f"""SELECT market, ticker, fiscal_period,
+            ROUND(COALESCE(roe, net_income/NULLIF(equity,0)),3) AS roe,
+            net_income, currency, source
+            FROM global_fundamentals {where}{' AND' if where else ' WHERE'}
+            COALESCE(roe, net_income/NULLIF(equity,0)) BETWEEN 0.01 AND 2
+            AND fy_end >= '2024-01-01' AND net_income > 0
+            ORDER BY 4 DESC LIMIT 15""")
+        title = "ROE leaders (FY2024+, official filings)"
+    else:
+        d = _psql_df(f"""SELECT market, COUNT(*) rows, COUNT(DISTINCT ticker) tickers,
+            MIN(fy_end) oldest, MAX(fy_end) newest,
+            ROUND(100.0*COUNT(revenue)/COUNT(*)) AS "rev_fill_%", MIN(source) a_source
+            FROM global_fundamentals {where} GROUP BY market ORDER BY rows DESC""")
+        title = "global_fundamentals coverage (14 markets, one schema)"
+    if d is None or d.empty:
+        return "global_fundamentals not reachable — is Postgres up? (see scripts/etl_fundamentals.py)"
+    note = ("\n\n> Sources: EDGAR(US) EDINET(JP) DART(KR) Eastmoney(CN) screener.in(IN), "
+            "priority-balanced in etl.source_registry; values in local currency, fx_usd column for USD compare.")
+    return f"**{title}{' · ' + mk if mk else ''}:**\n\n" + _md_table(d) + note
+
+
+def etl_status(_q=""):
+    """load-batch lineage from etl.load_batches (the DBMS ETL, 2026-07-27)."""
+    d = _psql_df("""SELECT batch_id, source, market, mode, status, rows_upserted,
+        watermark_fy_end FROM etl.load_batches ORDER BY batch_id DESC LIMIT 15""")
+    if d is None or d.empty:
+        return "no ETL batches — run `/usr/bin/python3 scripts/etl_fundamentals.py --incremental`."
+    return ("**ETL batch lineage (etl.load_batches):**\n\n" + _md_table(d) +
+            "\n\n> `rejected` = a quality gate blocked the batch before it touched canonical "
+            "(by design — e.g. cn_full is eps-only and always fails the net_income fill gate).")
+
+
 INTENTS = [
  (r"playbook|what.*(do|strateg|trade|buy).*(india|us|korea|japan|europe|china|market)|recommend.*market", playbook),
  (r"edge|fat.?pitch|which filter|edge matrix|where.*edge", edge_map),
  (r"speculat|fundamentals? rule|sector.*(fundamental|speculat)|pb.?roe|pricing regime", speculation),
+ (r"etl|load batch|lineage|ingest.*status|batch.*status", etl_status),
+ (r"edinet|dart\b|eastmoney|global fundamentals|official (filing|fundamental)|roe leader|fundamentals? (coverage|for|of|in) |company fundamentals", global_fund),
  (r"income statement|p&?l|profit.*loss|revenue.*tax", income_statement),
  (r"balance sheet|assets?.*liabilit|equity position", balance_sheet),
  (r"pick|recommend|top stocks|what to buy|screen", picks),

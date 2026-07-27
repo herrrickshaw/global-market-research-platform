@@ -39,3 +39,16 @@ python local_rag.py "picks for korea"                 # -> LIVE playbook picks (
 `picks` now serves the live `playbook_picks.csv` (each market's validated edge, on the watchlist
 for monitoring). The standalone `market_screener_rag` repo adds `screener_rag.py playbook <market>`
 with the same ranked edges + the net-of-borrow and China corrections.
+
+## Official-fundamentals intents (2026-07-27)
+```bash
+python local_rag.py "global fundamentals coverage"    # -> 14-market coverage table (rows/tickers/fill%)
+python local_rag.py "fundamentals for korea"          # -> per-market coverage from global_fundamentals
+python local_rag.py "roe leaders japan"               # -> top-ROE names, FY2024+, official filings only
+python local_rag.py "etl status"                      # -> etl.load_batches lineage (ok/rejected + watermarks)
+```
+Grounded in Postgres `global_fundamentals` (237k rows, 14 markets, one canonical schema —
+EDGAR US · EDINET JP · DART KR · Eastmoney CN · screener.in IN, priority-balanced by
+`etl.source_registry`) via `psql --csv` — no DB driver needed. `etl status` shows the batch
+audit trail; a `rejected` row means a quality gate blocked bad data before canonical
+(e.g. cn_full is eps-only and always fails the net_income-fill gate — by design).

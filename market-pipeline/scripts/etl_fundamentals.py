@@ -147,6 +147,13 @@ def extract_for(source: str, market: str) -> pd.DataFrame:
         subset=['ticker', 'fy_end'], keep='first').copy()
     df['fiscal_period'] = pd.to_datetime(df['fy_end']).dt.strftime('FY%Y-%m')
     df['fx_usd'] = df['currency'].map(gfm.FX_USD)
+    # Derive roe/roa where the source didn't provide them (same rule as the
+    # merge script's main() — the ETL path must not lose this).
+    ni = pd.to_numeric(df['net_income'], errors='coerce')
+    eq = pd.to_numeric(df['equity'], errors='coerce')
+    ta = pd.to_numeric(df['total_assets'], errors='coerce')
+    df['roe'] = pd.to_numeric(df['roe'], errors='coerce').fillna((ni / eq).where(eq != 0)).round(4)
+    df['roa'] = pd.to_numeric(df['roa'], errors='coerce').fillna((ni / ta).where(ta != 0)).round(4)
     return df
 
 
