@@ -2,6 +2,283 @@
 
 Decisions and material changes to the pipeline, newest first.
 
+## 2026-07-28 — The Volume Dividend: blend-energy fiscal analysis + parity scenarios + CBG (side repos)
+
+Built in `~/omc-retail-profitability-model` (public: india-omc-fuel-fleet-model) with paper +
+slides mirrored to `~/vehicle_fuel_mileage`; logged here because the decisions generalise.
+
+- **New scripts**: `energy_blend_comparison.py` (LHV dilution → extra litres → per-litre levies),
+  `price_parity_scenarios.py` (funding tests for honest pricing), `cbg_satat_economics.py`
+  (SATAT ₹/MJ + SIAM-FE ₹/km + CBO pass-through), `build_energy_doc.js` / `build_slides.js`
+  (docx+pdf paper, 10-slide pptx — generators, outputs never hand-edited).
+- **Headline results**: E20 volume effect = +2.16 bn L/yr = ₹22,703 cr consumer overspend at an
+  unchanged pump price (excise 4,303 / VAT 4,216 / dealer 886 / OMC 757 cr — the OMC column
+  reconciles the existing `omc_model.py` figures exactly, which was the validity check). Parity
+  price P₀×(1−drop): E20 ₹100.80. S1 (pass through the dual-tax exemption embedded in the ethanol
+  fraction) funds parity 1.3–1.5× at every blend. E27 grand bargain: parity ₹98.44 + 5% ethanol
+  SGST (₹4,787 cr/yr, from the existing sweetspot grid) still leaves ₹1.27/L slack. CBG renewable
+  energy costs ₹1.16/MJ vs ethanol's ₹2.94 (2.5×); CBO at 5% moves the CNG pump ~₹0.59/kg.
+- **Decision — frame the E25/E30 case incrementally vs today's E20, not vs E0.** India is already
+  at E20; the absolute-vs-E0 framing (rejected as the lead) overstates the live policy stake.
+  Both tables are kept; the incremental one leads.
+- **Decision — REJECTED funding parity from cheaper ethanol (S4).** Requires ₹37–41/L against a
+  ₹57.97/L cheapest feedstock slab (C-heavy molasses); maize, the E30 marginal feedstock, is the
+  *dearest* slab (₹71.86). Grain mandi prices are a hard floor — parity must come from the tax
+  side. Also rejected: leading with S2/S3 duty cuts (fiscally identical to S1 but reads as a new
+  ₹22.7–41k cr subsidy; S1 is the same money already sitting unrebated in the price build-up).
+- **Decision — diesel B15/B20 presented as a what-if ceiling, not a forecast**: actual blending
+  <1% in FY24-25, NBP targets B5 by 2030, OEM warranties unresolved beyond B7. Isobutanol rows
+  energy-basis only (no India fleet trials) — flagged in every table rather than dropped.
+- **Correction**: two conflicting excise figures existed across repos (vehicle_fuel_mileage
+  sources cite ₹13/L petrol "basic"; statewise_tax_impact.py uses ₹19.90/L all-in). Standardised
+  on ₹19.90 all-in (matching the statewise script) and noted the basis in the paper's caveats.
+- **Mileage anchor**: SIAM/ARAI BS-VI FE declarations from vehicle_fuel_mileage (petrol 16.67
+  kmpl, CNG 27.40 km/kg, +40.3% same-nameplate petrol→CNG uplift) — reused, not re-derived.
+
+**Same-day extension — supply match + RON95** (`ethanol_supply_match.py`, `ron_octane_analysis.py`;
+paper → 10 sections + glossary, deck → 12 slides):
+
+- **Supply verdict flips the framing**: the higher blends are the *cure* for the CareEdge-flagged
+  distillery overcapacity, not a supply risk. E20 = 59% utilisation on FY27's 2,400 cr L (the
+  malaise), E27 = 76% (top of CareEdge's 65–75% consolidation band, zero new construction),
+  demand-grown FY31 E30 = 104% (only then does the 4,530 cr L DFPD sanction register need to
+  build). Sources: CareEdge 14-May-2026 study (fetched PDF), DFPD ISS annexures + FCI risk sheet
+  reused from the existing E20_to_E30 stakeholder workbook, digital-twin layer 24d (UP register).
+- **Decision — do NOT count a cooperative-mill capacity wave.** The NCDC ₹10,005 cr to 56 CSMs is
+  96.5% working capital; the ₹251 cr ethanol tranche ≈ 293 KLPD ≈ 9.7 cr L/yr (0.5% of installed)
+  at DFPD average intensity. Rejected the press framing of a coop ethanol expansion.
+- **Decision — FCI rice leg treated as small AND fragile**: ~211 cr L effective at a 65% lifting
+  lever (band 55–75%), with the Jul-2023 rice-to-ethanol suspension as an explicit policy-risk
+  toggle, not a footnote. E27/E30 increment attributed to open-market maize (dearest slab).
+- **RON added on user request**: blending RON 112 lever (literature 108–115, linear model —
+  flagged). Two limiting routes: today's (pump held at RON 91 → BOB falls to 85.7 at E20; saving
+  retained upstream) vs the opportunity (BOB held at 91 → E20 is a free RON95 fuel, E30 → 97.3).
+  Octane credit deliberately priced BOTH ways — retail XP95 spread (~₹9.5/L at E20, willingness-
+  to-pay ceiling) and refining cost (₹0.3–0.8/L, resource floor) — to avoid overclaiming.
+  Net-mileage synthesis: RON95-calibrated engine (+2.2% from CR 10.5→12) shrinks E20's −4% to
+  ≈ −1.8%, arriving with fleet turnover, composing with (not replacing) parity pricing.
+
+## 2026-07-28 — ETF builder: nothing beats SPY risk-adjusted once the bias is out
+
+- **`etf_builder.py`** — walk-forward optimiser harness. Weights at each
+  rebalance use only data strictly before it; no in-sample number appears
+  anywhere in the output. US top-200, 110 monthly rebalances 2017-06→2026-07,
+  long-only, 10% cap, Ledoit-Wolf shrunk covariance, 10bp/side turnover cost.
+- **🔴 THE BIAS THAT NEARLY GOT REPORTED AS A RESULT.** v1 ranked turnover over
+  the WHOLE period and kept the top 200 for every rebalance — look-ahead in the
+  UNIVERSE, since a name qualified only by surviving and staying liquid to the
+  end of the sample. It showed 1/N beating SPY by **+4.92%/yr doing nothing**,
+  and every scheme inherited that and reported it as its own. Selecting the
+  universe point-in-time (top-200 by TRAILING turnover at each rebalance) took
+  1/N from **19.75% → 12.26%**: **7.5 points of pure survivorship**. SPY, an
+  external series, did not move. The correction flipped the conclusion from
+  "four schemes beat the market" to "essentially none do".
+- **RESULT (debiased)**: 1/N 12.26% (Sharpe 0.66) · inverse-vol 12.20% (0.76) ·
+  min-variance 5.81% (0.59) · max-Sharpe 13.52% (0.78) · momentum 12-1 18.95%
+  (0.67) · **SPY 14.85% (Sharpe 0.93, maxDD −23.9%)**. SPY has **the best
+  Sharpe and the shallowest drawdown in the table**. Four of five schemes lose
+  to it outright.
+- **Momentum is the only raw-return winner (+4.10%) and it is not an edge**: it
+  buys that with 28.3% vol against SPY's 16.0% and a −35.3% drawdown, so its
+  Sharpe is 0.67 vs 0.93. Levered SPY at the same volatility beats it. Cost is
+  NOT the objection though — measured turnover 118%/mo gives a **breakeven of
+  39bp/side**, ~4× realistic US large-cap cost, so the raw edge does survive
+  frictions. It simply is not worth the risk taken.
+- **Two priors of mine that the data corrected**: max-Sharpe was expected to be
+  a disaster (error maximisation) and instead **beat 1/N by +1.26%** with the
+  second-best Sharpe — with covariance shrinkage and a weight cap the classic
+  result is much softer than stated. And min-variance delivered exactly what it
+  promises (9.8% vol, by far the lowest); it just paid 9 points of return for it
+  in a bull decade.
+- CAVEATS recorded with the result: 110 monthly observations, one US regime, no
+  taxes, US only. India is refused by the harness until its panel is split-
+  adjusted.
+
+## 2026-07-28 — Can an optimiser build a better portfolio? Timing good, SELECTION negative
+
+- **An optimiser sets WEIGHTS; it cannot fix SELECTION — and there is no signal
+  to weight on.** Across 20 ex-ante-feature × market tests against 63d excess
+  (`rsi_at_evict`, `drift_at_evict`, `rsi_at_trigger`, holding days,
+  `exit_ret_pct`), exactly ONE crosses |t| > 2 (US `exit_ret_pct`, t −2.99) —
+  which is what 20 tests produce by chance. With no predictable cross-sectional
+  dispersion, an optimiser over these picks reweights noise. Same conclusion
+  `portfolio_bundles.py` reached when it chose inverse-vol over max-Sharpe.
+- **DECOMPOSITION (India, split-clean, cash parked in a real Nifty-50 Direct
+  Growth index fund rather than at 0%)**:
+  - book, cash at 0% … **8.77%**
+  - book, cash parked in the index … **13.07%**
+  - index alone, 100% passive … **14.85%**
+  - picks only, on invested days … **16.76%**
+  - **index on those SAME days … 20.16%**
+  The last two lines are the finding. The book was invested during
+  better-than-average market days (20.16% vs 14.85% — the TIMING was good), and
+  gave it all back on stock selection, trailing the index by **−3.4 points on
+  the very days it chose to hold**. Selection alpha is negative, so no
+  cash-management overlay rescues it: parking idle cash in the index still lands
+  at 13.07% against 14.85% for simply owning the index.
+- **CONSEQUENCE**: there is no portfolio construction — optimised, equal-weight
+  or otherwise — that turns this pick list into something that beats the index,
+  because the picks themselves underperform it while held. Fixing weights was
+  never the lever.
+
+## 2026-07-28 — 🔴 India warehouse panel is split-UNADJUSTED (corrects today's numbers)
+
+- **FOUND**: `global-market-data/warehouse/ohlcv/IN` carries raw closes. Its
+  top-200 alone holds **71 unadjusted split events** reading as ~−90% single-day
+  "returns" — NESTLEIND 2024-01-05, JSWSTEEL 2017-01-04, EICHERMOT 2020-08-24
+  are all 1:10 splits. The US panel's equivalent outliers are genuine (OXY on
+  the 2020 oil crash, SNAP's guidance cut), confirming US/JP/KR are adjusted and
+  **India alone is not** — the hazard the memory note warned about, now measured.
+- **CORRECTION to the fund scorecard published earlier today.** Three of 721
+  India tier events had a split inside their holding window (DRREDDY −80.6%,
+  KOTAKBANK −80.2%, HDFCAMC −50.2% — all fake). Excluding just those three:
+  - book CAGR at fee parity **4.84% → 7.32%**
+  - invested-only CAGR **10.73% → 15.60%**
+  - monthly maxDD **−33.1% → −24.4%**
+  Three bad rows in 721 moved the like-for-like number by 4.9 points. The
+  headline verdict stands — 7.32% still loses to every category and to passive
+  16.53% — but **the diagnosis changes**: fully invested the book ranks mid-pack
+  (16/26 Large Cap · 18/25 Flexi Cap · 64/88 Sectoral), so selection is roughly
+  market-average and **the 46% cash drag is what kills it**, not the picks.
+- **Consequence for optimisers**: `etf_builder.py` REFUSES market IN unless
+  `--allow-unadjusted` is passed. Three fake −90% observations would dominate
+  any covariance estimate and therefore every weight in the book.
+- OPEN: the India panel needs real split adjustment (corporate-action feed or a
+  ratio-detection pass) before any India price-return optimisation is credible.
+
+## 2026-07-28 — Re-entry book tested: NO EDGE, and the prior claim is unreproducible
+
+- **Extended `backtest_tier_anomalies.py` past the anomaly touch.** New additive
+  columns `reentry_ret_{21,63,126}` / `bench_ret_*` / `reentry_excess_*` /
+  `trigger_date` / `rsi_at_trigger`. `open_until` was deliberately LEFT ALONE:
+  extending it to cover the re-entry horizon would have changed the EVICTION
+  stream and silently invalidated the fund_scorecard result already computed
+  from this file. Verified — IN/JP/KR events are byte-identical to the prior
+  run. Overlapping re-entry windows are instead dropped at book construction.
+- **RESULT: no edge, anywhere.** Excess vs the equal-weight index of the same
+  universe over the same window, paired per event, all 12 market×horizon cells
+  |t| < 2: IN 63d **+0.18% (t 0.27)** · US **+0.09% (t 0.14)** · JP **+0.36%
+  (t 0.80)** · KR **−1.16% (t −1.02)**. Every median excess is NEGATIVE while
+  means sit near zero — right skew, a few big winners over a typical trade that
+  loses to the index. That is the signature of no edge with positive skew.
+- **As a book it is worse than the eviction book**: 1.36% CAGR at fee parity
+  (4.50% fully invested) — **last of last in all 11 rankable categories**
+  against medians of 13.2–22.8%.
+- **🔴 THE PRIOR CLAIM CANNOT BE REPRODUCED.** The 2026-07-27 entry recorded
+  "Re-entry edge VALIDATED … IN +12.9%/63d (t 14.2) · KR +24.9% (t 14.8) · JP
+  +6.1% (t 10.3) · US +5.1% (t 7.0)", and `reentry_engine.py` — LIVE in the
+  pipeline at [13w] — cites those numbers in its header as its justification.
+  The script that produced them is not in the repo. Every construction that can
+  be built from the data gives, for IN 63d:
+    - from the TRIGGER, anomalies (the actual re-entry book): +0.18%, t 0.27
+    - from the EVICTION, anomalies only (LOOK-AHEAD): +2.81%, t 4.87
+    - from the EVICTION, all evictions (unbiased): −0.43%, t −0.81
+  Outcome-selection does inflate the result by ~3.2 points, confirming
+  look-ahead as a real mechanism here, but nothing approaches +12.9%/t 14.2.
+  Treat the engine's stated justification as UNVERIFIED until reproduced.
+- **Incidental data-quality find**: `VXX` — a volatility ETN, not a stock — sat
+  in the US top-200-by-turnover backtest universe until last night's warehouse
+  refresh displaced it (CVNA in). Same contamination class as the LIQUIDSBI ETF
+  that once shipped as a golden-cross pick. The universe filter screens on
+  turnover only, never on instrument type.
+- Also confirmed benign: the US event count moved 2,195 → 2,177 purely because
+  the pipeline rewrote `warehouse/ohlcv/US/year=2026.parquet` at 00:17, shifting
+  the full-period median-turnover ranking. Not a logic change.
+
+## 2026-07-28 — Fund scorecard: the eviction book loses to every peer category
+
+- **RESULT (India, 2020-11 → 2026-02, 721 trades)**: the unbiased tier book
+  compounds at **5.89%**, or **4.84% at fee parity** (100bp/yr synthetic fee,
+  the user's ask), against category medians of **15.9%–23.8%** and **passive
+  Nifty-50 index funds at 16.53%**. It ranks **last or next-to-last in all 10
+  rankable categories**, and stays there when credited with being fully
+  invested (10.73%). Clean negative result, not a tuning problem: it loses to
+  active management AND to just buying the index, by ~12 points a year.
+- **THE EDGE IS ONE YEAR, AND IT IS GONE.** Calendar-year book returns at fee
+  parity: 2020 +8.8% · **2021 +40.9%** · 2022 −1.0% (zero trades — fully in
+  cash) · 2023 +16.6% · 2024 −10.3% · 2025 −12.4% · 2026 −6.2%. The entire
+  lifetime gain is the post-COVID V. **From 2021-04 onward the book is −3.3%
+  over 4.9 years.** Mean-reversion off evictions worked in the rebound and has
+  not worked since — this is regime dependence, not an edge. Moving the start
+  date five months later takes CAGR from 4.84% to 0.21%, which is the single
+  most damning number in the study and the reason sub-period decomposition
+  should precede any headline CAGR here.
+- **WHAT BOOK THIS IS, precisely.** `backtest_tier_anomalies.py` is a
+  triple-barrier experiment and `exit_ret_pct` runs FROM THE EVICTION for all
+  three outcomes, with the label known only afterwards. So the only unbiased
+  book the file supports is **buy every evicted name at eviction, exit at the
+  first barrier** — i.e. "fade our own evictions". **It is NOT the re-entry
+  book**: buy-at-anomaly-trigger returns begin where this dataset's returns end
+  and remain untested here. The negative result does not touch that thesis.
+- **The look-ahead that would have flattered it**: filtering to
+  `outcome == 'ANOMALY'` reports a median +6.3% in 28 days for India and is
+  worth nothing — it picks winners after the fact. `--outcome` now prints a
+  LOOK-AHEAD banner instead of quietly obliging.
+- **A bug in the scorecard's own construction, found by cross-check and fixed.**
+  Aggregating position month-fragments and averaging them weights a position
+  open 3 days of a month the same as one open all 30, dragging every month
+  toward zero: it reported **CAGR 2.15% where the truth is 5.89%**. Rebuilding
+  the curve DAILY (equal weight across positions actually open each day) as an
+  independent check exposed it, and that check is now the implementation. Note
+  the direction — the correction moved the book UP and it still loses.
+- **Robust to the two biases that cut the other way.** Ranks are against funds
+  with marks at both ends of the window, so dead funds — which skew bad — are
+  excluded and the peer bar is if anything too high; and no synthetic fee is
+  charged to the book, so a strategy BEFORE fees is losing to funds AFTER fees.
+  Both corrections would widen the gap, not close it.
+- Peer-set construction bugs caught by a synthetic-book dry run before the real
+  data landed: negative "died" counts (`&` precedence), rank exceeding the field
+  (book missing from its own denominator), split categories (AMFI ships both
+  `Equity Scheme -` and `Equity Schemes -`), and hybrids leaking in via
+  `ILIKE '%Equity%'` matching *Hybrid Scheme - Equity Savings*.
+
+## 2026-07-28 — AMFI NAV collector: fund PERFORMANCE enters the warehouse
+
+- **The gap**: `portfolio_bundles.py` builds "mutual-fund-style" bundles and
+  `bundle_validation.py` checks them against index/ETF **holdings** — but the
+  platform had never held a single fund's **performance**. "Fund-style" was a
+  metaphor. `scripts/amfi_nav_collect.py` makes it measurable.
+- **Source: AMFI** (`portal.amfiindia.com/DownloadNAVHistoryReport_Po.aspx`),
+  free and unauthenticated, **verified reachable from this machine back to at
+  least 2016-07** — which matters, because SEBI and IMF are both blocked here.
+  Semicolon-delimited with AMC and CATEGORY as bare header lines: the category
+  is not a column, it is **positional state** while parsing. Chose AMFI over a
+  SEBI feed for reachability, and over a scraped aggregator for provenance.
+- **Why India first**: AMFI carries SEBI's own category taxonomy (Small Cap,
+  Value, Contra, Focused, Flexi Cap…) — the cleanest peer-grouping any of the
+  five markets offers. The scorecard's question is "did the book beat its
+  CATEGORY after costs", and no other market hands you the categories for free.
+- **NOT GUESSED, deliberately.** PLAN (Direct/Regular) and OPTION
+  (Growth/IDCW/Bonus) are parsed from the scheme name and stay `unknown` when
+  the name does not say. They are worth ~0.6–1.2%/yr (Direct vs Regular) and
+  IDCW NAV drops on every payout, so a wrong guess corrupts the comparison in
+  exactly the direction that flatters us; a null the scorecard can exclude is
+  safer. Naming traps found and covered by unit cases: the AMC **"Groww" is not
+  "Growth"** (word-boundary anchored), *"Unclaimed Dividend - Growth"* is a
+  GROWTH option (Growth tested before IDCW), *"Regular Premium … Regular Plan"*
+  (Direct tested first), **"Cumulative" IS Growth** under an older name, and
+  **Bonus is a third option** whose NAV is comparable to neither.
+- **Survivorship is RECORDED, not corrected.** `funds.schemes` keeps
+  `first_seen`/`last_seen`; `funds.scheme_status` marks a scheme dead once it
+  stops reporting (10 sessions of slack). This is the whole point: **2016 had
+  11,366 schemes vs 8,612 today** — SEBI's 2017–18 rationalisation merged
+  thousands away, and benchmarking only against survivors would silently delete
+  every fund that failed. Widening is one-way: a backfill of older months can
+  push `first_seen` back but can never drag `last_seen` backwards.
+- **Append-only + idempotent**, like `market_ingest.py`. Two counting methods
+  were tried and rejected before the third worked: `RETURNING` (duckdb's pg
+  extension cannot bind it on an attached table) and diffing `count(*)`
+  before/after (**both reads land in one transaction snapshot, so the delta is
+  always 0 — it silently reported "appended 0" for a 158,643-row load**). The
+  count now comes from the anti-join itself, before inserting.
+- VERIFIED: re-run of a loaded window appends 0; a new window appends in full;
+  incremental resumes from the high-water mark; parser holds on 2016/2019/2022
+  files; `first_seen` widened to June while `last_seen` held, and 70 schemes
+  that stopped reporting were flagged dead off two months of data alone.
+- **Scope decision (user)**: tier 2 is a **scorecard**, not a short book — "did
+  our evictions underperform" is pure measurement, and a short book would need
+  borrow assumptions per market against an India playbook that is long-only.
+
 ## 2026-07-28 — Reconcile [13d]: intraday drift no longer suppresses the send
 
 - **The incident**: the 00:30 run built a sound brief (validation PASSED 6/6,

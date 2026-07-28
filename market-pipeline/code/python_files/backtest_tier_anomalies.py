@@ -44,6 +44,30 @@ EVAL_FREQ = "ME"            # monthly evaluation dates
 START = "2018-01-01"        # warm-up uses 2016-17
 PROMOTE_RET, PROMOTE_RET_RSI, AGEOUT_RET, AGEOUT_DAYS = 10.0, 5.0, -15.0, 90
 
+# ── re-entry extension (2026-07-28) ──────────────────────────────────────────
+# The original run STOPPED at the anomaly touch, so exit_ret_pct measures
+# eviction→trigger and nothing after. That made the only testable book "buy at
+# eviction", which fund_scorecard.py showed loses to every Indian fund category
+# AND to passive (4.84% vs 16.53% at fee parity), with its whole lifetime gain
+# coming from 2021. The RE-ENTRY thesis — buy AT the trigger — was untestable
+# because its returns begin exactly where this file's ended. These columns are
+# that continuation.
+#
+# Horizons are CALENDAR days so the stock and its benchmark align exactly.
+# 63d is the headline because that is the horizon the live re-entry engine was
+# specified on; 21 and 126 are there to show whether any edge is a horizon
+# artefact rather than a shape.
+#
+# BENCHMARK is the equal-weight return index of the SAME top-N universe, over
+# the SAME window. Raw forward return after a −15%-to-+10% round trip in a bull
+# market is nearly meaningless on its own: the question is whether re-entering
+# beats simply holding the market, so excess is what gets reported.
+#
+# RIGHT-CENSORING: an event whose horizon runs past the end of data yields NaN,
+# never a truncated return. Silently short-changing the last few months would
+# bias the tail of the sample toward whatever the final partial window did.
+REENTRY_HORIZONS = (21, 63, 126)
+
 
 def load_market(mkt: str) -> pd.DataFrame:
     files = sorted((WH / mkt).glob("year=*.parquet"))
@@ -74,6 +98,22 @@ def analyze_market(mkt: str) -> list[dict]:
     dma200 = px.rolling(200).mean()
     breadth = (px > dma200).mean(axis=1)
     market_bull = breadth > 0.5
+
+    # Equal-weight return index of the same universe — the benchmark a re-entry
+    # has to beat. Built from mean daily returns (not mean price) so that a
+    # high-priced name cannot dominate the index.
+    eqw = (1 + px.pct_change().mean(axis=1).fillna(0)).cumprod()
+
+    def fwd_ret(series: pd.Series, t0: pd.Timestamp, horizon: int):
+        """Return over t0 → t0+horizon calendar days, or None if right-censored."""
+        end = t0 + pd.Timedelta(days=horizon)
+        if series.index.max() < end:
+            return None                      # not enough data — never truncate
+        j = series.index.searchsorted(end, side="right") - 1
+        i = series.index.searchsorted(t0, side="right") - 1
+        if j <= i or i < 0:
+            return None
+        return float(series.iloc[j] / series.iloc[i] - 1) * 100
 
     kal = KalmanTrendModel()
     eval_dates = pd.date_range(START, px.index.max(), freq=EVAL_FREQ)
@@ -130,12 +170,40 @@ def analyze_market(mkt: str) -> list[dict]:
                     outcome = "validated_decline"
                     days, exit_ret = (dt - tt).days, float(r)
                     break
-            events.append({
+            rec = {
                 "market": mkt, "symbol": sym, "evict_date": tt.date(),
                 "rsi_at_evict": round(float(rsi.loc[tt]), 1) if tt in rsi.index and pd.notna(rsi.loc[tt]) else None,
                 "drift_at_evict": round(float(slope.loc[tt]), 1),
                 "outcome": outcome, "days": days, "exit_ret_pct": round(exit_ret, 2),
-            })
+            }
+
+            # ── re-entry leg: what happens AFTER the anomaly touch ───────────
+            # Only ANOMALY rows have a trigger; the other outcomes never enter
+            # tier 3 and so are not re-entry candidates.
+            trigger = tt + pd.Timedelta(days=days)
+            rec["trigger_date"] = trigger.date() if outcome == "ANOMALY" else None
+            for h in REENTRY_HORIZONS:
+                r_sym = r_bench = None
+                if outcome == "ANOMALY":
+                    r_sym = fwd_ret(c, trigger, h)
+                    r_bench = fwd_ret(eqw, trigger, h)
+                rec[f"reentry_ret_{h}"] = round(r_sym, 2) if r_sym is not None else None
+                rec[f"bench_ret_{h}"] = round(r_bench, 2) if r_bench is not None else None
+                rec[f"reentry_excess_{h}"] = (round(r_sym - r_bench, 2)
+                                              if None not in (r_sym, r_bench) else None)
+            # RSI at the trigger — the live engine ranks re-entry candidates, so
+            # whether the entry band separates winners is directly testable.
+            rec["rsi_at_trigger"] = (round(float(rsi.loc[trigger]), 1)
+                                     if outcome == "ANOMALY" and trigger in rsi.index
+                                     and pd.notna(rsi.loc[trigger]) else None)
+            events.append(rec)
+            # UNCHANGED from the pre-extension run, deliberately. Extending this
+            # to cover the re-entry horizon would block re-eviction for longer
+            # and therefore change the EVICTION stream itself — silently
+            # invalidating the fund_scorecard result already computed from this
+            # file and making the two books non-comparable. The new columns are
+            # purely additive; overlapping re-entry positions in one name are a
+            # BOOK-construction concern and are handled there.
             open_until = tt + pd.Timedelta(days=days)
         if i % 50 == 0:
             print(f"[{mkt}] {i}/{px.shape[1]} names …", flush=True)
@@ -174,7 +242,28 @@ def main():
         yr = g.assign(y=pd.to_datetime(g.evict_date).dt.year).groupby("y").outcome
         yl = " · ".join(f"{y}:{(o=='ANOMALY').mean()*100:.0f}%" for (y, o) in
                         ((y, gg) for y, gg in yr))
-        L.append(f"- anomaly rate by year: {yl}\n")
+        L.append(f"- anomaly rate by year: {yl}")
+
+        # ── re-entry leg ────────────────────────────────────────────────────
+        an = g[g.outcome == "ANOMALY"]
+        for h in REENTRY_HORIZONS:
+            col, xcol = f"reentry_ret_{h}", f"reentry_excess_{h}"
+            if col not in an.columns:
+                continue
+            v = an[[col, xcol]].dropna()
+            if v.empty:
+                L.append(f"- re-entry {h}d: no uncensored events")
+                continue
+            x = v[xcol]
+            # Paired t on EXCESS (stock − its own benchmark over the same
+            # window), so a bull market cannot masquerade as an edge.
+            t = x.mean() / (x.std(ddof=1) / np.sqrt(len(x))) if x.std(ddof=1) else float("nan")
+            L.append(
+                f"- re-entry {h}d: n={len(v)} (censored {len(an) - len(v)}) · "
+                f"raw {v[col].median():+.2f}% med / {v[col].mean():+.2f}% mean · "
+                f"**excess {x.median():+.2f}% med / {x.mean():+.2f}% mean** · "
+                f"win {(x > 0).mean() * 100:.0f}% · t={t:.2f}")
+        L.append("")
     md = "\n".join(L)
     (HERE / "reports/tier_anomaly_backtest.md").write_text(md)
     print(md)
