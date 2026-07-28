@@ -108,10 +108,28 @@ def refresh(market: str, symbols: List[str], yf_suffix: str = "",
         missing = [s for s in symbols if s not in have]
 
         if date_fresh and not missing:
+            # Freshness is per-SYMBOL, not per-file (2026-07-28): the global max
+            # hid individually-stuck symbols — ASML.AS sat at Friday's bar while
+            # the frame's max showed Monday, so "warm — no fetch" served a stale
+            # LTP for days and the reconcile gate kept blocking the mailer.
+            # Any symbol whose own last bar lags the last expected trading day
+            # is re-seeded over `period` (dedup keep=last replaces its rows).
+            exp = today - _dt.timedelta(days=1)
+            while exp.weekday() >= 5:
+                exp -= _dt.timedelta(days=1)
+            per_sym_max = cached.groupby("Symbol")["Date"].max()
+            lagged = [s for s in symbols
+                      if s in per_sym_max.index and per_sym_max[s].date() < exp]
+            if not lagged:
+                if verbose:
+                    print(f"  ohlcv_cache[{market}]: warm ({len(cached):,} rows, "
+                          f"{len(have):,} symbols, through {mx}) — no fetch", flush=True)
+                return cached
+            fetch_list = lagged
             if verbose:
-                print(f"  ohlcv_cache[{market}]: warm ({len(cached):,} rows, "
-                      f"{len(have):,} symbols, through {mx}) — no fetch", flush=True)
-            return cached
+                print(f"  ohlcv_cache[{market}]: {len(lagged):,} symbol(s) lag the "
+                      f"last trading day ({exp}) — re-seeding those over {period}",
+                      flush=True)
 
         if missing:
             # New symbols need their full history, not just the recent gap, so they
