@@ -82,7 +82,18 @@ EPS_TAGS = ("BasicEarningsLossPerShareFromContinuingAndDiscontinuedOperations",
 # are the ONLY ones carrying EPS facts (847 OneD / 646 FourD), so preferring
 # OneD is not a heuristic here, it is the format.
 QUARTER_CONTEXT_IDS = ("OneD",)
-NON_FINANCIAL_PREFIXES = ("INTEGRATED_",)
+# 🔴 EXCLUDE ONLY THE GOVERNANCE SUBTYPE. "INTEGRATED_" as a blanket prefix was
+# wrong and cost most of 2025-2026: NSE moved to an integrated filing format
+# around 2025 and encodes the SUBTYPE in the filename —
+#   INTEGRATED_FILING_INDAS_*       20,768  financial results
+#   INTEGRATED_FILING_GOVERNANCE_*  16,654  board/committee disclosures only
+#   INTEGRATED_FILING_NBFC_INDAS_*   1,491  financial
+#   INTEGRATED_FILING_BANKING_*        411  financial
+# Sampling a 2024 GOVERNANCE file and generalising to the whole class discarded
+# ~22,900 results filings, which is why parsed coverage stopped at 2024-12 and
+# LUPIN's TTM ran ~18 months stale (EPS 62.92 against screener.in's implied
+# 124.1, i.e. a P/E of 38.3 against a true 19.3). Only GOVERNANCE is skipped now.
+NON_FINANCIAL_PREFIXES = ("INTEGRATED_FILING_GOVERNANCE_",)
 PAT_TAGS = ("ProfitLossForThePeriod",
             "ProfitLossAfterTaxesMinorityInterestAndShareOfProfitLossOfAssociates",
             "ProfitLossFromOrdinaryActivitiesAfterTax")
@@ -107,9 +118,14 @@ def local_index() -> pd.DataFrame:
     d = d.sort_values("filing_ts")
     # consolidated preferred, then latest filing
     d["cons"] = d.consolidated.astype(str).str.contains("Non", case=False) == False
-    d = (d.sort_values(["cons", "filing_ts"])
-           .drop_duplicates(["symbol", "financialYear", "relatingTo"], keep="last"))
-    return d
+    # 🔴 DO NOT PRE-DEDUPE ON INDEX METADATA. INTEGRATED filings carry
+    # financialYear=None and relatingTo='Original'/'New', so the old key
+    # (symbol, financialYear, relatingTo) collapsed EVERY integrated filing for
+    # a symbol into ONE row — LUPIN's 19 filings since 2025 became 2, which is
+    # why its TTM stayed pinned at 2024-12 and read EPS 62.92 against
+    # screener.in's implied 124.1. Dedupe is deferred to AFTER parsing, on the
+    # period_end the XML itself reports, which is the only reliable key.
+    return d.drop_duplicates(subset=["fn"])
 
 
 def parse_one(path: Path):
@@ -194,6 +210,9 @@ def parse_local(a) -> int:
     if not rows:
         print("nothing parsed"); return 1
     df = pd.DataFrame(rows)
+    # dedupe on the PARSED period: consolidated preferred, then latest filing
+    df = (df.sort_values(["consolidated", "filing_date"])
+            .drop_duplicates(["symbol", "period_end"], keep="last"))
     con = duckdb.connect()
     con.execute("INSTALL postgres"); con.execute("LOAD postgres")
     con.execute(f"ATTACH '{DSN}' AS pg (TYPE postgres)")
