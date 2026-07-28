@@ -71,7 +71,8 @@ EPS_TAGS = ("BasicEarningsLossPerShareFromContinuingAndDiscontinuedOperations",
             "BasicEarningsPerShareAfterExtraordinaryItems",
             "BasicEarningsPerShareBeforeExtraordinaryItems",
             "BasicEarningsLossPerShareFromContinuingOperations",
-            "BasicEarningsLossPerShare")
+            "BasicEarningsLossPerShare",
+            "EarningPerShare")          # singular variant, 5 filings
 
 # 🔴 NSE TAGS THE RESULTS TABLE BY COLUMN, NOT BY PERIOD. An Indian quarterly
 # results table is: col 1 = current quarter, col 4 = year-to-date. The XBRL
