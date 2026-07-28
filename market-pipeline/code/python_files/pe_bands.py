@@ -158,8 +158,19 @@ def build(a) -> int:
         # clean consecutive runs measure 273-275 throughout.
         span = g.period_end - g.period_end.shift(3)
         return e.where(span.dt.days.between(255, 300))
-    q["ttm_eps"] = (q.groupby("symbol", group_keys=False)
-                      .apply(_ttm).reset_index(level=0, drop=True))
+    # 🔴 INDEX MISALIGNMENT — the real cause of the ~10x errors. The previous
+    # form was groupby(..., group_keys=False).apply(_ttm).reset_index(level=0,
+    # drop=True). With group_keys=False the result ALREADY carries the original
+    # index, so reset_index dropped a level that was not there and scrambled the
+    # assignment: AHLUCONT's four most recent quarters sum to 47.55 while the
+    # stored ttm_eps read 396.50. The XBRL parse was correct all along — this
+    # was a pandas alignment bug wearing a data-quality costume. Assign per
+    # group by explicit index instead.
+    q["ttm_eps"] = np.nan
+    for _sym, _g in q.groupby("symbol"):
+        _e = _g.eps.rolling(4).sum()
+        _span = (_g.period_end - _g.period_end.shift(3)).dt.days
+        q.loc[_g.index, "ttm_eps"] = _e.where(_span.between(255, 300)).values
     q = q.dropna(subset=["ttm_eps"])
     q["n"] = q.groupby("symbol").ttm_eps.transform("size")
     q = q[q.n >= MIN_Q]
