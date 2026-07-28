@@ -98,8 +98,19 @@ def validate(a) -> int:
     px = px.drop(columns=[c for c in bad if c in px.columns]); tv = tv[px.columns]
     dates = px.index
 
+    # WARM-UP. Was 756 bars (3 years) because the distress rule references a
+    # 3-year high — which pushed the first formation to 2019-01 and so SKIPPED
+    # the 2016-2020 bear, the exact regime where small-cap fund alpha was
+    # largest (+4.78pp, 92% beating). But flags() already degrades gracefully:
+    # hist is `max(0, i-756):i`, so early periods simply use a shorter, still
+    # strictly-trailing window. The real binding constraint is the 200-day
+    # moving average, so the warm-up is that plus a small buffer.
+    #   CONSEQUENCE, stated: before 2019 the "3-year high" is a since-inception
+    #   high over a shorter window, which makes `distress` HARDER to trigger
+    #   (less time to have fallen 50% from a peak). The early sub-period
+    #   therefore understates that rule rather than flattering it.
     rows = []
-    for i in range(756, len(px) - HOLD, 21):
+    for i in range(a.warmup, len(px) - HOLD, 21):
         turn = tv.iloc[i - 260:i].median().dropna().sort_values(ascending=False)
         band = [c for c in turn.index[BAND_LO:BAND_HI] if c in px.columns]
         if len(band) < 100:
@@ -151,6 +162,21 @@ def validate(a) -> int:
     t = sp.mean() / (sp.std(ddof=1) / np.sqrt(len(sp)))
     print(f"\n- screened-minus-band per period: **{sp.mean():+.2%}**  (t = {t:.2f}, "
           f"n={len(sp)})")
+
+    # Sub-periods: the whole point of extending the warm-up is to test the rules
+    # in the 2016-2020 bear that motivated them, not just the bull that followed.
+    print("\n## by sub-period (does it work in the regime it was built for?)\n")
+    print("| period | n | band | screened | edge | t |")
+    print("|---|--:|--:|--:|--:|--:|")
+    for lbl, lo, hi in (("2016-2020 bear", "2016-01-01", "2020-10-31"),
+                        ("2020-2026 bull", "2020-11-01", "2026-12-31")):
+        g = d[(d.date >= lo) & (d.date <= hi)]
+        if len(g) < 8:
+            continue
+        e = (g.keep - g["all"])
+        tt = e.mean() / (e.std(ddof=1) / np.sqrt(len(e)))
+        print(f"| {lbl} | {len(g)} | {g['all'].mean():+.2%} | {g.keep.mean():+.2%} | "
+              f"**{e.mean():+.2%}** | {tt:.2f} |")
     return 0
 
 
@@ -191,6 +217,8 @@ def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--validate", action="store_true")
+    ap.add_argument("--warmup", type=int, default=220,
+                    help="bars before the first formation (200DMA + buffer)")
     ap.add_argument("--hold", type=int, default=63,
                     help="bars held before rebalance: 63=quarterly, 252=annual, 756=3y (Coffee-Can-ish)")
     ap.add_argument("--screen", action="store_true")

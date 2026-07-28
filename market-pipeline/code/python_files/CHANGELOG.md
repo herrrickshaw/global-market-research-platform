@@ -80,6 +80,33 @@ paper → 10 sections + glossary, deck → 12 slides):
   frequently (capital-assistance rates, MDA quantum) — the annex cites the governing circular
   date instead of hard-coding numbers that will go stale.
 
+## 2026-07-28 — Small-cap screener validation extended: edge is 2x LARGER in the bear
+
+- The 2019 start was an artefact of requiring 756 bars of warm-up for the
+  3-year-high rule, which skipped the 2016-2020 bear — the regime that motivated
+  the whole thing. `flags()` already degraded gracefully (its window is
+  `max(0, i-756):i`), so the only real constraint was the 200DMA. Warm-up
+  dropped to 220 bars; the turnover-rank band needs 260, so formations now start
+  **2017-01** (the panel itself begins 2016-01 — "2016" is not reachable).
+- **RESULT STRENGTHENS**: 105 formations vs 82, edge **+3.07%/126 bars
+  (t 8.75)** against the earlier +2.59% (t 5.44).
+
+| period | n | band | screened | edge | t |
+|---|--:|--:|--:|--:|--:|
+| 2017-01 → 2020-10 (bear) | 44 | +3.04% | +7.37% | **+4.33%** | 6.06 |
+| 2020-11 → 2025-12 (bull) | 61 | +11.40% | +13.55% | **+2.15%** | 8.23 |
+
+- **The edge is TWICE as large in the bear (+4.33% vs +2.15%)** — and that is
+  exactly what the fund evidence predicted: small-cap managers beat their index
+  by +4.78pp pre-bull versus +2.22pp over the full cycle. The rules work hardest
+  in the regime they were derived from, which is the opposite of a curve-fit.
+- Marginal effects all strengthen on the longer window: distress −8.11pp (the
+  names it removes returned **−0.21%**) · untradeable −6.12pp · downtrend
+  −4.85pp · blowup −2.37pp.
+- CAVEAT KEPT: before 2019 the "3-year high" is a since-inception high over a
+  shorter window, making `distress` HARDER to trigger — so the bear sub-period
+  understates that rule rather than flattering it.
+
 ## 2026-07-28 — Point-in-time constituents NOT obtainable; official TRI collected instead
 
 - **🔴 THE ASK COULD NOT BE MET.** Point-in-time NSE index constituents are not
