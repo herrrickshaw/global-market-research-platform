@@ -2,12 +2,34 @@
 """
 reentry_engine.py — the mean-reversion discovery engine over tier 3 (2026-07-27).
 
-The tier-anomaly backtest (reports/tier_anomaly_backtest.md) showed evictions
-in bull markets boomerang 45-75% of the time, and BUYING those boomerangs at
-the anomaly trigger carried real forward edge (excess vs median-return index:
-IN +12.9%/63d t14.2 · KR +24.9%/63d t14.8 · JP +6.1% t10.3 · US +5.1% t7.0;
-raw returns positive everywhere — survivorship-lite caveat: top-200 liquid
-panel). So tier 3 is treated as a RE-ENTRY QUEUE, not a failure log.
+The tier-anomaly backtest (reports/tier_anomaly_backtest.md) shows evictions in
+bull markets boomerang 45-75% of the time. Tier 3 is therefore a RE-ENTRY
+QUEUE — a research queue of names the eviction model got wrong.
+
+🔴 THE EDGE CLAIM IS WITHDRAWN (2026-07-28). This docstring previously asserted
+"excess vs median-return index: IN +12.9%/63d t14.2 · KR +24.9%/63d t14.8 ·
+JP +6.1% t10.3 · US +5.1% t7.0". Not one of those numbers appears in the report
+it cites. Once backtest_tier_anomalies.py was extended past the anomaly touch,
+the SAME report measured IN 63d at excess -2.01% median / +0.04% mean, t=0.06 —
+and reentry_book.py, written separately against the event file, independently
+returned excess -1.88% median / +0.18% mean, t=0.27 on n=508. Two measurements
+that agree to two decimal places say the edge is not there. The likely origin of
+t=14 on n~500 is a benchmark mismatch (differencing against a period-constant
+rather than the contemporaneous index leaves market drift in the numerator and
+removes no covariance, which inflates both the mean and the t); a t of 14 on
+that sample should have been read as a bug report on sight.
+
+BOOMERANGING IS NOT EDGE. A 45-75% boomerang rate sounds like an opportunity
+and is not one: in a bull market most names recover, so the benchmark recovers
+too. The whole question is whether the re-entry beats holding the index over
+the same window, and measured properly it does not.
+
+WHAT THAT MEANS HERE. Ranking and paper-tracking still run — the queue is worth
+observing, and the paper-track is how it earns or loses its place. But injecting
+rows into watchlist.csv is now OPT-IN (--commit), because those rows surface in
+the morning brief via reports/reentry_candidates.csv, and shipping a daily
+recommendation on a withdrawn premise is the one thing this file must not do.
+Re-enable it if and when a measurement supports it.
 
 Daily flow (pipeline [13w], after watchlist_tiers):
   1. read watchlist3.csv (anomalies promoted today or still fresh)
@@ -92,6 +114,13 @@ def write_recent_reentries():
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--dry-run", action="store_true")
+    # Writing to watchlist.csv requires --commit as of 2026-07-28: the measured
+    # edge behind these picks is gone (see module docstring), so the default is
+    # rank-and-observe. --dry-run is kept for callers that pass it explicitly.
+    ap.add_argument("--commit", action="store_true",
+                    help="actually write re-entry rows to watchlist.csv "
+                         "(default: rank and report only — the edge claim that "
+                         "justified auto-injection was withdrawn 2026-07-28)")
     a = ap.parse_args()
 
     from prediction_filter import rsi14, rsi_zone
@@ -185,9 +214,14 @@ def main() -> int:
         print(f"    ↩ RE-ENTER {p['market']} {p['symbol']} @ {p['price']:g} "
               f"(rsi {p['rsi']}, {p['trigger']})")
 
-    if a.dry_run or not picks:
+    if a.dry_run or not a.commit or not picks:
         if a.dry_run:
             print("  DRY RUN — watchlist untouched")
+        elif picks and not a.commit:
+            print(f"  {len(picks)} candidate(s) ranked, NOT written — pass "
+                  f"--commit to inject. The forward edge that justified "
+                  f"auto-injection measured t=0.06 (report) / t=0.27 "
+                  f"(independent re-run) and was withdrawn 2026-07-28.")
         return 0
 
     add = pd.DataFrame([{

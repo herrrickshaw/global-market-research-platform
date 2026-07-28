@@ -265,16 +265,30 @@ def patch_residual(args) -> int:
     print(f"{len(targets)} symbol(s) still show a >30% unreversed drop after "
           f"the split pass — checking each against Yahoo's adjusted series")
 
-    new_rows, checked = [], 0
+    new_rows, checked, unverified = [], 0, []
     for sym in targets:
         dates = list(resid.index[resid[sym]])
+        # 🔴 A FETCH FAILURE IS NOT A CLEAN RESULT. Delisted and renamed symbols
+        # (MINDTREE -> LTIM, MOTHERSUMI -> MOTHERSON, ABIRLANUVO merged away) no
+        # longer resolve on Yahoo, so the adjusted-series authority is simply
+        # unavailable for them. An earlier version swallowed these into
+        # `continue` and then printed "no additional share-count actions found",
+        # which read as "the panel is clean" when in fact 41% of the targets had
+        # never been checked — MINDTREE 2016-03-09, a case this very docstring
+        # names as CONFIRMED, was among the silently skipped. Same failure shape
+        # as fetch_splits() returning [] on error. They are collected and
+        # reported as UNVERIFIABLE; contaminated() in the analysis scripts
+        # already drops them, so the panel stays safe, but the operator must be
+        # told the difference between "checked and clean" and "never checked".
         try:
             h = yf.Ticker(sym + ".NS").history(period="max", auto_adjust=False)
             if h.empty or "Adj Close" not in h.columns:
+                unverified.append(sym)
                 continue
             ratio = (h["Adj Close"] / h["Close"]).dropna()
             ratio.index = pd.DatetimeIndex(ratio.index).tz_localize(None)
         except Exception:                                  # noqa: BLE001
+            unverified.append(sym)
             continue
         checked += 1
         for d in dates:
@@ -295,8 +309,22 @@ def patch_residual(args) -> int:
                           f"{extra:.3f}" + (f" (split {known:g} already known)"
                                             if known else ""))
 
+    if unverified:
+        qpath = OUT.parent / "india_unverifiable_symbols.csv"
+        pd.DataFrame({"symbol": sorted(unverified)}).to_csv(qpath, index=False)
+        print(f"\n  🔴 {len(unverified)} of {len(targets)} target(s) "
+              f"({len(unverified) / len(targets):.0%}) could NOT be verified — "
+              f"delisted or renamed, no adjusted series to check against:")
+        print("     " + " ".join(sorted(unverified)))
+        print(f"     -> {qpath.name}; these keep an uncorrected discontinuity "
+              f"and are dropped by contaminated() at analysis time. NOT a clean "
+              f"result — an unchecked one. Do NOT infer ratios from the price "
+              f"gap: DHFL and SINTEX really did collapse, and snapping a genuine "
+              f"-90% to a bonus ratio would manufacture alpha out of a fraud.")
+
     if not new_rows:
-        print(f"  checked {checked} symbol(s) — no additional share-count actions found")
+        print(f"\n  checked {checked} of {len(targets)} symbol(s) — no additional "
+              f"share-count actions found among those actually checked")
         return 0
     add = pd.DataFrame(new_rows, columns=["symbol", "split_date", "ratio"])
     add["split_date"] = pd.to_datetime(add.split_date)
