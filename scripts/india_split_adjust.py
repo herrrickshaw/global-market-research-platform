@@ -29,10 +29,13 @@ shares. Raw prices strictly BEFORE D are therefore R times too high:
 Back-adjustment, so the most recent price is unchanged and historical prices are
 scaled down — the same convention as every adjusted feed.
 
-Usage:
-  python3 scripts/india_split_adjust.py --build       # fetch + write factors
-  python3 scripts/india_split_adjust.py --verify      # discontinuities before/after
-  python3 scripts/india_split_adjust.py --show RELIANCE
+Usage — MUST be the market-pipeline venv python; the login default and
+/usr/bin/python3 both lack yfinance (--build fails fast and says so):
+  V=/Users/umashankar/market-pipeline/code/python_files/.venv/bin/python3
+  $V scripts/india_split_adjust.py --build            # fetch + write factors
+  $V scripts/india_split_adjust.py --patch-residual   # bonus issues (see above)
+  $V scripts/india_split_adjust.py --verify           # discontinuities before/after
+  $V scripts/india_split_adjust.py --show RELIANCE
 """
 from __future__ import annotations
 
@@ -95,7 +98,33 @@ def fetch_splits(sym: str, retries: int = 3):
     return None                # every attempt errored — caller must not treat as empty
 
 
+VENV_PY = ("/Users/umashankar/market-pipeline/code/python_files/.venv/bin/python3")
+
+
+def require_yfinance() -> None:
+    """Fail in the first second, not after a 4.4M-row load and 1,815 threads.
+
+    Three interpreters live on this machine and only one can run this script:
+    Homebrew's python3 (the login default) has neither yfinance nor duckdb,
+    /usr/bin/python3 has duckdb/pandas/psycopg2 but NOT yfinance, and the
+    market-pipeline venv has all of it. Discovered the ugly way — the import
+    sat inside the thread worker, so a missing module surfaced as a
+    ThreadPoolExecutor traceback several minutes into a run that had already
+    done all its expensive work.
+    """
+    try:
+        import yfinance  # noqa: F401
+    except ImportError:
+        raise SystemExit(
+            "yfinance is not available to this interpreter "
+            f"({sys.executable}).\n\n"
+            f"Run with the market-pipeline venv instead:\n"
+            f"  {VENV_PY} scripts/india_split_adjust.py --build\n"
+        )
+
+
 def build(args) -> int:
+    require_yfinance()
     df = load_raw()
     syms = liquid_symbols(df)
     print(f"IN panel: {df.Symbol.nunique():,} symbols · "
