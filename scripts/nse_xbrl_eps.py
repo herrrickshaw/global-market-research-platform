@@ -155,6 +155,26 @@ def parse_one(path: Path):
     if not ctx:
         return None
 
+    # 🔴 DANGLING contextRef — the single biggest cause of "unusable". Many
+    # filings reference `OneD`/`FourD` on the EPS fact while defining ONLY
+    # concept-suffixed contexts (OneOperatingExpenses01D,
+    # FourItemsThatWillNotBeReclassified01D, ...), so the plain ID resolves to
+    # nothing and the fact is discarded. 1,003 of 1,009 EPS facts in a
+    # 300-file failure sample died this way.
+    # NSE prefixes every column-1 context with "One" and every column-4 with
+    # "Four", and in 200 of 200 sampled failures ALL One* contexts shared
+    # exactly ONE period — so the column prefix determines the period
+    # unambiguously and a dangling ref can be resolved from its siblings.
+    col_period: dict[str, set] = {}
+    for cid, per in ctx.items():
+        for pre in ("One", "Two", "Three", "Four", "Five"):
+            if cid.startswith(pre):
+                col_period.setdefault(pre, set()).add(per)
+                break
+    fallback = {pre: next(iter(v)) for pre, v in col_period.items() if len(v) == 1}
+    for pre, per in fallback.items():
+        ctx.setdefault(pre + "D", per)      # OneD, FourD, ...
+
     def pick(tags):
         """The CURRENT QUARTER value: right tag, quarter-length context, and
         the current-quarter COLUMN where the format distinguishes columns."""
