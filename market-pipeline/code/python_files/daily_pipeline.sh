@@ -182,6 +182,24 @@ FAILURES=()
   $PY playbook_screener.py \
     || FAILURES+=("screen: playbook (validated edges)")
 
+  # [13s] Small-cap exclusion screen (2026-07-28). The ONE edge that survived a
+  # full cycle today: small-cap active funds beat the Nifty Smallcap 250 by
+  # +2.33pp/yr with 92% of funds beating over 10 years (official TRI), because a
+  # cap-weighted index must hold everything in the band while a manager declines
+  # to. Rules validated survivorship-free on the price panel (delisted names
+  # included): screened-minus-band +3.07%/126 bars, t 8.75 — and BIGGER in the
+  # 2017-2020 bear (+4.33%) than the bull (+2.15%), which is the opposite of a
+  # curve-fit.
+  #   Runs DAILY because the flags are price-based and move daily; the REBALANCE
+  #   cadence is a separate decision and the sweep put it at semi-annual (edge
+  #   +2.59pp at 126 bars vs +1.40pp at 63, and it REVERSES to -1.32pp at 504).
+  #   Constituent list is cached, so a network failure degrades instead of
+  #   failing the step. Needs data/india_split_factors.parquet — absent, the
+  #   underlying loader raises rather than silently using unadjusted prices.
+  step "[13s/14] small-cap exclusion screen (Nifty Smallcap 250)"
+  $PY smallcap_screener.py --screen \
+    || FAILURES+=("screen: small-cap exclusion")
+
   # [13w] Prediction filter (2026-07-27): the mailer_prediction_audit lens as a
   # ROUTINE eviction input — refresh regime×Markov×Kalman scores, auto-purge
   # non-held WEAK names (bear state + negative drift), write held WEAK to

@@ -52,6 +52,8 @@ Usage:
 from __future__ import annotations
 
 import argparse
+import datetime as dt
+import io
 import sys
 from pathlib import Path
 
@@ -183,9 +185,26 @@ def validate(a) -> int:
 def screen(a) -> int:
     import urllib.request
     import pead_liquidity_study as P
-    req = urllib.request.Request(CONSTITUENTS, headers={"User-Agent": UA})
-    with urllib.request.urlopen(req, timeout=45) as r:
-        cons = pd.read_csv(r)
+    # Constituent list is cached: it changes semi-annually at index review, so a
+    # transient network failure must not take down a nightly pipeline step. Fetch
+    # when possible, fall back to the cache, and only fail when neither exists.
+    cache = HERE / "cache_seed" / "smallcap250_constituents.csv"
+    try:
+        req = urllib.request.Request(CONSTITUENTS, headers={"User-Agent": UA})
+        with urllib.request.urlopen(req, timeout=45) as r:
+            body = r.read()
+        if b"Symbol" not in body[:400]:
+            raise ValueError("not the constituent CSV (SPA shell?)")
+        cache.parent.mkdir(parents=True, exist_ok=True)
+        cache.write_bytes(body)
+        cons = pd.read_csv(io.BytesIO(body))
+    except Exception as e:                                # noqa: BLE001
+        if not cache.exists():
+            print(f"constituent fetch failed and no cache: {str(e)[:80]}")
+            return 1
+        print(f"  ⚠ constituent fetch failed ({str(e)[:50]}) — using cache "
+              f"from {dt.date.fromtimestamp(cache.stat().st_mtime)}")
+        cons = pd.read_csv(cache)
     syms = [s.strip() for s in cons.Symbol.dropna()]
     px, tv = P.load_prices()
     have = [s for s in syms if s in px.columns]
