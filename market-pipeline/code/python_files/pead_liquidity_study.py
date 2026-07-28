@@ -93,6 +93,7 @@ def load_prices():
             "python3 scripts/india_split_adjust.py --build"
         )
     fac = pd.read_parquet(FAC)
+    raw = load_raw()
     px = raw.pivot_table(index="Date", columns="Symbol", values="Close").sort_index()
     tv = (raw.assign(_t=raw.Close * raw.Volume)
              .pivot_table(index="Date", columns="Symbol", values="_t").sort_index())

@@ -80,6 +80,48 @@ paper → 10 sections + glossary, deck → 12 slides):
   frequently (capital-assistance rates, MDA quantum) — the annex cites the governing circular
   date instead of hard-coding numbers that will go stale.
 
+## 2026-07-28 — Small-cap exclusion screener: rebalanced, NOT Coffee Can
+
+- **`smallcap_screener.py`** acts on the one fund-category alpha that survived a
+  full cycle: small-cap active beat the Smallcap 250 by +2.22pp/yr (92% of funds)
+  over 10 years and +4.78pp (92%) pre-bull. Mechanism is in the raw numbers —
+  over 2016-2020 the index made 1.95%/yr while the median manager made 6.72%.
+  A cap-weighted index must hold everything in the band; a manager declines to.
+  So this EXCLUDES rather than selects.
+- **VALIDATED SURVIVORSHIP-FREE**: run on the price panel (6,731 symbols
+  including delisted names — DENABANK, DHFL, DISHMAN), band approximated
+  point-in-time by turnover rank. 85 formations, screened-minus-band
+  **+1.40%/quarter (t 4.70)**. All four rules help: untradeable −5.11pp ·
+  distress −3.15pp · downtrend −2.44pp · blowup −1.17pp.
+- **🔴 NOT A COFFEE CAN — the edge decays and REVERSES.** Holding-period sweep:
+
+| hold | edge vs band | t |
+|---|--:|--:|
+| 63 (quarterly) | +1.40pp | 4.70 |
+| **126 (semi-annual)** | **+2.59pp** | **5.44** |
+| 252 (annual) | +2.47pp | 3.18 |
+| **504 (two years)** | **−1.32pp** | **−0.66** |
+
+  Past ~1 year the excluded names start winning — distress continuation gives way
+  to mean reversion, the De Bondt-Thaler horizon. **Semi-annual is the sweet
+  spot**: highest t AND best net of cost (+5.2%/yr gross edge against ~2%/yr
+  turnover, vs quarterly's +5.6% against ~4%).
+- **NO historical backtest on the REAL constituents, deliberately.** NSE
+  publishes only the current list; a market-cap reconstruction from
+  fundamentals.ratios reproduces it at 71% but that table holds only companies
+  existing TODAY, so projecting it backwards embeds the survivorship that cost
+  7.5 points in the ETF study. Rules are validated on the survivorship-free
+  panel; the live screen runs forward on the real 250, where the bias cannot bite.
+- Live screen 2026-07-22: **250 → KEEP 123**, 127 excluded (downtrend 106,
+  distress 35, blowup 25). Concentrated in Information Technology (11 of 13
+  small-cap IT names excluded) and Construction (9 of 11).
+- CAVEATS: validation starts 2019 (the 3-year-high rule needs 756 bars of
+  warm-up), so it MISSES the 2016-2020 bear where fund alpha was largest — the
+  rules are untested in the regime that motivated them. The turnover-rank band
+  matches the real index at only ~43%, so validation is "small caps generally",
+  not "the Smallcap 250". Cost is charged equally to both legs, so the screened
+  book's extra turnover is not penalised inside the edge figure.
+
 ## 2026-07-28 — Fund "outperformance" decomposed: only SMALL CAP survives 10 years
 
 - **`scripts/nse_index_history.py`** — official NSE daily index archive into
