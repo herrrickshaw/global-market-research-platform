@@ -2,6 +2,47 @@
 
 Decisions and material changes to the pipeline, newest first.
 
+## 2026-07-28 — Reconcile [13d]: intraday drift no longer suppresses the send
+
+- **The incident**: the 00:30 run built a sound brief (validation PASSED 6/6,
+  close-date verified) and did not send it. NVDA at 4.63% against a 4%
+  in-session tolerance failed [13d] on its own and suppressed the whole mailer.
+  The US scan runs at 00:33 IST = 15:03 ET — **mid-session by construction,
+  every weekday**. One liquid name moving >4% intraday is an ordinary Tuesday.
+- **REVERSES part of the 2026-07-27 call** ("a materially-off brief price should
+  block a send even when the cause is the market moving"). That was reasoned from
+  SKHY 9.4%, which looked like drift and was in fact a **stale cache** —
+  `_is_stale()` judging freshness by fetch time. Fixed at the source earlier
+  today (`market_data_cache` + `ohlcv_cache` now compare the last BAR date), so
+  the evidence the strict rule rested on no longer exists. What the per-name
+  tolerance still catches in session is drift — and drift is not a defect:
+  **when the market is open at build time there is no better price to quote.**
+  The brief is read hours later, after the close; any build-time snapshot is
+  stale by then. Blocking does not buy a more accurate brief, it buys no brief.
+- **New rule, in session only**: the gate stops asking "is this one price off?"
+  and asks the two questions that actually indicate a broken scan —
+  1. **exact-match warehouse signature** (scan LTP == yesterday's close to the
+     cent). No live market reproduces this. Promoted from a printed warning to a
+     **hard fail in every session state** — this is the precise staleness test,
+     and the INFY/SKHY class it was built for.
+  2. **systematic breach** — a majority (`_quorum`, ≥2) of sampled liquid names
+     off together. Drift is idiosyncratic; a re-served cache moves the sample as
+     one.
+  **Outside session hours the strict per-name rule is unchanged** — nothing but
+  bad data explains a gap when the market is shut.
+- **Scope is narrower than it sounds**: at 00:33 IST only US is in session
+  (JP/KR pre-open, EU/IN shut), so this changes the verdict for **one market at
+  pipeline time** and leaves the other four strict.
+- VERIFIED by replaying the real 00:33 workbook against the logged fresh quotes:
+  in-session 2/7 breaching → **PASS** (below the 4-name quorum, brief sends);
+  identical data with the market closed → **FAIL**; a whole sample re-served
+  (8/8) in session → **FAIL**. Live all-market run: IN/US/EU clean.
+- **Known residual (accepted)**: a genuine market-wide gap during the US session
+  would trip the quorum and suppress a correct brief. Not defended against,
+  because check 1 is the exact staleness test and check 2 is deliberately a
+  fuzzy backstop — tightening it further would re-import the false positive this
+  change removes.
+
 ## 2026-07-27 (night 3) — Performance: --post-only, weekly US correlation, session-aware gate
 
 - **Measured before fixing** (scan_timings.py / step_timings, per the

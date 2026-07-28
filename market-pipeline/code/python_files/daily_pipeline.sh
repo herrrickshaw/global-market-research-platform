@@ -228,6 +228,10 @@ FAILURES=()
   # EVERY market's scan LTPs against fresh quotes + the warehouse stale-cache
   # signature — the INFY class (Friday close on a +3.7% Monday) now gates the
   # mailer for all five markets, not just India's screener.in sample.
+  # 2026-07-28: what counts as a FAIL is now session-aware. A market open at
+  # build time drifts, so one name over tolerance no longer blocks — only an
+  # exact-match stale signature or a systematic (majority) breach does. Markets
+  # that are shut keep the strict per-name rule. At 00:33 IST that is US only.
   step "[13d/14] scan price reconcile (all markets)"
   RECONCILE_OK=0
   $PY scan_price_reconcile.py || { RECONCILE_OK=$?; echo "  ⚠ $RECONCILE_OK market(s) failed price reconcile"; FAILURES+=("reconcile: $RECONCILE_OK market(s) stale scan prices"); }

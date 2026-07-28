@@ -15,6 +15,11 @@ HOW — two independent checks per market, cheapest first:
   2. LIVE SPOT-CHECK (small, fresh yfinance batch): re-quote the top-N liquid
      names with a FRESH session (no cache) and flag |scan − fresh| > tolerance.
 
+WHAT COUNTS AS A FAILURE depends on whether the market is trading (2026-07-28):
+a market OPEN at build time drifts, and drift is not a data defect, so a single
+name over tolerance no longer suppresses the brief — see the _quorum() note.
+Staleness still fails in every session state.
+
 Exit code = number of markets that FAILED (stale beyond threshold), so
 daily_pipeline.sh can gate the mailer on it exactly like validate_brief.
 
@@ -60,6 +65,38 @@ def market_open_now(mkt: str) -> bool:
                "EU": (12.5, 21.0), "US": (19.0, 25.999)}  # US eve wraps midnight
     lo, hi = windows.get(mkt, (0, 0))
     return (lo <= h <= hi) or (mkt == "US" and h <= 1.5)
+
+
+# ── in-session quorum ─────────────────────────────────────────────────────────
+# 2026-07-28: the 00:30 run built a sound brief and did NOT send it. One name
+# (NVDA, 4.63% vs a 4% in-session tolerance) failed [13d] and suppressed the
+# whole mailer. The US scan runs at 00:33 IST = 15:03 ET — mid-session, by
+# construction, every weekday. A single liquid name moving >4% intraday is an
+# ordinary Tuesday, not evidence of a bad scan.
+#
+# REVERSES part of the 2026-07-27 call ("a materially-off brief price should
+# block a send even when the cause is the market moving"). That was reasoned
+# from SKHY 9.4%, which looked like drift and was actually a STALE CACHE —
+# _is_stale() judging freshness by fetch time. That bug is fixed at the source
+# (market_data_cache + ohlcv_cache now compare the last BAR date). With the
+# real defect gone, what the per-name tolerance still catches in-session is
+# drift, and drift is not a defect: when the US market is open at build time
+# there IS no better price to quote. The user reads the brief hours later, after
+# the close, by which point ANY build-time snapshot is stale. Blocking the send
+# does not buy a more accurate brief — it buys no brief.
+#
+# So in-session the gate stops asking "is this one price off?" and asks the two
+# questions that actually indicate a broken scan:
+#   1. exact-match warehouse signature — scan LTP == yesterday's close to the
+#      cent. Unambiguous staleness; no live market reproduces it. Hard fail,
+#      session or not.
+#   2. SYSTEMATIC breach — a majority of sampled liquid names off at once. Drift
+#      is idiosyncratic; a re-served cache moves the whole sample together.
+# Outside session hours nothing explains a gap but bad data, so one name over
+# tolerance still fails — that path is unchanged.
+def _quorum(n: int) -> int:
+    """Names that must breach together before an in-session FAIL."""
+    return max(2, (n + 1) // 2)
 
 
 def warehouse_prev_close(market: str) -> pd.DataFrame:
@@ -117,7 +154,10 @@ def reconcile(market: str, sample: int, tolerance: float) -> bool:
               if LIQ_COL in df.columns else df.head(sample))
     liquid = liquid[[sym_col, px_col]].dropna()
 
-    # Check 1 — warehouse signature (scan price == yesterday's warehouse ltp)
+    # Check 1 — warehouse signature (scan price == yesterday's warehouse ltp).
+    # Exact equality to the cent is the one signal a live market cannot fake, so
+    # a majority hit here FAILS outright regardless of session — this is the
+    # INFY/SKHY class the gate was built for.
     wh = warehouse_prev_close(market)
     n_sig = 0
     if not wh.empty:
@@ -127,12 +167,17 @@ def reconcile(market: str, sample: int, tolerance: float) -> bool:
         if n_sig:
             print(f"  [{market}] ⚠ {n_sig}/{len(liquid)} liquid names EXACTLY equal "
                   f"yesterday's warehouse close (stale-cache signature)")
+    if n_sig >= _quorum(len(liquid)):
+        print(f"  [{market}] {Path(scan_path).name}: FAIL — re-served yesterday's "
+              f"closes ({n_sig}/{len(liquid)} exact matches)")
+        return False
 
     # Check 2 — fresh live spot-check
     tickers = [str(s) + suffix if suffix and not str(s).endswith(suffix) else str(s)
                for s in liquid[sym_col]]
     fresh = fresh_quotes(tickers)
-    if market_open_now(market):
+    in_session = market_open_now(market)
+    if in_session:
         tolerance = tolerance * 2
         print(f"  [{market}] market in session — tolerance loosened to {tolerance:.1f}% (intraday drift)")
     n_checked = n_stale = 0
@@ -153,8 +198,17 @@ def reconcile(market: str, sample: int, tolerance: float) -> bool:
               f"warehouse signature only")
         return n_sig < max(2, len(liquid) // 2)
 
-    ok = n_stale == 0
-    verdict = "PASS" if ok else f"FAIL — {n_stale}/{n_checked} stale (worst {worst[0]} {worst[1]:.1f}%)"
+    # In session, one name over tolerance is drift and does not block; only a
+    # SYSTEMATIC breach does. Closed, any breach still fails — see the block above.
+    need = _quorum(n_checked) if in_session else 1
+    ok = n_stale < need
+    if ok and n_stale:
+        verdict = (f"PASS — {n_stale}/{n_checked} over tolerance, below the "
+                   f"{need}-name in-session quorum (drift, worst {worst[0]} {worst[1]:.1f}%)")
+    elif ok:
+        verdict = "PASS"
+    else:
+        verdict = f"FAIL — {n_stale}/{n_checked} stale (worst {worst[0]} {worst[1]:.1f}%)"
     print(f"  [{market}] {Path(scan_path).name}: {n_checked} checked · {verdict}")
     return ok
 
