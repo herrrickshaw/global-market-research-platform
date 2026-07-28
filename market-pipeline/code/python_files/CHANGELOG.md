@@ -80,6 +80,46 @@ paper → 10 sections + glossary, deck → 12 slides):
   frequently (capital-assistance rates, MDA quantum) — the annex cites the governing circular
   date instead of hard-coding numbers that will go stale.
 
+## 2026-07-28 — Peer groups: the VALUATION mechanism, and where it sits in the literature
+
+- **User's point**: peer-group P/E clustering is what drives co-movement —
+  comparables are marked off each other's multiples, so peers move together for
+  a relative-valuation reason, not only a shared-fundamentals one. This is a
+  different mechanism from the one tested in cluster_indices.py, which grouped
+  on RETURN correlation and never looked at valuation.
+- **The literature it belongs to**, worth naming because it has already run this
+  argument: **Bhojraj & Lee (2002), "Who Is My Peer? A Valuation-Based Approach
+  to the Selection of Comparable Firms"** (JAR) argues industry classification is
+  a poor peer definition and selects peers by *warranted multiple* instead,
+  beating SIC. **Bhojraj, Lee & Oler (2003), "What's My Line?"** finds GICS
+  outperforms SIC/NAICS specifically at explaining cross-sectional variation in
+  valuation multiples. For composite construction itself the canonical reference
+  is the **OECD/JRC Handbook on Constructing Composite Indicators** —
+  normalisation → weighting → aggregation → sensitivity analysis, in that order.
+- **TESTED** (India, 316 names carrying BOTH an NSE Industry label and a P/E),
+  within-group dispersion of log P/E, median absolute deviation — log because
+  multiples are ratio-scale, so 10→20 must count the same as 40→80, and MAD
+  because P/E tails are brutal:
+
+| grouping | within-group log-P/E dispersion | groups |
+|---|--:|--:|
+| RANDOM (the null) | 0.5365 | 17 |
+| OFFICIAL NSE Industry | 0.3857 | 17 |
+| **DATA return-correlation clusters** | **0.3612** | 5 |
+
+- **The mechanism is real**: both groupings sit far below random, so peers do
+  share multiples. And return-correlation clusters are at least as tight on
+  VALUATION as the industry taxonomy — despite 5 groups averaging ~63 names
+  against 17 averaging ~19, and larger groups should be MORE dispersed, so this
+  is the harder direction to win in.
+- **CAVEATS, and they are not small**: this is ONE cross-section (today), not a
+  panel — `fundamentals.ratios` holds a single fiscal year, so P/E history does
+  not exist here and the test cannot yet be run point-in-time. Group counts
+  differ. The Bhojraj-Lee construction proper selects peers ON warranted
+  multiple rather than testing dispersion after the fact; doing that here needs
+  stock-level P/E history, which is the same gap that blocked fundamental
+  exclusions in smallcap_screener.py.
+
 ## 2026-07-28 — Sector rotation: NO signal; weighted index P/E does not reconstruct
 
 - **`sector_rotation.py`** — 12 NIFTY sectoral indices, 10y daily history with
