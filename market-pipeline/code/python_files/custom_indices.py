@@ -334,6 +334,106 @@ def build_clusters(px, tv, rets, dates, cost):
     return keep
 
 
+
+# ── RECURRING-PEER INDICES ───────────────────────────────────────────────────
+# The per-formation clusters above are rebuilt from scratch every six months, so
+# they throw away a signal: WHICH PAIRS KEEP LANDING TOGETHER. A pair that
+# co-clusters in most past formations is a stable economic relationship; a pair
+# that co-clustered once was correlated by accident. This builds groups from the
+# recurring pairs only.
+#
+# 🔴 CO-OCCURRENCE IS EXPANDING-WINDOW, NOT FULL-SAMPLE. At formation t the
+# pair counts use ONLY formations strictly before t. Counting over the whole
+# history and then "discovering" stable pairs would be look-ahead of exactly the
+# kind that cost 7.5 points in the ETF universe — the pairs that turn out stable
+# are known only afterwards.
+#
+# Groups are the connected components of the graph whose edges are pairs seen
+# together in >= PEER_MIN_FRAC of prior formations. Components, not clusters:
+# the point is to let a stable core define its own size rather than imposing k.
+#
+# 🔴 KNOWN LIMITATION — PERCOLATION. At PEER_MIN_FRAC=0.60 the graph percolates:
+# PEER1 ends up with ~197 members, which is not a peer group, it is the market
+# wearing one. Connected components chain transitively (A-B and B-C merge A,B,C
+# even when A and C never co-cluster), so a single well-connected hub fuses
+# everything. PEER2 at ~6 names is the shape actually wanted. Shipped as-is with
+# the flaw named rather than silently tuned until it looked good; the honest
+# fixes are a higher threshold, or swapping components for a community-detection
+# method that permits within-graph structure. PEER1 should be read as a broad
+# market proxy, NOT as evidence that 197 stocks are peers.
+PEER_MIN_FRAC = 0.60
+PEER_MIN_GROUP = 5
+
+
+def build_peers(px, tv, rets, dates, cost):
+    from scipy.cluster.hierarchy import fcluster, linkage
+    from scipy.spatial.distance import squareform
+    from collections import defaultdict
+    pair = defaultdict(int)          # (a,b) -> formations seen together
+    seen = defaultdict(int)          # (a,b) -> formations both were in universe
+    acc, lvl = {}, {}
+    n_form = 0
+    i = WARMUP
+    while i < len(dates) - 1:
+        turn = tv.iloc[i - 260:i].median().dropna().sort_values(ascending=False)
+        uni = [c for c in turn.index[:300] if c in px.columns]
+        hist = rets[uni].iloc[i - 252:i].dropna(axis=1, thresh=220)
+        uni = list(hist.columns)
+        j = min(i + REBAL, len(dates) - 1)
+        if len(uni) < 80:
+            i = j; continue
+
+        # ---- build groups from PRIOR co-occurrence only -------------------
+        if n_form >= 4:
+            edges = defaultdict(set)
+            for (x, y), c in pair.items():
+                tot = seen[(x, y)]
+                if tot >= 3 and c / tot >= PEER_MIN_FRAC and x in uni and y in uni:
+                    edges[x].add(y); edges[y].add(x)
+            groups, unvisited = [], set(edges)
+            while unvisited:                      # connected components
+                root = unvisited.pop(); comp, stack = {root}, [root]
+                while stack:
+                    for nb in edges[stack.pop()]:
+                        if nb not in comp:
+                            comp.add(nb); stack.append(nb); unvisited.discard(nb)
+                groups.append(sorted(comp))
+            for gi, mem in enumerate(sorted(groups, key=len, reverse=True)[:8]):
+                if len(mem) < PEER_MIN_GROUP:
+                    continue
+                code = f"PEER{gi + 1}"
+                lv = lvl.get(code, BASE) * (1 - cost)
+                seg = rets.loc[dates[i + 1]:dates[j], [m for m in mem if m in rets]]
+                path = lv * (1 + seg.mean(axis=1).fillna(0.0)).cumprod()
+                acc.setdefault(code, []).extend(
+                    zip(path.index, path.values, [len(mem)] * len(path)))
+                lvl[code] = float(path.iloc[-1]) if len(path) else lv
+                SPECS[code] = f"[recurring peers] stable group {gi + 1}"
+
+        # ---- update co-occurrence AFTER using it --------------------------
+        C = hist.fillna(0.0).corr().fillna(0.0)
+        D = np.clip(1 - C.values, 0, 2); np.fill_diagonal(D, 0.0)
+        lab = fcluster(linkage(squareform(D, checks=False), "average"),
+                       CLUSTER_K, criterion="maxclust")
+        by = {}
+        for sym, L in zip(uni, lab):
+            by.setdefault(L, []).append(sym)
+        for a in range(len(uni)):
+            for b in range(a + 1, len(uni)):
+                seen[(uni[a], uni[b])] += 1
+        for mem in by.values():
+            for a in range(len(mem)):
+                for b in range(a + 1, len(mem)):
+                    k2 = tuple(sorted((mem[a], mem[b])))
+                    pair[k2] += 1
+        n_form += 1
+        i = j
+    keep = {k: v for k, v in acc.items() if len(v) > 500}
+    for k in sorted(keep):
+        print(f"  {k:8s} {SPECS[k]}", flush=True)
+    return keep
+
+
 def build(a) -> int:
     import duckdb
     import pead_liquidity_study as P
@@ -392,6 +492,10 @@ def build(a) -> int:
     for code, vals in build_clusters(px, tv, rets, dates, cost).items():
         series[code] = vals
 
+    print("\nrecurring-peer indices (expanding-window co-occurrence):", flush=True)
+    for code, vals in build_peers(px, tv, rets, dates, cost).items():
+        series[code] = vals
+
     print("\ncross-country thematic baskets:", flush=True)
     for code, vals in build_global(cost).items():
         series[code] = vals
@@ -432,7 +536,8 @@ def status(a) -> int:
     base = None
     order = (["SMLEW", "SMLSCR", "SMLEXC"] + sorted(BANDS) + sorted(THEMES) +
              sorted(c for m in GLOBAL_THEMES.values() for c in m) +
-             sorted(c for c in d.index_code.unique() if c.startswith("CL_")))
+             sorted(c for c in d.index_code.unique() if c.startswith("CL_")) +
+             sorted(c for c in d.index_code.unique() if c.startswith("PEER")))
     for k in order:
         g = d[d.index_code == k].sort_values("index_date")
         if g.empty:

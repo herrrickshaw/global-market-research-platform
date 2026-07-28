@@ -200,6 +200,28 @@ FAILURES=()
   $PY smallcap_screener.py --screen \
     || FAILURES+=("screen: small-cap exclusion")
 
+  # [13i] Custom index level series (2026-07-28) -> indices.custom_daily. Three
+  # families, and they are NOT equally evidenced:
+  #   SML*    the screened/excluded/null small-cap trio. SMLSCR beats the
+  #           equal-weight null by +7.57pp/yr with LOWER vol and a 20-point
+  #           shallower drawdown; SMLEXC at -6.85pp is the falsifier passing.
+  #   CL_*    correlation clusters, membership rebuilt from TRAILING data each
+  #           formation. Earned their place: at matched granularity they hold
+  #           together forward better than NSE's own Industry taxonomy
+  #           (+0.0272 within-group fwd corr, t 4.37 at k=45).
+  #   PEER*   recurring co-occurrence, expanding-window. PEER1 percolates to
+  #           ~197 names and is a market proxy, not a peer group — see the
+  #           module header.
+  #   THEMES/GLOBAL_THEMES are fixed named lists and therefore survivorship-
+  #   flattered; they are descriptive, never a backtest.
+  # WEEKLY (Mondays): the series only re-forms every 126 bars, so a daily
+  # rebuild would burn ~4 minutes to append the same levels.
+  if [[ "$(date +%u)" == "1" ]]; then
+    step "[13i/14] custom + cluster index level series (weekly)"
+    $PY custom_indices.py --build > /dev/null \
+      || FAILURES+=("indices: custom/cluster level series")
+  fi
+
   # [13w] Prediction filter (2026-07-27): the mailer_prediction_audit lens as a
   # ROUTINE eviction input — refresh regime×Markov×Kalman scores, auto-purge
   # non-held WEAK names (bear state + negative drift), write held WEAK to
