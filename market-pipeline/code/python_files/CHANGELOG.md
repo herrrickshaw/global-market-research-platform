@@ -2,6 +2,111 @@
 
 Decisions and material changes to the pipeline, newest first.
 
+## 2026-07-29 — Claims audited against their own evidence; three locks; a stale-price near-miss
+
+An end-to-end pipeline run at 22:36 (off the usual 00:30 schedule) exposed a class of failure the
+repo had no detector for: **numbers that had drifted from the evidence they cite, and producers
+that were silently feeding stale data into working guardrails.** Every fix below sits UPSTREAM of
+a gate that was already doing its job.
+
+- **Re-entry edge claim WITHDRAWN** (`reentry_engine.py`, pipeline `[13w]`, nightly). The docstring
+  asserted "IN +12.9%/63d t14.2 · KR +24.9% t14.8 · JP +6.1% t10.3 · US +5.1% t7.0" and named
+  `reports/tier_anomaly_backtest.md` as its authority. **None of those numbers are in that report.**
+  Once `backtest_tier_anomalies.py` was extended past the anomaly touch, the same report measured
+  IN 63d at excess −2.01% median / +0.04% mean, **t=0.06**; `reentry_book.py`, written separately
+  against the event file, returned −1.88% / +0.18%, **t=0.27** on n=508. Two independent
+  measurements agreeing to two decimals. Likely origin of t=14 on n≈500: differencing against a
+  period-constant instead of the contemporaneous index, which leaves market drift in the numerator
+  and removes no covariance. **Decision**: ranking and the paper-track still run, but watchlist
+  injection is now opt-in (`--commit`) — those picks reach the morning brief via
+  `reports/reentry_candidates.csv`, and shipping a daily recommendation on a withdrawn premise is
+  the one thing that file must not do. **Rejected**: deleting the step (the queue is worth
+  observing; it can re-earn its place by measurement). Boomerang rate is NOT edge — in a bull
+  market most names recover and so does the benchmark.
+- **`completeness_graph.py` — LangGraph audit** (4 nodes: inventory fans out to claims/gates/power,
+  joins at synthesis; deterministic, no LLM). Checks data freshness, whether a quoted number still
+  exists in the report it cites, contamination gating, and universe breadth. The claim check is the
+  one that would have caught `reentry_engine` mechanically. **Its own false alarms were fixed
+  rather than tolerated**: string-matching `t 17.62` against `t = 17.62` failed on the `=`;
+  `peer_warranted`/`reentry_book` were flagged ungated when they load no price panel;
+  `etf_builder`'s comment explaining why it does NOT gate was read as an implementation of gating;
+  a retraction paragraph was read as a stale claim. An audit that cries wolf gets muted.
+- **Staleness judged against an expected CADENCE, not a flat 7 days.** All three "stale critical
+  sources" were modelling errors, not faults: `nse_deep_ohlcv` is a static archive with no live
+  writer by design, `india_quarterly` was measured on `period_end` (a REPORTING period, so a fresh
+  quarterly table always looks a month behind), and `ohlcv_history` has no writer in this repo at
+  all.
+- **`cluster_indices` reshipped at the default k.** The report on disk was the **k=80** run
+  (+0.0752, t 17.62) while the docstring names k=45 as the fair comparison — the shipped number was
+  the most flattering point on the sweep. Re-run at default: **+0.0272, t 4.37**, about a third the
+  size. The conclusion survives; its advertised strength did not. **Decision**: the full k-sweep is
+  now printed INTO the report, because the sign flips between k=30 and k=45 and the t-statistic
+  climbs monotonically with k — higher k means smaller groups, which raises within-group
+  correlation mechanically, so any single-k claim is partly an artefact of k.
+- **Small-cap validation persisted, keyed by hold period.** `--validate` printed its result and
+  saved nothing, so the +3.07%/t 8.75 quoted in `custom_indices.py` lived only in a terminal. The
+  headline depends on the hold: **+1.76% (t 6.09) at the default 63 bars, +3.07% (t 8.75) at 126**.
+  Both legitimate, different questions. Filename carries the hold so whichever ran last cannot
+  silently define "the" result.
+- **India price panel was 5 sessions stale.** `warehouse/ohlcv/IN/year=*.parquet` had **no daily
+  writer**; it sat at 07-22 while `cleaned_ohlcv` ran to 07-27. That parquet is what
+  `load_prices()` reads, so `india_pe_daily` trailed live prices by a week and every P/E screen was
+  screening a week-old market. New `scripts/warehouse_ohlcv_sync.py` appends from `cleaned_ohlcv`
+  (the collision-safe NSE+BSE merge — bare NSE/BSE symbols COLLIDE), wired into `[15]`.
+  **Append-only by date, deliberately**: the parquet holds history past `cleaned_ohlcv`'s ~1-year
+  window, so a full rebuild from that source would truncate the panel and destroy every
+  long-horizon backtest. `india_pe_daily` 1,957,213 rows ending 07-22 → 1,961,485 ending 07-27.
+- **`pe_bands --source` now defaults to `xbrl`.** It defaulted to `screener`, which is NOT what the
+  live table is built from, so a plain `--build` silently replaced the 1,744-symbol XBRL table with
+  a 1,301-symbol screener one and dropped 277k observations — **done accidentally during the lag
+  fix above, caught because the row count fell when it should have risen, then reverted.** XBRL
+  wins on both axes: coverage 1,744 vs 1,301 symbols, accuracy ~20.5% vs ~28.5% median error. The
+  screener path reaches back to 2016 where XBRL starts at 2019, so it stays — but explicitly.
+- **`ohlcv_cache` freshness follows each market's own session clock.** The rule was
+  `exp = today − 1 day`, so a bar from yesterday always counted as current — correct at 00:30 IST
+  when no Asian market has traded "today", wrong at every other hour. At 22:43 the scans accepted
+  07-27 bars for Japan and Korea, whose sessions had closed ELEVEN HOURS earlier, **on a day both
+  markets fell 10–15%**: 005930.KS carried at 254,000 against an actual close of 220,000. `[13d]`
+  caught it (8/8 stale in both markets) and suppressed the send — the gate worked; the cache should
+  not have produced the input. US is excluded (its session runs past midnight IST) and unknown
+  market keys keep the old conservative rule. **This bug was only visible off-schedule**: at 00:30
+  the old rule is accidentally correct, so it had been latent.
+- **Three locks where there were none.** `daily_pipeline.sh` had **no concurrency guard** — a run
+  takes hours and launchd fires another at 00:30, and the watchlist is read-modify-write, so a
+  collision does not merge: the second writer discards the first's rows entirely, with both runs
+  reporting success. Added an atomic-`mkdir` lock (macOS has no `flock`); **it stood the 00:30 job
+  down that same night**, which is the failure it was written for occurring hours later.
+  `cloud_backup.sh` had a lock keyed by REMOTE, which never excluded the *other* backup script
+  (`repo-data-dedup`, cron 20:30) writing to a different Dropbox path from the same source trees;
+  rclone rate limits are per-ACCOUNT, and the two took step `[16]` from minutes to **4h19m** while
+  Dropbox returned `too_many_write_operations`. **Decision — the two locks have OPPOSITE semantics
+  on purpose**: the pipeline lock SKIPS (a duplicate run is redundant work) while the backup lock
+  WAITS (a skipped backup is lost coverage, and the two write to different destinations so both
+  must run), giving up after 90 min so a wedged peer cannot suppress backups forever. Both backup
+  scripts were patched by **atomic rename, not in-place edit** — both were RUNNING, and bash reads
+  a script incrementally as it executes.
+- **Corrections made during this work**: (1) a `contaminated()` gate was added to `etf_builder.py`
+  and **reverted** — India never reaches that loader (`main()` refuses the unadjusted panel, which
+  is stricter) and in the verified-adjusted JP/KR/US panels a >30% unreversed fall is a REAL crash,
+  so filtering that shape would delete losers and manufacture survivorship bias. (2) "All four
+  correlation scans failed" was reported twice and was **wrong** — those tracebacks
+  (`ModuleNotFoundError: zstandard`) came from the 00:30 run, before commit `d166cb47` fixed it at
+  05:08; this run's scans succeeded and wrote their matrices. Both runs share one date-stamped log
+  and the timestamps were not checked.
+- **`india_split_adjust --patch-residual` reported a clean bill on unchecked work.** It printed "no
+  additional share-count actions found" while **29 of 71 targets (41%) had never been checked** —
+  delisted/renamed symbols (MINDTREE, MOTHERSUMI, ABIRLANUVO) do not resolve on Yahoo, so the
+  adjusted-series authority is unavailable and the fetch failure was swallowed by `continue`.
+  MINDTREE 2016-03-09 is named CONFIRMED in that function's own docstring. Same shape as
+  `fetch_splits` returning `[]` on error. Now reported and written to
+  `india_unverifiable_symbols.csv`. **Ratios are deliberately NOT inferred from the price gap**:
+  DHFL and SINTEX really did collapse, and snapping a genuine −90% to a bonus ratio would
+  manufacture alpha out of a fraud. Measured impact: 3.2% of IN tier events, similar outcome mix —
+  bounded, does not drive the headline.
+- **Brief sent 03:36 on a clean 5/5 reconcile**, every market on final 07-28 closes (US rescanned
+  after its 01:59 IST close rather than overriding the gate — its earlier "pass" was an in-session
+  4% tolerance that tightened back to 2% once the session ended).
+
 ## 2026-07-28 — The Volume Dividend: blend-energy fiscal analysis + parity scenarios + CBG (side repos)
 
 Built in `~/omc-retail-profitability-model` (public: india-omc-fuel-fleet-model) with paper +
