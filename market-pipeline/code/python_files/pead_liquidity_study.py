@@ -88,7 +88,9 @@ def load_prices():
             f"MISSING {FAC}\n"
             "The India panel is split-UNADJUSTED without it and every number "
             "below would be wrong.\n"
-            "Rebuild:  python3 scripts/india_split_adjust.py --build"
+            "Rebuild (needs yfinance — the venv python, not the login default):\n"
+            "  /Users/umashankar/market-pipeline/code/python_files/.venv/bin/"
+            "python3 scripts/india_split_adjust.py --build"
         )
     fac = pd.read_parquet(FAC)
     px = raw.pivot_table(index="Date", columns="Symbol", values="Close").sort_index()

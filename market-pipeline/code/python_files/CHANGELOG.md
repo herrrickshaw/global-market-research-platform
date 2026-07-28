@@ -57,6 +57,13 @@ paper → 10 sections + glossary, deck → 12 slides):
   to-pay ceiling) and refining cost (₹0.3–0.8/L, resource floor) — to avoid overclaiming.
   Net-mileage synthesis: RON95-calibrated engine (+2.2% from CR 10.5→12) shrinks E20's −4% to
   ≈ −1.8%, arriving with fleet turnover, composing with (not replacing) parity pricing.
+- **Multi-feed distillery conversion pitch built** (`distillery_conversion_model.py` +
+  `build_distillery_pitch.js`, 9 slides). The supply-match finding inverted into a deal: single-
+  feed molasses plants are the overcapacity casualties, so ₹50 cr brownfield conversion (180→330
+  days, maize slab ₹71.86) yields IRR 38.4% / equity 81% on DFPD-subvented debt. Decisions: the
+  administered slab premium named as BOTH the biggest lever and biggest risk (not buried); the
+  damaged-grain-slab stress (17%) and maize-₹26k rows presented as the honest downside; base case
+  uses today's published prices only — no E30-on-schedule, no carbon, no premium widening.
 - **CBG investment pitch built** (`cbg_pitch_model.py` + `build_cbg_pitch.js` →
   `docs/CBG_Investment_Pitch.pptx`, 9 slides, problem→market→moat→model→financials→ask per the
   standing deck format). Reference plant 12 TPD: EBITDA ₹12 cr, project IRR 20.6%, equity IRR
@@ -72,6 +79,55 @@ paper → 10 sections + glossary, deck → 12 slides):
   CBG digestate passes). Decision: scheme AMOUNTS left qualitative where circulars are revised
   frequently (capital-assistance rates, MDA quantum) — the annex cites the governing circular
   date instead of hard-coding numbers that will go stale.
+
+## 2026-07-28 — Fund "outperformance" decomposed: only SMALL CAP survives 10 years
+
+- **`scripts/nse_index_history.py`** — official NSE daily index archive into
+  Postgres `indices.nse_daily`: **240,314 rows, 173 indices, 2016-07 → 2026-07,
+  2,465 trading days**, each with close, turnover AND **P/E, P/B, dividend
+  yield**. Chosen over niftyindices.com's monthly reports (both reachable):
+  monthly gives 12 observations a year against ~250, and is per-index files
+  needing separate parsing. 404s are cached as non-trading days so a re-run
+  never re-requests a decade of weekends.
+- **Why it was needed**: benchmarking a mid-cap fund against Nifty-50 is a
+  category error, and the only per-segment bars available were index FUNDS —
+  which start 2020-10 (midcap) and 2023-05 (Nifty 500). That capped the honest
+  test at 4.6 exceptionally bullish years.
+- **DIVIDEND ADJUSTMENT IS NOT OPTIONAL.** The segment indices published here
+  are PRICE indices (the 13 "TR" names in the panel are leveraged/inverse/sector
+  products, not total-return versions of the core indices). Fund NAVs are total
+  return, so comparing them to a price index fabricates the dividend yield as
+  alpha — 1.26%/yr on Nifty 50, 0.94% on the mid/small indices. The panel's own
+  `div_yield` column is accrued daily to reconstruct total return.
+- **🔴 THE 4.6-YEAR RESULT REVERSES.** Mid-cap active looked like +4.95pp of
+  alpha with 87% of funds beating over 2020-11→2025-05. Over the FULL 10 years
+  it is **−0.79pp with only 32% beating**. That window was the best small/mid
+  run in a decade and the "alpha" was the window.
+
+| Category | 10y alpha vs own segment | %beat | 2016-08→2020-10 | %beat |
+|---|--:|--:|--:|--:|
+| Large Cap | +0.09pp | 57% | −1.17pp | 19% |
+| **Mid Cap** | **−0.79pp** | **32%** | +0.10pp | 55% |
+| **Small Cap** | **+2.22pp** | **92%** | **+4.78pp** | **92%** |
+| Flexi Cap | +0.26pp | 58% | −0.16pp | 45% |
+| ELSS | +0.23pp | 59% | −0.29pp | 41% |
+| Value | +0.96pp | 67% | −2.54pp | 8% |
+
+- **ANSWER to "how do funds beat the index": mostly they don't.** Large Cap,
+  Flexi Cap and ELSS are all within ±0.3pp of their own segment over ten years —
+  the SPIVA result, reproduced on this panel. What looks like outperformance
+  against Nifty-50 is segment beta: the mid-cap index itself beat Nifty-50.
+- **SMALL CAP is the exception and it is robust**: +2.22pp over 10 years and
+  +4.78pp in the pre-bull sub-period, **92% of funds beating in BOTH**. A hit
+  rate that stable across opposite regimes is not a window artifact. Likely
+  mechanism: the Nifty Smallcap 250 returned just 1.95%/yr over 2016-2020 while
+  managers made 6.72% — an index carrying names an active screen can simply
+  decline to own, in the segment least efficiently priced (the same direction
+  as the PEAD finding).
+- CAVEATS: Multi Cap shows +2.07pp/100% but n=6 and SEBI redefined the category
+  in 2020, so its mandate changed mid-sample — not comparable. Survivorship was
+  measured separately and is worth only +0.20pp (13% of funds died; their median
+  12.65% vs survivors' 15.91%), so it does not explain any of the above.
 
 ## 2026-07-28 — Both proposed fixes to the PEAD book FAILED (regime filter, decile)
 
