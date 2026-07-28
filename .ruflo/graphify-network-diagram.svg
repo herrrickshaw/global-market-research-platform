@@ -1,0 +1,286 @@
+<svg viewBox="0 0 1600 1200" xmlns="http://www.w3.org/2000/svg">
+  <!-- Define styles -->
+  <defs>
+    <style>
+      .repo-node { fill: #1e40af; stroke: #1e3a8a; stroke-width: 2; }
+      .gov-node { fill: #ea580c; stroke: #c2410c; stroke-width: 2; }
+      .analysis-node { fill: #059669; stroke: #047857; stroke-width: 2; }
+      .monitor-node { fill: #7c3aed; stroke: #6d28d9; stroke-width: 2; }
+      .node-text { font-size: 11px; font-weight: bold; fill: white; text-anchor: middle; }
+      .small-text { font-size: 9px; fill: white; text-anchor: middle; }
+      .edge { stroke: #94a3b8; stroke-width: 1.5; opacity: 0.6; fill: none; }
+      .edge-primary { stroke: #3b82f6; stroke-width: 2; opacity: 0.8; }
+      .edge-gov { stroke: #f97316; stroke-width: 2; opacity: 0.8; }
+      .title { font-size: 24px; font-weight: bold; fill: #1e293b; }
+      .legend-title { font-size: 14px; font-weight: bold; fill: #1e293b; }
+      .legend-text { font-size: 12px; fill: #475569; }
+    </style>
+  </defs>
+
+  <!-- Title -->
+  <text x="800" y="30" class="title" text-anchor="middle">RUFLO Graphify Network — 40 Repos + 30 Government Sources</text>
+  <text x="800" y="50" class="legend-text" text-anchor="middle">Connected data lineage: Government → Storage → Analysis → Delivery → Monitoring</text>
+
+  <!-- GOVERNMENT DATA SOURCES LAYER (Left) -->
+  <g id="government-sources">
+    <text x="80" y="90" class="legend-title">Government Data Sources</text>
+
+    <!-- MOSPI Hub -->
+    <circle cx="80" cy="140" r="20" class="gov-node"/>
+    <text x="80" y="145" class="node-text">MOSPI</text>
+    <text x="80" y="160" class="small-text">25 Datasets</text>
+
+    <!-- SEBI -->
+    <circle cx="80" cy="240" r="20" class="gov-node"/>
+    <text x="80" y="245" class="node-text">SEBI</text>
+    <text x="80" y="260" class="small-text">XBRL, DRHP</text>
+
+    <!-- PIB -->
+    <circle cx="80" cy="340" r="20" class="gov-node"/>
+    <text x="80" y="345" class="node-text">PIB</text>
+    <text x="80" y="360" class="small-text">25+ Ministries</text>
+
+    <!-- DGFT -->
+    <circle cx="80" cy="440" r="20" class="gov-node"/>
+    <text x="80" y="445" class="node-text">DGFT</text>
+    <text x="80" y="460" class="small-text">Trade Data</text>
+
+    <!-- Agmarknet -->
+    <circle cx="80" cy="540" r="20" class="gov-node"/>
+    <text x="80" y="545" class="node-text">Agmarknet</text>
+    <text x="80" y="560" class="small-text">300+ Mandis</text>
+
+    <!-- MCA/GLEIF -->
+    <circle cx="80" cy="640" r="20" class="gov-node"/>
+    <text x="80" y="645" class="node-text">MCA/GLEIF</text>
+    <text x="80" y="660" class="small-text">Corporate Reg</text>
+
+    <!-- RBI -->
+    <circle cx="80" cy="740" r="20" class="gov-node"/>
+    <text x="80" y="745" class="node-text">RBI</text>
+    <text x="80" y="760" class="small-text">Forex Archive</text>
+
+    <!-- Environment -->
+    <circle cx="80" cy="840" r="20" class="gov-node"/>
+    <text x="80" y="845" class="node-text">Environment</text>
+    <text x="80" y="860" class="small-text">PARIVESH</text>
+  </g>
+
+  <!-- STORAGE LAYER (Center-Left) -->
+  <g id="storage">
+    <text x="280" y="90" class="legend-title">Storage & Cache</text>
+
+    <!-- Cassandra -->
+    <rect x="240" y="130" width="80" height="40" rx="5" class="analysis-node"/>
+    <text x="280" y="155" class="node-text">Cassandra</text>
+    <text x="280" y="168" class="small-text">Real-time</text>
+
+    <!-- DuckDB -->
+    <rect x="240" y="230" width="80" height="40" rx="5" class="analysis-node"/>
+    <text x="280" y="255" class="node-text">DuckDB</text>
+    <text x="280" y="268" class="small-text">Reference</text>
+
+    <!-- Parquet -->
+    <rect x="240" y="330" width="80" height="40" rx="5" class="analysis-node"/>
+    <text x="280" y="355" class="node-text">Parquet</text>
+    <text x="280" y="368" class="small-text">10.5y OHLCV</text>
+
+    <!-- SQLite -->
+    <rect x="240" y="430" width="80" height="40" rx="5" class="analysis-node"/>
+    <text x="280" y="455" class="node-text">SQLite</text>
+    <text x="280" y="468" class="small-text">Token Usage</text>
+  </g>
+
+  <!-- PRIMARY REPOS LAYER (Center) -->
+  <g id="primary-repos">
+    <text x="500" y="90" class="legend-title">Primary Repositories (Live)</text>
+
+    <!-- market-pipeline -->
+    <circle cx="500" cy="140" r="25" class="repo-node"/>
+    <text x="500" y="140" class="node-text">market</text>
+    <text x="500" y="153" class="small-text">pipeline</text>
+    <text x="500" y="168" class="small-text">87.5k tokens</text>
+
+    <!-- global-stock-screener -->
+    <circle cx="500" cy="260" r="25" class="repo-node"/>
+    <text x="500" y="255" class="node-text">global</text>
+    <text x="500" y="268" class="small-text">screener</text>
+    <text x="500" y="283" class="small-text">US: 9,278</text>
+
+    <!-- global-market-data -->
+    <circle cx="500" cy="380" r="25" class="repo-node"/>
+    <text x="500" y="375" class="node-text">global</text>
+    <text x="500" y="388" class="small-text">market-data</text>
+    <text x="500" y="403" class="small-text">10.5y LFS</text>
+
+    <!-- put-call-parity -->
+    <circle cx="500" cy="500" r="25" class="repo-node"/>
+    <text x="500" y="495" class="node-text">put-call</text>
+    <text x="500" y="508" class="small-text">parity</text>
+    <text x="500" y="523" class="small-text">7.1k tokens</text>
+  </g>
+
+  <!-- GOVERNMENT DATA REPOS (Center-Right) -->
+  <g id="gov-repos">
+    <text x="720" y="90" class="legend-title">Government Data Repos</text>
+
+    <!-- agri-commodity -->
+    <circle cx="720" cy="140" r="22" class="repo-node"/>
+    <text x="720" y="140" class="node-text">agri</text>
+    <text x="720" y="153" class="small-text">tracker</text>
+    <text x="720" y="166" class="small-text">14:30 daily</text>
+
+    <!-- india-trade -->
+    <circle cx="720" cy="260" r="22" class="repo-node"/>
+    <text x="720" y="255" class="node-text">trade</text>
+    <text x="720" y="268" class="small-text">tracker</text>
+    <text x="720" y="281" class="small-text">15th monthly</text>
+
+    <!-- digital-twin-ipa -->
+    <circle cx="720" cy="380" r="22" class="repo-node"/>
+    <text x="720" y="375" class="node-text">digital</text>
+    <text x="720" y="388" class="small-text">twin-ipa</text>
+    <text x="720" y="401" class="small-text">32-layers</text>
+
+    <!-- saf-monitoring -->
+    <circle cx="720" cy="500" r="22" class="repo-node"/>
+    <text x="720" y="495" class="node-text">saf</text>
+    <text x="720" y="508" class="small-text">system</text>
+    <text x="720" y="521" class="small-text">K8s ready</text>
+  </g>
+
+  <!-- ANALYSIS WORKFLOWS (Right) -->
+  <g id="analysis">
+    <text x="950" y="90" class="legend-title">Analysis Workflows</text>
+
+    <!-- daily_scan -->
+    <rect x="900" y="120" width="100" height="35" rx="5" class="analysis-node"/>
+    <text x="950" y="143" class="node-text">daily_scan</text>
+    <text x="950" y="156" class="small-text">87.5k → 73-81k</text>
+
+    <!-- watchlist_mailer -->
+    <rect x="900" y="220" width="100" height="35" rx="5" class="analysis-node"/>
+    <text x="950" y="243" class="node-text">watchlist</text>
+    <text x="950" y="256" class="small-text">11.9k tokens</text>
+
+    <!-- portfolio_analysis -->
+    <rect x="900" y="320" width="100" height="35" rx="5" class="analysis-node"/>
+    <text x="950" y="343" class="node-text">portfolio</text>
+    <text x="950" y="356" class="small-text">5.2k tokens</text>
+
+    <!-- piotroski_backtests -->
+    <rect x="900" y="420" width="100" height="35" rx="5" class="analysis-node"/>
+    <text x="950" y="443" class="node-text">piotroski</text>
+    <text x="950" y="456" class="small-text">PIT validated</text>
+
+    <!-- valuation_reversion -->
+    <rect x="900" y="520" width="100" height="35" rx="5" class="analysis-node"/>
+    <text x="950" y="543" class="node-text">valuation</text>
+    <text x="950" y="556" class="small-text">sector PE</text>
+  </g>
+
+  <!-- MONITORING HUB (Right) -->
+  <g id="monitoring">
+    <text x="1200" y="90" class="legend-title">Token Monitoring (RUFLO)</text>
+
+    <!-- RUFLO Hub -->
+    <circle cx="1200" cy="180" r="35" class="monitor-node"/>
+    <text x="1200" y="175" class="node-text">RUFLO</text>
+    <text x="1200" y="190" class="small-text">Central Hub</text>
+    <text x="1200" y="205" class="small-text">123k → 110k</text>
+
+    <!-- Phase 1 -->
+    <rect x="1130" y="280" width="140" height="35" rx="5" class="monitor-node"/>
+    <text x="1200" y="303" class="node-text">Phase 1: Code Optimizations</text>
+    <text x="1200" y="318" class="small-text">-9-14k tokens/day</text>
+
+    <!-- Week 1 -->
+    <rect x="1130" y="380" width="140" height="35" rx="5" class="monitor-node"/>
+    <text x="1200" y="403" class="node-text">Week 1: Model Upgrade</text>
+    <text x="1200" y="418" class="small-text">3.5 Haiku Live</text>
+
+    <!-- Dashboard -->
+    <rect x="1130" y="480" width="140" height="35" rx="5" class="monitor-node"/>
+    <text x="1200" y="503" class="node-text">Dashboard</text>
+    <text x="1200" y="518" class="small-text">token-dashboard.sh</text>
+  </g>
+
+  <!-- EDGES: Government to Storage -->
+  <line x1="100" y1="140" x2="240" y2="150" class="edge-gov"/>
+  <line x1="100" y1="240" x2="240" y2="150" class="edge-gov"/>
+  <line x1="100" y1="340" x2="240" y2="250" class="edge-gov"/>
+  <line x1="100" y1="440" x2="240" y2="350" class="edge-gov"/>
+  <line x1="100" y1="540" x2="240" y2="350" class="edge-gov"/>
+  <line x1="100" y1="640" x2="240" y2="450" class="edge-gov"/>
+  <line x1="100" y1="740" x2="240" y2="450" class="edge-gov"/>
+
+  <!-- EDGES: Storage to Primary Repos -->
+  <line x1="320" y1="150" x2="475" y2="140" class="edge-primary"/>
+  <line x1="320" y1="250" x2="475" y2="260" class="edge-primary"/>
+  <line x1="320" y1="350" x2="475" y2="380" class="edge-primary"/>
+  <line x1="320" y1="450" x2="475" y2="500" class="edge-primary"/>
+
+  <!-- EDGES: Primary Repos to Analysis -->
+  <line x1="525" y1="140" x2="900" y2="137" class="edge-primary"/>
+  <line x1="525" y1="260" x2="900" y2="237" class="edge-primary"/>
+  <line x1="525" y1="380" x2="900" y2="337" class="edge-primary"/>
+  <line x1="525" y1="500" x2="900" y2="437" class="edge-primary"/>
+
+  <!-- EDGES: Gov Repos to Analysis -->
+  <line x1="742" y1="140" x2="900" y2="137" class="edge-gov"/>
+  <line x1="742" y1="260" x2="900" y2="237" class="edge-gov"/>
+  <line x1="742" y1="380" x2="900" y2="337" class="edge-gov"/>
+  <line x1="742" y1="500" x2="900" y2="437" class="edge-gov"/>
+
+  <!-- EDGES: Analysis to Monitoring -->
+  <line x1="1000" y1="137" x2="1165" y2="200" class="edge-primary"/>
+  <line x1="1000" y1="237" x2="1165" y2="220" class="edge-primary"/>
+  <line x1="1000" y1="337" x2="1165" y2="240" class="edge-primary"/>
+  <line x1="1000" y1="437" x2="1165" y2="260" class="edge-primary"/>
+  <line x1="1000" y1="537" x2="1165" y2="280" class="edge-primary"/>
+
+  <!-- LEGEND -->
+  <g id="legend" transform="translate(80, 900)">
+    <text x="0" y="0" class="legend-title">Legend</text>
+
+    <circle cx="15" cy="25" r="8" class="gov-node"/>
+    <text x="35" y="30" class="legend-text">Government Data Source</text>
+
+    <circle cx="15" cy="50" r="8" class="repo-node"/>
+    <text x="35" y="55" class="legend-text">Repository (Active)</text>
+
+    <rect x="7" y="65" width="16" height="16" rx="2" class="analysis-node"/>
+    <text x="35" y="77" class="legend-text">Analysis Workflow</text>
+
+    <circle cx="15" cy="100" r="8" class="monitor-node"/>
+    <text x="35" y="105" class="legend-text">Token Monitoring (RUFLO)</text>
+
+    <line x1="5" y1="130" x2="25" y2="130" class="edge-gov"/>
+    <text x="35" y="135" class="legend-text">Government Data Flow</text>
+
+    <line x1="5" y1="155" x2="25" y2="155" class="edge-primary"/>
+    <text x="35" y="160" class="legend-text">Analysis Data Flow</text>
+  </g>
+
+  <!-- KEY STATS -->
+  <g id="stats" transform="translate(500, 900)">
+    <text x="0" y="0" class="legend-title">Key Metrics</text>
+
+    <text x="0" y="30" class="legend-text">📊 Repositories: 40+ (19 active, 21 archived)</text>
+    <text x="0" y="55" class="legend-text">🏛️  Government Sources: 30+ (25+ ministries)</text>
+    <text x="0" y="80" class="legend-text">📈 Daily Tokens: 123k → 110k (after Phase 1 + Model upgrade)</text>
+    <text x="0" y="105" class="legend-text">🎯 Markets: 5 (India/US/Europe/Japan/Korea)</text>
+    <text x="0" y="130" class="legend-text">⏱️  Collectors: 5+ pipelines (daily to monthly ingestion)</text>
+  </g>
+
+  <!-- OPTIMIZATION TIMELINE -->
+  <g id="timeline" transform="translate(1000, 900)">
+    <text x="0" y="0" class="legend-title">Optimization Timeline</text>
+
+    <text x="0" y="30" class="legend-text">✅ 2026-07-27: Phase 1 Deployed (Code Optimizations)</text>
+    <text x="0" y="55" class="legend-text">✅ 2026-07-27: Week 1 Live (Claude 3.5 Haiku Upgrade)</text>
+    <text x="0" y="80" class="legend-text">📊 2026-08-03: Week 1 Complete (Validation Period)</text>
+    <text x="0" y="105" class="legend-text">🚀 2026-08-10: Phase 2 Decision Gate (Real Data Analysis)</text>
+    <text x="0" y="130" class="legend-text">📈 2026-08-17: Phase 2 Deployment (Optional Sonnet Upgrades)</text>
+  </g>
+</svg>
