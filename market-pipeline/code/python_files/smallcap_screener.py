@@ -307,7 +307,38 @@ def main() -> int:
     ap.add_argument("--screen", action="store_true")
     a = ap.parse_args()
     if a.validate:
-        return validate(a)
+        # PERSIST THE VALIDATION, don't just print it. The headline this screen
+        # rests on — screened-minus-band +3.07%/126 bars, t 8.75 — was quoted in
+        # custom_indices.py while living nowhere on disk: --validate printed it
+        # to a terminal and --screen wrote only the picks CSV. A number a reader
+        # cannot check without re-running a multi-minute job is unsourced in
+        # practice, however true it is. Output is teed so the console behaviour
+        # is unchanged and the artefact exists.
+        import contextlib
+        import io
+        buf = io.StringIO()
+        with contextlib.redirect_stdout(buf):
+            rc = validate(a)
+        body = buf.getvalue()
+        print(body, end="")
+        # Hold period is IN THE FILENAME. The screen's headline changes with it
+        # — +1.76% (t 6.09) at the default 63 bars, +3.07% (t 8.75) at 126 —
+        # and custom_indices.py quoted the 126-bar figure while the default run
+        # would have overwritten it with the 63-bar one, so whichever ran last
+        # would silently define "the" result. Both are legitimate; they answer
+        # different questions (quarterly vs semi-annual rebalance) and both need
+        # to exist on disk for either to be checkable.
+        rp = HERE / "reports" / f"smallcap_validation_hold{a.hold}.md"
+        rp.parent.mkdir(exist_ok=True)
+        rp.write_text(
+            f"# Small-cap exclusion screen — validation\n\n"
+            f"Generated {dt.date.today()} by "
+            f"`smallcap_screener.py --validate"
+            f"{' --fundamentals' if a.fundamentals else ''} "
+            f"--hold {a.hold} --warmup {a.warmup}`. Survivorship-free: the band "
+            f"is reconstructed point-in-time at each formation.\n\n{body}")
+        print(f"\nwrote {rp}")
+        return rc
     if a.screen:
         return screen(a)
     ap.print_help()

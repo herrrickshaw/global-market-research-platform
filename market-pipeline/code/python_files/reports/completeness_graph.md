@@ -2,27 +2,27 @@
 
 Generated 2026-07-28 by `completeness_graph.py` (LangGraph, 4 nodes, deterministic — no LLM).
 
-**15 sources inventoried, 0 missing/erroring, 3 critical sources stale >7d · 8 scheduled scripts checked, 3 quoting numbers their own cited report no longer contains · 8 analyses checked for the contamination gate, 1 ungated · 28 conclusions have a declared universe, 8 rest on a top-N liquid SAMPLE rather than the full market**
+**15 sources inventoried, 0 missing/erroring, 1 source(s) past their expected refresh cadence · 8 scheduled scripts checked, 1 quoting numbers their own cited report no longer contains · 8 analyses checked for the contamination gate, 0 ungated · 30 conclusions have a declared universe, 8 rest on a top-N liquid SAMPLE rather than the full market**
 
 ## 1. Data completeness
 
-| source | rows | symbols | span | stale (d) | crit |
-|---|--:|--:|---|--:|:--:|
-| `bhavcopy.cleaned_ohlcv` | 1,241,103 | 7,841 | 2025-06-23 -> 2026-07-27 | 1 | ✅ |
-| `bhavcopy.nse_deep_ohlcv` | 4,423,382 | 3,476 | 2016-01-01 -> 2026-07-13 | 🔴 15 | ✅ |
-| `fundamentals.india_pe_daily` | 1,957,213 | 1,744 | 2019-01-17 -> 2026-07-22 | 6 | ✅ |
-| `fundamentals.india_quarterly` | 53,794 | 2,575 | 2017-06-30 -> 2026-06-30 | 🔴 28 | ✅ |
-| `fundamentals.ratios` | 9,302 | 9,281 | — | — |  |
-| `funds.nav` | 22,327,834 | 22,668 | 2016-07-28 -> 2026-07-27 | 1 |  |
-| `indices.nse_daily` | 240,314 | 173 | 2016-07-28 -> 2026-07-27 | 1 |  |
-| `indices.nse_tri` | 22,266 | 17 | 2016-08-01 -> 2026-07-27 | 1 |  |
-| `indices.custom_daily` | 61,963 | 31 | — | — |  |
-| `market_daily.snapshots` | 153,858 | 17,389 | — | — | ✅ |
-| `market_daily.ticker_freshness` | 21,288 | 21,207 | — | — | ✅ |
-| `public.ohlcv_history` | 38,235,027 | — | 2011-01-04 -> 2026-07-17 | 🔴 11 | ✅ |
-| `public.global_fundamentals` | 245,116 | 25,430 | — | — |  |
-| `india split factors` | 688 | 468 | — | — | ✅ |
-| `india unverifiable` | 29 | 29 | — | — | ✅ |
+| source | rows | symbols | span | stale (d) | cadence | crit |
+|---|--:|--:|---|--:|---|:--:|
+| `bhavcopy.cleaned_ohlcv` | 1,241,103 | 7,841 | 2025-06-23 -> 2026-07-27 | 1 | daily | ✅ |
+| `bhavcopy.nse_deep_ohlcv` | 4,423,382 | 3,476 | 2016-01-01 -> 2026-07-13 | 15 | static |  |
+| `fundamentals.india_pe_daily` | 1,957,213 | 1,744 | 2019-01-17 -> 2026-07-22 | 🔴 6 | daily | ✅ |
+| `fundamentals.india_quarterly` | 53,794 | 2,575 | 2018-05-21 -> 2026-07-27 | 1 | quarterly | ✅ |
+| `fundamentals.ratios` | 9,302 | 9,281 | — | — | weekly |  |
+| `funds.nav` | 22,327,834 | 22,668 | 2016-07-28 -> 2026-07-27 | 1 | daily |  |
+| `indices.nse_daily` | 240,314 | 173 | 2016-07-28 -> 2026-07-27 | 1 | daily |  |
+| `indices.nse_tri` | 22,266 | 17 | 2016-08-01 -> 2026-07-27 | 1 | daily |  |
+| `indices.custom_daily` | 61,963 | 31 | — | — | weekly |  |
+| `market_daily.snapshots` | 153,858 | 17,389 | — | — | daily | ✅ |
+| `market_daily.ticker_freshness` | 21,288 | 21,207 | — | — | daily | ✅ |
+| `public.ohlcv_history` | 38,235,027 | — | 2011-01-04 -> 2026-07-17 | 11 | external |  |
+| `public.global_fundamentals` | 245,116 | 25,430 | — | — | external |  |
+| `india split factors` | 688 | 468 | — | — | — | ✅ |
+| `india unverifiable` | 29 | 29 | — | — | — | ✅ |
 
 ## 2. Claim consistency — does the quoted number still exist upstream?
 
@@ -33,8 +33,8 @@ Generated 2026-07-28 by `completeness_graph.py` (LangGraph, 4 nodes, determinist
 | `smallcap_screener.py` | — | — | no numeric claim cited |
 | `playbook_screener.py` | market_playbook.md | — | consistent |
 | `watchlist_tiers.py` | — | — | no numeric claim cited |
-| `custom_indices.py` | — | +3.07%, t 8.75 | 🔴 UNSOURCED |
-| `cluster_indices.py` | cluster_indices.md | t  13.27, t  17.62 | 🔴 STALE — 1/2 quoted number(s) absent from cluster_indices.md |
+| `custom_indices.py` | smallcap_validation_hold126.md | +3.07%, t 8.75 | consistent |
+| `cluster_indices.py` | cluster_indices.md | t  13.27, t  17.62 | consistent |
 | `scan_price_reconcile.py` | — | +3.7% | 🔴 UNSOURCED |
 
 ## 3. Contamination gate coverage
@@ -47,7 +47,7 @@ Generated 2026-07-28 by `completeness_graph.py` (LangGraph, 4 nodes, determinist
 | `smallcap_screener.py` | yes | gated |
 | `custom_indices.py` | yes | gated |
 | `peer_warranted.py` | — | n/a — no raw price panel loaded |
-| `etf_builder.py` | NO | 🔴 UNGATED — loads a raw price panel without dropping uncorrected corporate actions |
+| `etf_builder.py` | NO | guarded by refusal — rejects the unadjusted panel rather than filtering it |
 | `reentry_book.py` | — | n/a — no raw price panel loaded |
 
 ## 4. Breadth and power — full universe, or a top-N sample?
@@ -60,6 +60,8 @@ Generated 2026-07-28 by `completeness_graph.py` (LangGraph, 4 nodes, determinist
 | `tier_anomaly_backtest.md` | top 200 | 🔶 SAMPLE (top-N liquid) | 1065 | — |
 | `pe_anomaly_backtest.md` | 1458 NSE names, monthly 2017-01-31 → 2026-06-30. Annual PI | declared | 601 | 109 |
 | `reentry_book.md` | — | — | 508 | — |
+| `smallcap_validation_hold63.md` | — | — | 108 | 108 |
+| `smallcap_validation_hold126.md` | — | — | 105 | 105 |
 | `mailer_effectiveness.md` | — | — | 80 | — |
 | `completeness_analysis_2026-07-28.md` | ** 6,731 (NSE + BSE) | declared | 60 | — |
 | `sector_rotation.md` | — | — | 37 | 91 |

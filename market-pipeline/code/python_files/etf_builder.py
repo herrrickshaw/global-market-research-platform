@@ -79,6 +79,18 @@ def load_panel(mkt: str):
     px = df.pivot_table(index="Date", columns="Symbol", values="Close").sort_index()
     tv = (df.assign(_t=df["Close"] * df["Volume"])
             .pivot_table(index="Date", columns="Symbol", values="_t").sort_index())
+    # NOT gated with contaminated(), deliberately. The completeness audit flags
+    # this loader as "ungated" because it calls load_market() (raw Close) without
+    # dropping discontinuities, and a contaminated() call was briefly added here
+    # before being reverted — it was wrong twice over. India never reaches this
+    # code: main() refuses the IN panel outright as split-unadjusted, which is a
+    # stricter guard than dropping symbols. And in the markets that DO run here
+    # (JP/KR/US, whose panels are verified split-adjusted) a >30% one-day fall
+    # that never reverses is a REAL crash, so filtering on that shape would
+    # quietly delete the losers and manufacture survivorship bias — the exact
+    # error the ETF universe fix removed when point-in-time turnover ranking cut
+    # 1/N from 19.75% to 12.26%. The gate is right for a contaminated panel and
+    # wrong for a clean one; the refusal is the correct guard here.
     return px.loc["2016":], tv.loc["2016":]
 
 

@@ -70,20 +70,34 @@ OUT_MD = REPORTS / "completeness_graph.md"
 # Sources the regularly-scheduled analyses read. `critical` marks the ones a
 # daily conclusion depends on; a stale critical source is an alert, a stale
 # non-critical one is a note.
+# 🔴 STALENESS IS ONLY MEANINGFUL AGAINST AN EXPECTED CADENCE. A flat 7-day rule
+# flagged three "stale critical sources" and every one was a modelling error, not
+# a fault: nse_deep_ohlcv is an append-only static archive with NO live writer by
+# design; india_quarterly was being measured on period_end, a reporting period,
+# so a perfectly fresh quarterly table reads as a month behind between results
+# seasons; and ohlcv_history has no writer anywhere in this repo — it belongs to
+# the event-driven platform and is read, not maintained, here. Judging all three
+# against "should have updated yesterday" produced three alarms and zero
+# problems, which is how an audit teaches people to ignore it.
+#
+# tolerance is in days; None means no freshness expectation at all.
+CADENCE = {"daily": 5, "weekly": 12, "quarterly": 120, "static": None,
+           "external": None}
 PG_SOURCES = [
-    ("bhavcopy.cleaned_ohlcv", "trade_date", True),
-    ("bhavcopy.nse_deep_ohlcv", "trade_date", True),
-    ("fundamentals.india_pe_daily", "obs_date", True),
-    ("fundamentals.india_quarterly", "period_end", True),
-    ("fundamentals.ratios", None, False),
-    ("funds.nav", "nav_date", False),
-    ("indices.nse_daily", "index_date", False),
-    ("indices.nse_tri", "index_date", False),
-    ("indices.custom_daily", "obs_date", False),
-    ("market_daily.snapshots", "snapshot_date", True),
-    ("market_daily.ticker_freshness", None, True),
-    ("public.ohlcv_history", "date", True),
-    ("public.global_fundamentals", None, False),
+    # (table, date column, critical, cadence)
+    ("bhavcopy.cleaned_ohlcv", "trade_date", True, "daily"),
+    ("bhavcopy.nse_deep_ohlcv", "trade_date", False, "static"),
+    ("fundamentals.india_pe_daily", "obs_date", True, "daily"),
+    ("fundamentals.india_quarterly", "filing_date", True, "quarterly"),
+    ("fundamentals.ratios", None, False, "weekly"),
+    ("funds.nav", "nav_date", False, "daily"),
+    ("indices.nse_daily", "index_date", False, "daily"),
+    ("indices.nse_tri", "index_date", False, "daily"),
+    ("indices.custom_daily", "obs_date", False, "weekly"),
+    ("market_daily.snapshots", "snapshot_date", True, "daily"),
+    ("market_daily.ticker_freshness", None, True, "daily"),
+    ("public.ohlcv_history", "date", False, "external"),
+    ("public.global_fundamentals", None, False, "external"),
 ]
 
 # Scripts that run on a schedule and assert something. (file, cited report)
@@ -101,7 +115,9 @@ SCHEDULED = [
     ("smallcap_screener.py", None),
     ("playbook_screener.py", "market_playbook.md"),
     ("watchlist_tiers.py", None),
-    ("custom_indices.py", None),
+    # the +3.07%/t 8.75 it quotes is the 126-bar small-cap validation, which
+    # now persists to disk instead of only ever being printed to a terminal
+    ("custom_indices.py", "smallcap_validation_hold126.md"),
     ("cluster_indices.py", "cluster_indices.md"),
     ("scan_price_reconcile.py", None),
 ]
@@ -142,8 +158,9 @@ def inventory(state: AuditState) -> dict:
         return {"sources": [], "notes": [f"warehouse unreachable: {str(e)[:80]}"]}
 
     today = date.today()
-    for tbl, datecol, critical in PG_SOURCES:
-        rec = {"source": tbl, "critical": critical, "kind": "postgres"}
+    for tbl, datecol, critical, cadence in PG_SOURCES:
+        rec = {"source": tbl, "critical": critical, "kind": "postgres",
+               "cadence": cadence, "tolerance": CADENCE.get(cadence)}
         try:
             rec["rows"] = c.execute(f"select count(*) from pg.{tbl}").fetchone()[0]
         except Exception as e:                                # noqa: BLE001
@@ -254,7 +271,14 @@ def audit_gates(state: AuditState) -> dict:
         rec = {"script": fn, "exists": p.exists()}
         if p.exists():
             src = p.read_text(errors="ignore")
-            rec["calls_contaminated"] = "contaminated(" in src
+            # Substring-matching the whole file counted the word inside a
+            # COMMENT: etf_builder.py explains at length why it deliberately
+            # does NOT gate, and that prose made it report as gated — the
+            # audit read an explanation as an implementation. Only
+            # non-comment lines count as a call site.
+            rec["calls_contaminated"] = any(
+                "contaminated(" in ln and not ln.lstrip().startswith("#")
+                for ln in src.splitlines())
             # 🔴 ONLY A SCRIPT THAT LOADS A RAW PRICE PANEL CAN BE "UNGATED".
             # The first version flagged peer_warranted.py (reads india_pe_daily,
             # a P/E series), etf_builder.py (reads fund NAVs) and reentry_book.py
@@ -266,8 +290,18 @@ def audit_gates(state: AuditState) -> dict:
                 re.search(r"load_prices|load_market|year=\*\.parquet|"
                           r"cleaned_ohlcv|ohlcv_adj|values=\"Close\"|"
                           r"values='Close'", src))
+            # Dropping bad symbols is not the only valid defence. etf_builder
+            # REFUSES the India panel outright as split-unadjusted, which is
+            # stricter than filtering it, and in the verified-adjusted markets
+            # it does run on, a >30% unreversed fall is a REAL crash — gating
+            # there would delete losers and manufacture survivorship bias. A
+            # refusal is a guard, so the audit must not demand a gate instead.
+            rec["refuses"] = bool(re.search(r"REFUSING|allow-unadjusted", src))
             if not rec["loads_panel"]:
                 rec["verdict"] = "n/a — no raw price panel loaded"
+            elif rec["refuses"] and not rec["calls_contaminated"]:
+                rec["verdict"] = ("guarded by refusal — rejects the unadjusted "
+                                  "panel rather than filtering it")
             elif rec["calls_contaminated"]:
                 rec["verdict"] = "gated"
             else:
@@ -316,7 +350,8 @@ def audit_power(state: AuditState) -> dict:
 def synthesize(state: AuditState) -> dict:
     """Roll the three audits into one progress statement."""
     src, cl, gt = state["sources"], state["claims"], state["gates"]
-    stale = [s for s in src if (s.get("stale_days") or 0) > 7 and s.get("critical")]
+    stale = [s for s in src if s.get("tolerance") is not None
+             and (s.get("stale_days") or 0) > s["tolerance"]]
     broken = [s for s in src if s.get("error") or s.get("exists") is False]
     bad_claims = [c for c in cl if str(c.get("verdict", "")).startswith(
         ("STALE", "UNSOURCED", "CITED"))]
@@ -325,7 +360,7 @@ def synthesize(state: AuditState) -> dict:
     samp = [p for p in pw if str(p.get("sample_kind", "")).startswith("SAMPLE")]
     parts = [
         f"{len(src)} sources inventoried, {len(broken)} missing/erroring, "
-        f"{len(stale)} critical sources stale >7d",
+        f"{len(stale)} source(s) past their expected refresh cadence",
         f"{len(cl)} scheduled scripts checked, {len(bad_claims)} quoting numbers "
         f"their own cited report no longer contains",
         f"{len(gt)} analyses checked for the contamination gate, "
@@ -372,19 +407,19 @@ def render(s: AuditState) -> str:
 
     o("## 1. Data completeness")
     o()
-    o("| source | rows | symbols | span | stale (d) | crit |")
-    o("|---|--:|--:|---|--:|:--:|")
+    o("| source | rows | symbols | span | stale (d) | cadence | crit |")
+    o("|---|--:|--:|---|--:|---|:--:|")
     def num(v):
         return f"{v:,}" if isinstance(v, int) else "—"
 
     for x in s["sources"]:
-        sd = x.get("stale_days")
+        sd, tol = x.get("stale_days"), x.get("tolerance")
         st = ("—" if sd is None
-              else f"🔴 {sd}" if sd > 7 and x.get("critical") else str(sd))
+              else f"🔴 {sd}" if (tol is not None and sd > tol) else str(sd))
         flag = "🔴" if (x.get("error") or x.get("exists") is False) else (
             "✅" if x.get("critical") else "")
         o(f"| `{x['source']}` | {num(x.get('rows'))} | {num(x.get('symbols'))} "
-          f"| {x.get('span', '—')} | {st} | {flag} |")
+          f"| {x.get('span', '—')} | {st} | {x.get('cadence', '—')} | {flag} |")
     o()
 
     o("## 2. Claim consistency — does the quoted number still exist upstream?")
