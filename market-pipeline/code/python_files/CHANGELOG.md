@@ -80,6 +80,45 @@ paper → 10 sections + glossary, deck → 12 slides):
   frequently (capital-assistance rates, MDA quantum) — the annex cites the governing circular
   date instead of hard-coding numbers that will go stale.
 
+## 2026-07-28 — Point-in-time constituents NOT obtainable; official TRI collected instead
+
+- **🔴 THE ASK COULD NOT BE MET.** Point-in-time NSE index constituents are not
+  reachable from any source available here. What was tried: niftyindices.com's
+  press-release / index-maintenance / index-review pages all return the SAME
+  77,788-byte SPA shell (no server-rendered content); the site's own
+  IISLComponet.js exposes nine `/BackPage/*` endpoints and **none** concerns
+  constituents, press releases or index changes; guessed
+  `getPressReleaseData` / `getIndexMaintenance` both 302; NSE circular-archive
+  patterns 404; and dated constituent files
+  (`ind_niftysmallcap250list_01012020.csv`) do not exist — only the CURRENT list
+  is published. Rolling today's membership backwards through a change log stays
+  the only route, and that log is not machine-readable from here.
+- **CONSEQUENCE, stated not hidden**: `smallcap_screener.py`'s turnover-rank
+  band proxy stands, with its ~43% match to the real index. The rules remain
+  validated on the survivorship-free price panel and applied forward to the real
+  250 — which is why the screener was built that way in the first place.
+- **WHAT THE SEARCH DID FIND — `scripts/nse_index_tri.py`.** The official NIFTY
+  **Total Return Index** is served by `/BackPage/getTotalReturnIndexString`,
+  entire 2016-08→2026-07 window in ONE request per index. Collected 9 indices ×
+  2,474 obs = **22,266 rows** into `indices.nse_tri`.
+- **WHY THAT MATTERS MORE THAN IT SOUNDS**: today's only surviving fund-category
+  alpha rested on a RECONSTRUCTED total return (price index plus the archive's
+  trailing `div_yield` accrued daily). An approximation underneath a headline is
+  the wrong place for one. Re-run on the official TRI:
+
+| category | approx TRI | OFFICIAL TRI | %beat |
+|---|--:|--:|--:|
+| Large Cap | +0.09pp | **+0.12pp** | 57% |
+| Mid Cap | −0.79pp | **−0.62pp** | 37% |
+| **Small Cap** | +2.22pp | **+2.33pp** | **92%** |
+| Flexi Cap | +0.26pp | +0.34pp | 63% |
+| ELSS | +0.23pp | +0.31pp | 59% |
+| Value | +0.96pp | +1.04pp | 67% |
+
+  Every cell within 0.17pp, and the approximation erred CONSERVATIVE — it
+  understated alpha slightly rather than inventing it. **The headline holds on
+  official data: small-cap active +2.33pp/yr, 92% of funds beating.**
+
 ## 2026-07-28 — Small-cap exclusion screener: rebalanced, NOT Coffee Can
 
 - **`smallcap_screener.py`** acts on the one fund-category alpha that survived a
