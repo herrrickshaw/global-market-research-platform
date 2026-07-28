@@ -57,6 +57,132 @@ paper → 10 sections + glossary, deck → 12 slides):
   to-pay ceiling) and refining cost (₹0.3–0.8/L, resource floor) — to avoid overclaiming.
   Net-mileage synthesis: RON95-calibrated engine (+2.2% from CR 10.5→12) shrinks E20's −4% to
   ≈ −1.8%, arriving with fleet turnover, composing with (not replacing) parity pricing.
+- **CBG investment pitch built** (`cbg_pitch_model.py` + `build_cbg_pitch.js` →
+  `docs/CBG_Investment_Pitch.pptx`, 9 slides, problem→market→moat→model→financials→ask per the
+  standing deck format). Reference plant 12 TPD: EBITDA ₹12 cr, project IRR 20.6%, equity IRR
+  32%, NPV@12% ₹26.6 cr, DSCR 1.85×, sensitivity 13.5–27.1%. Decisions: carbon priced at a
+  conservative ₹800/credit and NCDC coop money deliberately NOT counted as capital; the no-FOM
+  sensitivity (IRR 16.1%) surfaced as a headline because digestate marketing is the real
+  operating moat; ask framed as a 10-plant ₹150 cr platform with the cooperative-sugar-mill
+  press-mud entry (BOT/JV) as the differentiator.
+- **CBG incentive annex added** (paper Annex A + slide 12): 19 instruments by lever compiled from
+  the official GOBARdhan important-circulars register (70 circulars; ~half dated 2025-26 — the
+  cadence itself is a finding). Fertiliser leg gazette-checked (CG-DL-E-29032025-262118, Schedule
+  VIII 'Organic Carbon Enhancer' — defined on carbon + heavy metals, deliberately no NPK/C:N so
+  CBG digestate passes). Decision: scheme AMOUNTS left qualitative where circulars are revised
+  frequently (capital-assistance rates, MDA quantum) — the annex cites the governing circular
+  date instead of hard-coding numbers that will go stale.
+
+## 2026-07-28 — Both proposed fixes to the PEAD book FAILED (regime filter, decile)
+
+Tested on a COMMON window (2017-02-10 → 2024-12-06) so the comparison is not
+confounded by the filter's 200-bar warm-up shifting the start date — the first
+attempt was, and made the filter look worse than it is:
+
+| threshold | regime | trades | CAGR | maxDD |
+|---|---|--:|--:|--:|
+| 80th pct | none | 4,280 | **9.46%** | −75.2% |
+| 80th pct | ma200 | 3,926 | **0.34%** | −78.6% |
+| 90th pct | none | 2,325 | **5.56%** | −80.9% |
+| 90th pct | ma200 | 2,103 | **−2.65%** | −85.0% |
+
+- **REGIME FILTER: −9.1 points, and it made drawdown WORSE.** Diagnosed rather
+  than assumed — the two books share 3,725 trades and the ones the filter
+  removes average **+5.97%** against **+5.83%** for those it keeps, so selection
+  quality explains nothing. The entire gap is six months: the filter was in
+  **CASH for 2020-05 and 2020-06** (the unfiltered book made +10.8% and +13.0%
+  in them) and near-cash in 2020-07 and 2022-05/06/07. Cumulative −70pp over 97
+  months. **A 200DMA filter is structurally late for V-shaped recoveries, and a
+  V-shaped recovery is exactly when a beaten-down-name signal pays.** It avoided
+  the drawdown and missed the repair, which is why maxDD got worse not better.
+- **TOP DECILE: −3.9 points vs the quintile** (9.46% → 5.56%), despite a HIGHER
+  per-trade median (+3.18% vs +2.76%). Positions fall from ~93 to ~50, and for
+  a right-skewed edge that concentration costs more in volatility drag than the
+  sharper signal returns. Same mechanism as the mean-vs-median finding: the
+  compounded portfolio tracks the median while diversification is what converts
+  a skewed mean into a compounded return.
+- Both of these were MY hypotheses ("a regime filter would have avoided
+  2018-2020"; "the decile may concentrate the effect enough to clear costs").
+  Both are wrong, in the same direction: they trade away the tail and the
+  breadth that the edge actually depends on.
+- Caveats on the harness itself: `benchmark_series` reindexed onto the price
+  calendar injects `bench=0` on 148 of 2,603 bars where AMFI has no quote,
+  producing 137 flat stretches that mildly distort any moving average built on
+  it; the `breadth` regime mode failed to produce output and is untested. Both
+  noted rather than papered over — neither changes the sign of the result.
+
+## 2026-07-28 — A REAL signal that still loses: the PEAD Q5 book
+
+- **`pead_portfolio.py`** turns the confirmed PEAD signal into a tradeable book:
+  4,678 trades, 2016-08 → 2025-05, ~92 positions open, 100% invested, ₹1cr
+  liquidity floor, 63-bar fixed hold, one open position per name.
+- **🔴 The study's quintile was NOT tradeable.** It used `pd.qcut` over the
+  whole sample, so the Q5 breakpoint depended on CARs of events that had not
+  happened yet — the same look-ahead class that cost 7.5 points in the ETF
+  universe. The book uses a **trailing 80th-percentile threshold** recomputed at
+  every event, so the study's +2.43% is an upper bound, not a forecast.
+- **RESULT: 10.75% CAGR at fee parity vs Nifty-50's 13.57% over the identical
+  window.** Loses by 2.8 points, and ranks last or next-to-last in **all 10**
+  fund categories (medians 13.57%–18.41%). Drawdown is **−75.2%** (NAV 1.595 in
+  2017 → ~0.40 at the 2020 COVID trough → 3.686 by 2024-08) — a Calmar of 0.16.
+  Verified as a real path, not a data artifact: worst single month is −16.4%,
+  and the extremes are genuine events (TALWALKARS −86%, ASIANTILES +506%).
+- **WHY A t=4.93 SIGNAL PRODUCES A LOSING PORTFOLIO — the lesson of the day.**
+  Per-event mean raw 63-bar return is **+5.86%**, which annualises naively to
+  **25.6%/yr**. The book actually compounds at **10.75%**. The per-event
+  **MEDIAN** is +2.70%, which annualises to **11.2%** — almost exactly the
+  realised book. The arithmetic mean of a right-skewed return distribution is
+  not the compounded portfolio return: volatility drag, position overlap and
+  costs consume the difference, and the same tail that inflates the mean is what
+  made the t-statistic impressive. **Mean-positive / median-negative was the
+  warning; this is the warning priced.**
+- Practical reading: the signal is real and survives every robustness check
+  (ex-COVID t 3.78, bootstrap CI [+1.91%, +2.98%] excluding zero), but "real
+  signal" and "portfolio that beats the index" are different claims and this one
+  clears only the first. Anything built on it would need the tail retained
+  (no winsorising in live trading), far better drawdown control, and a reason to
+  expect the median rather than the mean.
+
+## 2026-07-28 — PEAD replicates on the FULL India panel; liquidity premium does not
+
+- **Scale**: prior work ran on `pit_quarterly.parquet` (9,456 parsed filings).
+  This uses the entire NSE results index — **152,879 filings → 42,369 usable
+  events across 2,031 symbols, 2016–2025**. Possible because the SUE-FREE
+  formulation sorts on the market's OWN announcement reaction rather than on
+  parsed EPS, so it needs only filing dates + prices, both of which exist for
+  the whole panel.
+- **PEAD: CONFIRMED.** Forward 63-bar index-relative excess by announcement-
+  reaction quintile: Q1 +0.55% · Q2 +0.59% · Q3 +0.54% · Q4 +0.88% ·
+  **Q5 +2.43%**. Top-minus-bottom **+1.88% (t 4.93)**, rank IC **+0.0302
+  (t 6.22)**. Survives dropping the 2020–21 COVID regime entirely: **+1.48%
+  (t 3.78)**, IC +0.0285. Bootstrap 95% CI on Q5 [+1.91%, +2.98%], P(mean≤0)=0.
+- **But it is NOT a clean ladder and NOT a long-short.** Q1–Q3 are flat within
+  6bp of each other; the entire effect is Q5. Q1 is POSITIVE (+0.55%), so there
+  is no short leg. And the distribution is severely right-skewed — Q5 median is
+  **−1.23%** against a +2.43% mean with a **47% win rate**. Winsorising at 5%
+  cuts it to +1.54%; dropping the top 1% of observations cuts it to +1.18%.
+  Roughly half the raw edge is the tail. Honest tradeable estimate: ~+1.2%/qtr
+  ex-COVID and winsorised ≈ +4.8%/yr gross, less ~2%/yr cost at 4 rebalances
+  ≈ **+2.8%/yr net over Nifty**, before market impact and taxes.
+- **🔴 Liquidity premium: NOT replicated.** 118 monthly formations, 63-bar hold,
+  index-relative: illiquid-minus-liquid **−0.64% (t −0.85)**, and non-monotone
+  (Q1 +0.81 · Q2 +1.18 · Q3 +1.24 · Q4 +1.75 · **Q5 +0.17**) — an inverted U,
+  not a premium. The paper reported +4.24%/quarter (t 2.16) via a 10-year
+  Fama–MacBeth regression; this is a quintile-sort estimator on a different
+  universe, so it is a NON-REPLICATION UNDER THIS PROTOCOL, not a refutation.
+  Note also that ALL five quintiles beat Nifty (+0.17% to +1.75%), which says
+  what is really being measured is small/mid-beats-large-cap breadth, not
+  liquidity.
+- **PEAD is STRONGER in liquid names** (+2.24%, t 3.94) than illiquid (+1.40%,
+  t 1.92, IC +0.0095) — the opposite of the "less-efficient markets" mechanism
+  at the within-market level. Most likely errors-in-variables attenuation:
+  illiquid names have noisier prices, so both the signal and the forward return
+  are measured with more error and the IC is biased toward zero.
+- Protocol: day 0 = first bar at/after the filing timestamp (filings land as
+  late as 21:29, so same-day prices can never be used); signal window [0,+1] and
+  forward window [+2,+65] never overlap; prices split-adjusted; **287 symbols
+  with unexplained residual discontinuities excluded**; every return
+  index-relative.
 
 ## 2026-07-28 — ETF builder: nothing beats SPY risk-adjusted once the bias is out
 
