@@ -228,6 +228,112 @@ def build_global(cost):
     return series
 
 
+
+# ── BREADTH BANDS (Russell-style) ────────────────────────────────────────────
+# India publishes Nifty 50/100/200/500 and then jumps to Smallcap/Microcap 250.
+# There is no broad deep-market index comparable to the Russell 2000, which
+# holds ~2,000 names below the large-cap band. These fill that gap.
+#   🔴 RANKED BY TURNOVER, NOT MARKET CAP. The real indices rank on free-float
+#   market cap; that is not reconstructable point-in-time here, because the only
+#   share counts available (fundamentals.ratios) cover companies existing TODAY
+#   and would import survivorship. Turnover rank IS computable from trailing
+#   data alone, so it is what these use — and they are named for what they are.
+#   Measured fidelity: a turnover band reproduces the real Smallcap 250 at ~43%.
+BANDS = {
+    "INL250": ("India Liquid 250 (ranks 1-250)", 0, 250),
+    "INL350": ("India Liquid 350 (ranks 1-350)", 0, 350),
+    "INL650": ("India Liquid 650 (ranks 1-650)", 0, 650),
+    "INR1K":  ("India Broad Small (ranks 251-1250) — Russell-2000 analogue", 250, 1250),
+}
+
+
+def build_bands(px, tv, rets, dates, cost):
+    series = {}
+    for code, (name, lo, hi) in BANDS.items():
+        lv, out = BASE, []
+        i = WARMUP
+        while i < len(dates) - 1:
+            turn = tv.iloc[i - 260:i].median().dropna().sort_values(ascending=False)
+            mem = [c for c in turn.index[lo:hi] if c in px.columns]
+            j = min(i + REBAL, len(dates) - 1)
+            if len(mem) >= 30:
+                lv *= (1 - cost)
+                seg = rets.loc[dates[i + 1]:dates[j], mem]
+                path = lv * (1 + seg.mean(axis=1).fillna(0.0)).cumprod()
+                out += list(zip(path.index, path.values, [len(mem)] * len(path)))
+                lv = float(path.iloc[-1]) if len(path) else lv
+            i = j
+        if out:
+            series[code] = out
+            SPECS[code] = name
+            print(f"  {code:8s} {name}", flush=True)
+    return series
+
+
+# ── CLUSTER-DISCOVERED INDICES ───────────────────────────────────────────────
+# The birds-of-a-feather test (cluster_indices.py) showed that at comparable
+# granularity, correlation clusters hold together FORWARD better than NSE's own
+# Industry taxonomy (+0.027 within-group forward correlation at k=45, t 4.37;
+# +0.057 at k=60). These publish that as indices.
+#   Membership is rebuilt from TRAILING correlation at every formation, so it is
+#   point-in-time — the property the named THEMES lists above do NOT have.
+#   Clusters are anchored by their MODAL NSE industry so the series is
+#   interpretable and chainable: "the cluster that is mostly Financial
+#   Services" is trackable even though its exact membership churns.
+CLUSTER_K = 45
+CLUSTER_MIN = 6
+
+
+def build_clusters(px, tv, rets, dates, cost):
+    from scipy.cluster.hierarchy import fcluster, linkage
+    from scipy.spatial.distance import squareform
+    from cluster_indices import sectors
+    ind = sectors()
+    acc, lvl = {}, {}
+    i = WARMUP
+    while i < len(dates) - 1:
+        turn = tv.iloc[i - 260:i].median().dropna().sort_values(ascending=False)
+        uni = [c for c in turn.index[:300] if c in px.columns and c in ind.index]
+        hist = rets[uni].iloc[i - 252:i].dropna(axis=1, thresh=220)
+        uni = list(hist.columns)
+        j = min(i + REBAL, len(dates) - 1)
+        if len(uni) >= 80:
+            C = hist.fillna(0.0).corr().fillna(0.0)
+            D = np.clip(1 - C.values, 0, 2); np.fill_diagonal(D, 0.0)
+            lab = fcluster(linkage(squareform(D, checks=False), "average"),
+                           CLUSTER_K, criterion="maxclust")
+            groups = {}
+            for sym, L in zip(uni, lab):
+                groups.setdefault(L, []).append(sym)
+            # 🔴 Two distinct clusters at the same formation can share a modal
+            # industry, which produced duplicate (index_code, index_date) rows
+            # and a PK violation. Keep only the LARGEST cluster per label — "the
+            # dominant Financial Services cluster" — so each code maps to
+            # exactly one basket per formation.
+            best = {}
+            for mem in groups.values():
+                if len(mem) < CLUSTER_MIN:
+                    continue
+                modal = pd.Series([ind.get(m, "?") for m in mem]).mode()
+                code = "CL_" + str(modal.iloc[0])[:18].upper().replace(" ", "_")
+                if code not in best or len(mem) > len(best[code][1]):
+                    best[code] = (modal.iloc[0], mem)
+            for code, (modal_name, mem) in best.items():
+                lv = lvl.get(code, BASE) * (1 - cost)
+                seg = rets.loc[dates[i + 1]:dates[j], mem]
+                path = lv * (1 + seg.mean(axis=1).fillna(0.0)).cumprod()
+                acc.setdefault(code, []).extend(
+                    zip(path.index, path.values, [len(mem)] * len(path)))
+                lvl[code] = float(path.iloc[-1]) if len(path) else lv
+                SPECS[code] = f"[cluster] mostly {modal_name}"
+        i = j
+    # keep only clusters that recur — a label seen once is noise, not an index
+    keep = {k: v for k, v in acc.items() if len(v) > 500}
+    for k in keep:
+        print(f"  {k:26s} {SPECS[k]}", flush=True)
+    return keep
+
+
 def build(a) -> int:
     import duckdb
     import pead_liquidity_study as P
@@ -279,6 +385,13 @@ def build(a) -> int:
         series[code] = vals
         SPECS[code] = THEMES[code][0]
 
+    print("\nbreadth bands (Russell-style):", flush=True)
+    for code, vals in build_bands(px, tv, rets, dates, cost).items():
+        series[code] = vals
+    print("\ncluster-discovered indices (point-in-time membership):", flush=True)
+    for code, vals in build_clusters(px, tv, rets, dates, cost).items():
+        series[code] = vals
+
     print("\ncross-country thematic baskets:", flush=True)
     for code, vals in build_global(cost).items():
         series[code] = vals
@@ -317,8 +430,9 @@ def status(a) -> int:
     d["index_date"] = pd.to_datetime(d.index_date)
     print(f"{'code':8s}{'index':56s}{'CAGR':>9s}{'vol':>8s}{'maxDD':>9s}{'members':>9s}")
     base = None
-    order = (["SMLEW", "SMLSCR", "SMLEXC"] + sorted(THEMES) +
-             sorted(c for m in GLOBAL_THEMES.values() for c in m))
+    order = (["SMLEW", "SMLSCR", "SMLEXC"] + sorted(BANDS) + sorted(THEMES) +
+             sorted(c for m in GLOBAL_THEMES.values() for c in m) +
+             sorted(c for c in d.index_code.unique() if c.startswith("CL_")))
     for k in order:
         g = d[d.index_code == k].sort_values("index_date")
         if g.empty:
