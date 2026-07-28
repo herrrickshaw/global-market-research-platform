@@ -150,8 +150,14 @@ def build(a) -> int:
     # must therefore cover ~one year of period_ends, or it is not TTM.
     def _ttm(g):
         e = g.eps.rolling(4).sum()
+        # 🔴 OFF-BY-ONE: four consecutive quarter-ENDS span ~275 days, NOT 365.
+        # End-to-end across 4 quarters crosses only THREE ~91-day gaps
+        # (Mar-31 -> Dec-31 is 275 days). The first guard demanded 330-400 and
+        # so rejected every valid window — 0 TTM observations from 20,498
+        # parsed quarters. Verified against NITINFIRE and ATLASCYCLE, whose
+        # clean consecutive runs measure 273-275 throughout.
         span = g.period_end - g.period_end.shift(3)
-        return e.where(span.dt.days.between(330, 400))
+        return e.where(span.dt.days.between(255, 300))
     q["ttm_eps"] = (q.groupby("symbol", group_keys=False)
                       .apply(_ttm).reset_index(level=0, drop=True))
     q = q.dropna(subset=["ttm_eps"])
