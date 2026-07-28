@@ -2,7 +2,7 @@
 
 Generated 2026-07-28 by `completeness_graph.py` (LangGraph, 4 nodes, deterministic — no LLM).
 
-**15 sources inventoried, 0 missing/erroring, 1 source(s) past their expected refresh cadence · 8 scheduled scripts checked, 1 quoting numbers their own cited report no longer contains · 8 analyses checked for the contamination gate, 0 ungated · 30 conclusions have a declared universe, 8 rest on a top-N liquid SAMPLE rather than the full market**
+**15 sources inventoried, 0 missing/erroring, 0 source(s) past their expected refresh cadence · 8 scheduled scripts checked, 1 quoting numbers their own cited report no longer contains · 8 analyses checked for the contamination gate, 0 ungated · 30 conclusions have a declared universe, 8 rest on a top-N liquid SAMPLE rather than the full market**
 
 ## 1. Data completeness
 
@@ -10,7 +10,7 @@ Generated 2026-07-28 by `completeness_graph.py` (LangGraph, 4 nodes, determinist
 |---|--:|--:|---|--:|---|:--:|
 | `bhavcopy.cleaned_ohlcv` | 1,241,103 | 7,841 | 2025-06-23 -> 2026-07-27 | 1 | daily | ✅ |
 | `bhavcopy.nse_deep_ohlcv` | 4,423,382 | 3,476 | 2016-01-01 -> 2026-07-13 | 15 | static |  |
-| `fundamentals.india_pe_daily` | 1,957,213 | 1,744 | 2019-01-17 -> 2026-07-22 | 🔴 6 | daily | ✅ |
+| `fundamentals.india_pe_daily` | 1,961,485 | 1,744 | 2019-01-17 -> 2026-07-27 | 1 | daily | ✅ |
 | `fundamentals.india_quarterly` | 53,794 | 2,575 | 2018-05-21 -> 2026-07-27 | 1 | quarterly | ✅ |
 | `fundamentals.ratios` | 9,302 | 9,281 | — | — | weekly |  |
 | `funds.nav` | 22,327,834 | 22,668 | 2016-07-28 -> 2026-07-27 | 1 | daily |  |

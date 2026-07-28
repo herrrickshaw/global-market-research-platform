@@ -279,7 +279,17 @@ def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--build", action="store_true")
-    ap.add_argument("--source", default="screener", choices=("screener", "xbrl"))
+    # 🔴 DEFAULT IS xbrl, AND CHANGING IT BACK WILL SHRINK THE TABLE. The default
+    # used to be "screener", which is not what fundamentals.india_pe_daily is
+    # built from — so a plain `--build` silently REPLACED the live 1,744-symbol
+    # XBRL table with a 1,301-symbol screener one, dropping 277k observations
+    # (done accidentally on 2026-07-28 while fixing an unrelated date lag). The
+    # XBRL path wins on both axes it is judged by: coverage 1,744 vs 1,301
+    # symbols, and accuracy ~20.5% vs ~28.5% median error against
+    # fundamentals.ratios. The screener path stays available because it reaches
+    # back to 2016 where XBRL starts at 2019, which matters for long-horizon
+    # work — but it must be asked for explicitly, not arrived at by default.
+    ap.add_argument("--source", default="xbrl", choices=("screener", "xbrl"))
     ap.add_argument("--extremes", action="store_true")
     ap.add_argument("--show")
     a = ap.parse_args()

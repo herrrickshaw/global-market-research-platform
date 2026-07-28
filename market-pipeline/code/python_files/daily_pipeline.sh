@@ -310,6 +310,16 @@ FAILURES=()
     || FAILURES+=("ingest: bhavcopy incremental")
   /usr/bin/python3 /Users/umashankar/scripts/bhavcopy_to_db.py --to-postgres "dbname=market_data host=/tmp user=umashankar" \
     || FAILURES+=("ingest: bhavcopy -> postgres")
+  # Push the fresh dates on into the PARQUET panel. Same failure as the raw-layer
+  # freeze noted above, one layer further out: warehouse/ohlcv/IN/year=*.parquet
+  # had no daily writer at all, so it sat at 2026-07-22 while cleaned_ohlcv (one
+  # line up) ran to 2026-07-27. That panel is what load_prices() reads, so
+  # india_pe_daily — rebuilt from it — trailed live prices by five sessions and
+  # every P/E screen was screening a week-old market. Append-only by date: the
+  # parquet holds more history than cleaned_ohlcv's ~1y window, so a rebuild
+  # would truncate it (found 2026-07-28).
+  /usr/bin/python3 /Users/umashankar/scripts/warehouse_ohlcv_sync.py --apply \
+    || FAILURES+=("ingest: warehouse ohlcv parquet sync")
   /usr/bin/python3 /Users/umashankar/scripts/market_ingest.py \
     || FAILURES+=("ingest: market snapshots")
   mkdir -p reports
