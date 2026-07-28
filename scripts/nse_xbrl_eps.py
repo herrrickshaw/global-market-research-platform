@@ -62,11 +62,26 @@ WORKERS = 8
 #              committee meeting dates). 100 distinct tags, zero financial ones.
 #              Excluded by prefix rather than left to fail parsing, so the
 #              "unusable" count means something.
-EPS_TAGS = ("BasicEarningsPerShareAfterExtraordinaryItems",
+# ORDER MATTERS — first match wins. The CONTINUING-AND-DISCONTINUED total must
+# come first: a filing reports ContinuingOperations, DiscontinuedOperations and
+# their TOTAL separately, and a company whose continuing line is 0.00 while the
+# discontinued line carries the whole result (AHLUCONT Q1-FY25: 0.00 / 4.56 /
+# 4.56) silently recorded 0.00 under the old ordering.
+EPS_TAGS = ("BasicEarningsLossPerShareFromContinuingAndDiscontinuedOperations",
+            "BasicEarningsPerShareAfterExtraordinaryItems",
             "BasicEarningsPerShareBeforeExtraordinaryItems",
             "BasicEarningsLossPerShareFromContinuingOperations",
-            "BasicEarningsLossPerShareFromContinuingAndDiscontinuedOperations",
             "BasicEarningsLossPerShare")
+
+# 🔴 NSE TAGS THE RESULTS TABLE BY COLUMN, NOT BY PERIOD. An Indian quarterly
+# results table is: col 1 = current quarter, col 4 = year-to-date. The XBRL
+# encodes that as contextRef "OneD" and "FourD" — and in some filings BOTH
+# carry the SAME start/end dates, so a duration filter cannot separate them.
+# AHLUCONT Q4-FY24 states 29.83 (OneD, the quarter) and 55.95 (FourD, the full
+# year) both stamped 2024-01-01..2024-03-31. Sampling 300 filings, these two IDs
+# are the ONLY ones carrying EPS facts (847 OneD / 646 FourD), so preferring
+# OneD is not a heuristic here, it is the format.
+QUARTER_CONTEXT_IDS = ("OneD",)
 NON_FINANCIAL_PREFIXES = ("INTEGRATED_",)
 PAT_TAGS = ("ProfitLossForThePeriod",
             "ProfitLossAfterTaxesMinorityInterestAndShareOfProfitLossOfAssociates",
@@ -125,26 +140,29 @@ def parse_one(path: Path):
         return None
 
     def pick(tags):
-        """Value whose context is 80-100 days long — a real quarter, never YTD."""
-        best = None
-        for el in root.iter():
-            local = el.tag.rsplit("}", 1)[-1]
-            if local not in tags or not (el.text or "").strip():
+        """The CURRENT QUARTER value: right tag, quarter-length context, and
+        the current-quarter COLUMN where the format distinguishes columns."""
+        for tag in tags:                       # tag priority is meaningful
+            cands = []
+            for el in root.iter():
+                if el.tag.rsplit("}", 1)[-1] != tag or not (el.text or "").strip():
+                    continue
+                cref = el.get("contextRef")
+                per = ctx.get(cref)
+                if not per or not (80 <= (per[1] - per[0]).days <= 100):
+                    continue
+                try:
+                    v = float(el.text.strip())
+                except ValueError:
+                    continue
+                cands.append((cref, v, per[0], per[1]))
+            if not cands:
                 continue
-            per = ctx.get(el.get("contextRef"))
-            if not per:
-                continue
-            days = (per[1] - per[0]).days
-            if not (80 <= days <= 100):
-                continue
-            try:
-                v = float(el.text.strip())
-            except ValueError:
-                continue
-            # latest-ending quarter present in the document
-            if best is None or per[1] > best[2]:
-                best = (v, per[0], per[1])
-        return best
+            preferred = [c for c in cands if c[0] in QUARTER_CONTEXT_IDS]
+            pool = preferred or cands
+            best = max(pool, key=lambda c: c[3])      # latest-ending
+            return (best[1], best[2], best[3])
+        return None
 
     eps = pick(EPS_TAGS)
     if eps is None:
