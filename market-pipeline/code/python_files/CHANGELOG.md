@@ -80,6 +80,51 @@ paper → 10 sections + glossary, deck → 12 slides):
   frequently (capital-assistance rates, MDA quantum) — the annex cites the governing circular
   date instead of hard-coding numbers that will go stale.
 
+## 2026-07-28 — Sector rotation: NO signal; weighted index P/E does not reconstruct
+
+- **`sector_rotation.py`** — 12 NIFTY sectoral indices, 10y daily history with
+  P/E (collected today), 91 monthly formations, 63-bar hold, top-3, excess over
+  Nifty 500 total return, 20bp charged.
+- **🔴 EVERY SIGNAL LOSES TO EQUAL-WEIGHT.** The bar is not "beat zero" — that
+  only says sectors outran the benchmark on average, a property of the universe.
+  The bar is beating `eq`, holding all 12 sectors equally:
+
+| signal | mean excess | win% | t | vs equal-weight |
+|---|--:|--:|--:|--:|
+| eq (the null) | +0.12% | 48% | 0.65 | — |
+| momentum 12-1 | −0.12% | 42% | −0.21 | **−0.24pp** |
+| value (P/E z vs own history) | −0.03% | 49% | −0.06 | **−0.15pp** |
+| trend (above 200DMA) | −0.61% | 47% | −1.67 | **−0.72pp** |
+| mom+value | −0.02% | 41% | −0.03 | **−0.13pp** |
+
+  Consistent across sub-periods: all four are negative in 2018-2020, all
+  positive in 2020-2023, mixed after — i.e. they track the regime, not the
+  sectors. `eq` itself is insignificant (t 0.65), so even sector exposure as
+  such added nothing over the broad index.
+- **The factsheet sector weights CANNOT drive a rotation backtest.** They are a
+  single 2026-06-30 snapshot — niftyindices publishes no dated archive — so any
+  historical use is look-ahead. Signals were taken from the sectoral index
+  HISTORY instead; the weights are an implementation input, not a signal.
+- **Weighted index P/E reconstruction FAILS the validation.** Worth recording
+  the correct formula because it is a real trap: index P/E is NOT the weighted
+  average of sector P/Es — earnings yields are additive, multiples are not, so
+  index P/E = 1 / Σ(wᵢ/PEᵢ). Applied to the factsheet weights against the
+  sectoral index P/Es:
+
+| index | reported | harmonic | naive avg | coverage |
+|---|--:|--:|--:|--:|
+| Nifty 50 | 20.52 | 18.87 | 20.85 | 84% |
+| Nifty 500 | 22.90 | 19.94 | 22.42 | 82% |
+
+  The theoretically correct harmonic figure is FURTHER from reported than the
+  naive average, which locates the error in the inputs rather than the formula:
+  ~18% of index weight has no matching sectoral index (Chemicals, Consumer
+  Durables, Consumer Services, Construction Materials, Diversified), and
+  mappings like Healthcare→Nifty Pharma or Capital Goods→Nifty Infrastructure
+  are approximations. A sector's large-cap slice inside Nifty 50 also need not
+  carry the whole sector index's multiple. **Not accurate enough to be a
+  signal**; the naive number matching better is coincidence, not validation.
+
 ## 2026-07-28 — Small-cap screener validation extended: edge is 2x LARGER in the bear
 
 - The 2019 start was an artefact of requiring 756 bars of warm-up for the
