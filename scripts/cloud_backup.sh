@@ -93,7 +93,31 @@ TREES=(
   "cache_seed|$HOME/market-pipeline/code/python_files/cache_seed"
   "gmd_cache_seed|$HOME/repos/global-market-data/cache_seed"
   "warehouse_duckdb|$HOME/data"
+  # The tar.zst archives of many-small-file static subdirs (see below). Synced as
+  # its own dataset so excluding the raw files does not lose the data.
+  "backup_archives|$HOME/.backup-archives"
 )
+
+# 🔴 THE 98,289-FILE PROBLEM. market_cache/nse_xbrl/xml holds 98,289 XML files
+# (5.1 GB) — 73% of every file in market_cache. Dropbox rate-limits WRITE
+# OPERATIONS per account, not bytes, so syncing them individually throttles no
+# matter how fast the link is. On 2026-07-28 this step ran 9h20m and then died:
+#
+#   ERROR : ...: upload failed: too_many_write_operations
+#   ERROR : Cancelling sync due to fatal error: upload failed: batcher is shutting down
+#     ! market_cache: sync FAILED
+#
+# and the peer script was STILL being throttled at 08:29 the next morning with
+# nothing competing, which is what showed the account lock added earlier had
+# treated a symptom rather than the cause.
+#
+# repo-data-dedup/scripts/cloud_backup.sh already solved this — its
+# "static-subdir archive pattern (standard 2026-07-23)" tar.zst's such subdirs
+# into ~/.backup-archives, rebuilt only when their file-count:size fingerprint
+# changes, and excludes them from the raw sync. The same 5.1 GB becomes ONE
+# ~300 MB file. That script builds the archive; this one consumes it, so the
+# exclusion below is safe only because backup_archives is in TREES above.
+EXTRA_EXCLUDES=(--exclude "nse_xbrl/xml/**")
 
 {
   echo "=== cloud backup $(date '+%Y-%m-%d %H:%M:%S %Z') -> $REMOTE ==="
@@ -107,6 +131,7 @@ TREES=(
       --backup-dir "$REMOTE/history/$TODAY/$name" \
       --exclude "*.tmp" --exclude "*.bak" --exclude "*.parquet.bak" \
       --exclude "ohlcv.lmdb/**" --exclude ".DS_Store" \
+      "${EXTRA_EXCLUDES[@]}" \
       --transfers 4 --checkers 8 --dropbox-chunk-size 96M \
       --stats-one-line --stats 0 --log-level NOTICE \
       && echo "  ok $name" \
