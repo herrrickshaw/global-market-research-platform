@@ -44,9 +44,29 @@ def _digest_section() -> tuple:
         import watchlist_digest as W
         wl_path = Path(W.__file__).resolve().parent / "watchlist.csv"
         wl = pd.read_csv(wl_path)
+        # 🔴 COVERAGE GATE AT THE POINT OF SEND (2026-07-29). watchlist_repair
+        # prunes parked markets, but it runs FIRST in the pipeline while the
+        # screeners that add rows run after it — so a JP/KR/EU name added during
+        # today's run would sit in the file until tomorrow's prune and would be
+        # MAILED tonight. Filtering here is what actually guarantees the brief
+        # only carries markets whose fundamentals can support a per-name claim.
+        # Applied to the digest's view only; the file itself is left to
+        # watchlist_repair so the two do not fight over it.
+        import watchlist_markets as WM
+        _parked = wl[~wl["market"].map(WM.covered)].copy() if "market" in wl else wl.iloc[0:0]
+        wl = WM.restrict(wl)
+        if len(_parked):
+            print(f"  digest: coverage gate held back {len(_parked)} row(s) "
+                  f"outside {'/'.join(WM.COVERED)}")
         wl, evicted, purged, changed = W.maintain(wl)
         if changed:
-            wl.to_csv(wl_path, index=False)
+            # 🔴 WRITE BACK THE PARKED ROWS TOO. maintain() returns only the
+            # filtered frame, so persisting it alone would DELETE every JP/KR/EU
+            # row from watchlist.csv silently and without archiving — turning a
+            # display filter into data loss. watchlist_repair owns removal, and
+            # it archives to watchlist_purged.csv with a reason; this path must
+            # leave the file no smaller than it found it.
+            pd.concat([wl, _parked], ignore_index=True).to_csv(wl_path, index=False)
         if evicted:
             print("  digest: evicted " + ", ".join(evicted))
         if purged:
@@ -219,6 +239,7 @@ if __name__ == "__main__":
     pred_html = ""
     try:
         import pandas as _pd
+        import watchlist_markets as WM
         _sc = Path("reports/watchlist_prediction_scores.csv")
         if _sc.exists():
             _s = _pd.read_csv(_sc)
@@ -228,7 +249,7 @@ if __name__ == "__main__":
             if "rsi_zone" in _s.columns:
                 _rz = _s["rsi_zone"].value_counts()
                 _rows += ('<div style="margin:4px 0"><b>RSI zones</b> '
-                          '(per-market read: momentum IN, mean-revert US/JP/KR/EU): '
+                          '(per-market read: momentum IN, mean-revert US): '
                           + " · ".join(f"{k} {v}" for k, v in _rz.items()
                                        if k != "?") + '</div>')
             _sr = Path("reports/held_sell_review.csv")
@@ -260,15 +281,25 @@ if __name__ == "__main__":
                 _fresh = (_dtt.date.today() - _dtt.date.fromtimestamp(
                     _re.stat().st_mtime)).days <= 1
                 _rc = _pd.read_csv(_re) if _fresh else _pd.DataFrame()
+                _rc = WM.restrict(_rc)
                 if len(_rc):
                     _names = ", ".join(f"{r.market}:{r.symbol} (rsi {r.rsi:.0f})"
                                        for r in _rc.head(8).itertuples())
+                    # 🔴 THE EDGE CLAIM HERE WAS WITHDRAWN 2026-07-29. This block
+                    # advertised "backtested excess +5-25%/63d, t 7-15" straight
+                    # into the reader's inbox. The report it came from now
+                    # measures IN 63d at excess -2.01% median, t=0.06, and an
+                    # independently written re-run agrees at t=0.27 on n=508.
+                    # reentry_engine's docstring was corrected the same day but
+                    # the number had also been copied HERE, which is exactly how
+                    # a retracted figure outlives its retraction.
                     _rows += (f'<div style="margin:4px 0"><b>↩ Re-entry queue '
-                              f'(mean-reversion engine):</b> {_names} — backtested '
-                              f'excess +5–25%/63d, t 7–15</div>')
+                              f'(mean-reversion engine, UNVALIDATED):</b> {_names} '
+                              f'— <span style="color:#b00">no measured forward '
+                              f'edge (t=0.06); paper-track only</span></div>')
             _rr = Path("reports/reentry_recent.csv")
             if _rr.exists():
-                _rrd = _pd.read_csv(_rr, parse_dates=["trigger_date"])
+                _rrd = WM.restrict(_pd.read_csv(_rr, parse_dates=["trigger_date"]))
                 if len(_rrd):
                     _by = _rrd.groupby("market").size().to_dict()
                     _top = "; ".join(

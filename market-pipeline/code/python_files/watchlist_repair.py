@@ -112,8 +112,31 @@ def main() -> int:
     print(f"  sources: {len(renames)} NSE renames, {len(nse)} current NSE "
           f"equities, {len(edgar)} EDGAR tickers")
 
+    # ── coverage gate (2026-07-29) ───────────────────────────────────────────
+    # The watchlist carried five markets but only two have fundamentals that can
+    # support a per-name claim. JP/KR/EU rows were screened and ranked on quality
+    # SCORES sitting in ratio-named columns — see watchlist_markets.PARKED for
+    # the measured evidence per market. Names outside the covered set are
+    # archived to watchlist_purged.csv with that reason, not deleted, so
+    # re-admitting a market is a one-line change in watchlist_markets.COVERED
+    # plus a re-scan rather than an excavation.
+    #
+    # Runs FIRST in the chain, so later steps may still append a parked market
+    # during the same run; the mailer filters independently at the point of
+    # send, and this prunes it the following morning.
+    import watchlist_markets as WM
+    off = [i for i, r in wl.iterrows() if not WM.covered(r.get("market", ""))]
+    if off:
+        by_mkt = wl.loc[off, "market"].value_counts().to_dict()
+        print(f"  coverage gate: archiving {len(off)} row(s) outside "
+              f"{'/'.join(WM.COVERED)} — {by_mkt}")
+
     renamed, to_purge = [], []
+    for i in off:
+        to_purge.append((i, f"market not covered: {WM.why_absent(wl.at[i, 'market'])}"))
     for i, r in wl.iterrows():
+        if i in off:
+            continue
         sym = str(r["symbol"]).strip().upper()
         mkt = str(r.get("market", "")).upper()
         status = str(r.get("status", "held")).lower()
