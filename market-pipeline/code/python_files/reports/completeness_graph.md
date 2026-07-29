@@ -2,7 +2,7 @@
 
 Generated 2026-07-29 by `completeness_graph.py` (LangGraph, 4 nodes, deterministic — no LLM).
 
-**15 sources inventoried, 0 missing/erroring, 0 source(s) past their expected refresh cadence · 8 scheduled scripts checked, 1 quoting numbers their own cited report no longer contains · 8 analyses checked for the contamination gate, 0 ungated · 30 conclusions have a declared universe, 8 rest on a top-N liquid SAMPLE rather than the full market · 7 Cassandra market(s) audited, 3 present but hollow (rows and prices, no fundamentals)**
+**15 sources inventoried, 0 missing/erroring, 0 source(s) past their expected refresh cadence · 8 scheduled scripts checked, 1 quoting numbers their own cited report no longer contains · 8 analyses checked for the contamination gate, 0 ungated · 30 conclusions have a declared universe, 8 rest on a top-N liquid SAMPLE rather than the full market · 6 Cassandra market(s) audited, 0 present but hollow (rows and prices, no fundamentals)**
 
 ## 1. Data completeness
 
@@ -10,7 +10,7 @@ Generated 2026-07-29 by `completeness_graph.py` (LangGraph, 4 nodes, determinist
 |---|--:|--:|---|--:|---|:--:|
 | `bhavcopy.cleaned_ohlcv` | 1,241,361 | 7,838 | 2025-06-24 -> 2026-07-28 | 1 | daily | ✅ |
 | `bhavcopy.nse_deep_ohlcv` | 4,423,382 | 3,476 | 2016-01-01 -> 2026-07-13 | 16 | static |  |
-| `fundamentals.india_pe_daily` | 1,961,485 | 1,744 | 2019-01-17 -> 2026-07-27 | 2 | daily | ✅ |
+| `fundamentals.india_pe_daily` | 1,962,914 | 1,744 | 2019-01-17 -> 2026-07-28 | 1 | daily | ✅ |
 | `fundamentals.india_quarterly` | 53,794 | 2,575 | 2018-05-21 -> 2026-07-27 | 2 | quarterly | ✅ |
 | `fundamentals.ratios` | 9,478 | 9,456 | — | — | weekly |  |
 | `funds.nav` | 22,327,834 | 22,668 | 2016-07-28 -> 2026-07-27 | 2 | daily |  |
@@ -91,20 +91,20 @@ Generated 2026-07-29 by `completeness_graph.py` (LangGraph, 4 nodes, determinist
 
 | market | rows | price fields | fundamentals | verdict |
 |---|--:|--:|--:|---|
-| us | 6,694 | 6,689 | 72 (1.1%) | 🔴 HOLLOW — counts as coverage, is not coverage |
-| china | 5,203 | 5,202 | 2,993 (57.5%) | fundamentals present |
-| japan | 4,708 | 3,708 | 3,083 (65.5%) | fundamentals present |
-| korea | 2,764 | 2,763 | 2,597 (94.0%) | fundamentals present |
-| hong_kong | 2,764 | 2,764 | 0 (0.0%) | 🔴 HOLLOW — counts as coverage, is not coverage |
-| india | 2,369 | 2,369 | 276 (11.7%) | fundamentals present |
-| europe | 999 | 992 | 25 (2.5%) | 🔴 HOLLOW — counts as coverage, is not coverage |
+| us | 9,278 | 0 | 0 (0.0%) | — |
+| china | 5,188 | 0 | 5,188 (100.0%) | 🔴 SCORE IN A RATIO COLUMN — populated, and wrong |
+| india | 3,480 | 3 | 3,479 (100.0%) | fundamentals present |
+| japan | 3,083 | 0 | 3,083 (100.0%) | 🔴 SCORE IN A RATIO COLUMN — populated, and wrong |
+| korea | 2,597 | 0 | 2,597 (100.0%) | 🔴 SCORE IN A RATIO COLUMN — populated, and wrong |
+| europe | 1,709 | 0 | 1,709 (100.0%) | 🔴 SCORE IN A RATIO COLUMN — populated, and wrong |
 
 > Counted as the BEST-populated column in each group, so these are upper bounds — the true per-field coverage is lower. A row that exists with null fundamentals is worse than a missing table: the missing table raises an error where it is used, while the null column silently narrows every downstream sample and still reports full coverage to a `COUNT(*)`.
 
 ## Notes
 
-- 🔴 cassandra[us]: 6,694 rows, prices populated (6,689) but fundamentals effectively EMPTY (72 = 1.1%) — counts as coverage in a row count, is not coverage in an analysis
-- 🔴 cassandra[europe]: 999 rows, prices populated (992) but fundamentals effectively EMPTY (25 = 2.5%) — counts as coverage in a row count, is not coverage in an analysis
-- 🔴 cassandra[hong_kong]: 2,764 rows, prices populated (2,764) but fundamentals effectively EMPTY (0 = 0.0%) — counts as coverage in a row count, is not coverage in an analysis
+- 🔴 cassandra[japan]: pb(4 distinct), roe(4 distinct), opm(8 distinct) — whole numbers over a handful of distinct values is a SCORE, not a ratio. Populated, and wrong. Anything reading these columns gets a 0-100 grade in place of a multiple.
+- 🔴 cassandra[korea]: roe(3 distinct) — whole numbers over a handful of distinct values is a SCORE, not a ratio. Populated, and wrong. Anything reading these columns gets a 0-100 grade in place of a multiple.
+- 🔴 cassandra[china]: roe(4 distinct) — whole numbers over a handful of distinct values is a SCORE, not a ratio. Populated, and wrong. Anything reading these columns gets a 0-100 grade in place of a multiple.
+- 🔴 cassandra[europe]: pb(4 distinct) — whole numbers over a handful of distinct values is a SCORE, not a ratio. Populated, and wrong. Anything reading these columns gets a 0-100 grade in place of a multiple.
 
 > Completeness is not correctness. This audit proves a source is present, fresh, internally consistent with what quotes it, and gated — not that the numbers in it are right. `reports/data_sufficiency.md` is the cautionary case: it reports a US liquid universe of 6 stocks and a span ending 2029, both impossible, while looking like a clean pass.

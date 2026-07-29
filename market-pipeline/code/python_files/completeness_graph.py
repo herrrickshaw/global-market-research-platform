@@ -387,6 +387,45 @@ def audit_cassandra(state: AuditState) -> dict:
         # "Present but hollow": rows exist, prices are there, fundamentals are not.
         rec["hollow"] = (rec.get("price", 0) > 0.5 * total
                          and rec.get("fund_pct", 0) < 0.05)
+
+        # 🔴 POPULATED IS NOT PLAUSIBLE. On 2026-07-29 this node reported Japan,
+        # China, Korea and Europe as "fundamentals present 100%" the moment a
+        # rebuild filled their columns. The values were quality SCORES written
+        # into ratio-named columns: japan.pb held exactly four distinct values
+        # (25, 40, 50, 65), identical to quality_score in every row, where a real
+        # price-to-book is continuous over roughly 0.3-20. A `> 0` test cannot
+        # tell a 0-100 score from a ratio, so the audit certified the fix it was
+        # built to scrutinise. Cardinality can: a genuine ratio over thousands of
+        # symbols takes thousands of distinct values, a score takes a handful.
+        # Checked across EVERY fundamental column, not just pb: the abuse is not
+        # confined to one field. japan/europe carry the score in `pb`, while
+        # china/korea carry it in `roe` — and india's `roe` holds a genuine
+        # fraction (0.160), so the SAME column means a ratio in one market and a
+        # 0-100 grade in another. Anything reading roe across markets compares
+        # 0.16 against 80 and treats them as the same quantity.
+        rec["suspect_cols"] = []
+        for col in CASS_FUNDAMENTAL:
+            try:
+                vals = [r[0] for r in s.execute(
+                    f"SELECT {col} FROM stock_quotes WHERE market=%s LIMIT 400",
+                    (mkt,)) if r[0] is not None]
+            except Exception:                                  # noqa: BLE001
+                continue
+            if len(vals) < 100:
+                continue
+            uniq = len(set(vals))
+            # A genuine ratio over hundreds of symbols is near-continuous; a
+            # score takes a handful of values and is usually whole-numbered.
+            whole = all(float(v) == int(float(v)) for v in vals[:200])
+            if uniq <= 20 and whole:
+                rec["suspect_cols"].append(f"{col}({uniq} distinct)")
+        rec["suspect_scale"] = bool(rec["suspect_cols"])
+        if rec["suspect_scale"]:
+            notes.append(
+                f"cassandra[{mkt}]: {', '.join(rec['suspect_cols'])} — whole "
+                f"numbers over a handful of distinct values is a SCORE, not a "
+                f"ratio. Populated, and wrong. Anything reading these columns "
+                f"gets a 0-100 grade in place of a multiple.")
         if rec["hollow"]:
             notes.append(
                 f"cassandra[{mkt}]: {total:,} rows, prices populated "
@@ -570,6 +609,8 @@ def render(s: AuditState) -> str:
         for x in sorted(s["cassandra"], key=lambda z: -z["rows"]):
             v = ("🔴 HOLLOW — counts as coverage, is not coverage"
                  if x.get("hollow") else
+                 "🔴 SCORE IN A RATIO COLUMN — populated, and wrong"
+                 if x.get("suspect_scale") else
                  "fundamentals present" if x.get("fund_pct", 0) >= 0.05 else "—")
             o(f"| {x['market']} | {x['rows']:,} | {x.get('price', 0):,} "
               f"| {x.get('fund', 0):,} ({x.get('fund_pct', 0):.1%}) | {v} |")
