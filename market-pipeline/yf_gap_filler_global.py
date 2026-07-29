@@ -13,9 +13,9 @@ overwritten by yfinance approximations.
 import csv
 import time
 from pathlib import Path
-from concurrent.futures import ThreadPoolExecutor, as_completed
 
 import yfinance as yf
+from yfinance.exceptions import YFRateLimitError
 import sys
 sys.path.insert(0, '/Users/umashankar/market-pipeline')
 from yf_gap_filler import extract, FIELDS
@@ -24,15 +24,23 @@ SCRATCH = Path('/private/tmp/claude-501/-Users-umashankar/fce772c6-1b5d-436e-a84
 CHECKPOINT = SCRATCH / 'yf_gap_global_results.csv'
 
 
-def fetch_one(market, ticker):
+def fetch_one(market, ticker, base_delay=0.8):
+    """Row, None (dead), or raises YFRateLimitError (NOT checkpointed)."""
     try:
-        info = yf.Ticker(ticker).info
-        if info and len(info) > 5:
-            return extract(info, market, ticker)
-    except Exception:
-        pass
+        for attempt in range(3):
+            try:
+                info = yf.Ticker(ticker).info
+                if info and len(info) > 5:
+                    return extract(info, market, ticker)
+                return None
+            except YFRateLimitError:
+                if attempt == 2:
+                    raise
+                time.sleep(120 * (attempt + 1))
+            except Exception:
+                return None
     finally:
-        time.sleep(0.2)
+        time.sleep(base_delay)
     return None
 
 
@@ -57,30 +65,32 @@ def main():
     if mode == 'w':
         writer.writeheader()
 
-    fetched = empty = 0
+    # serial — parallel bursts trip Yahoo's limiter and poison the checkpoint
+    fetched = empty = ratelimited = 0
     t0 = time.time()
-    with ThreadPoolExecutor(max_workers=4) as ex:
-        futures = {ex.submit(fetch_one, m, t): (m, t) for m, t in work}
-        for i, fut in enumerate(as_completed(futures), 1):
-            try:
-                row = fut.result()
-            except Exception:
-                row = None
-            m, t = futures[fut]
-            if row and len(row) > 2:
-                writer.writerow(row)
-                fetched += 1
-            else:
-                writer.writerow({'market': m, 'yf_ticker': t})
-                empty += 1
-            if i % 200 == 0:
-                out.flush()
-                rate = i / (time.time() - t0)
-                eta = (len(work) - i) / rate / 60
-                print(f"  {i}/{len(work)} | data: {fetched} empty: {empty} "
-                      f"| {rate:.1f}/s | ETA {eta:.0f}m", flush=True)
+    for i, (m, t) in enumerate(work, 1):
+        try:
+            row = fetch_one(m, t)
+        except YFRateLimitError:
+            ratelimited += 1
+            print(f"  rate-limited at {m}:{t} — backing off 10m", flush=True)
+            time.sleep(600)
+            continue  # not checkpointed; retried on next run
+        if row and len(row) > 2:
+            writer.writerow(row)
+            fetched += 1
+        else:
+            writer.writerow({'market': m, 'yf_ticker': t})
+            empty += 1
+        if i % 200 == 0:
+            out.flush()
+            rate = i / (time.time() - t0)
+            eta = (len(work) - i) / rate / 3600
+            print(f"  {i}/{len(work)} | data: {fetched} empty: {empty} "
+                  f"rl: {ratelimited} | {rate:.2f}/s | ETA {eta:.1f}h", flush=True)
     out.close()
-    print(f"DONE: {fetched} with data, {empty} empty of {len(work)}", flush=True)
+    print(f"DONE: {fetched} with data, {empty} empty, {ratelimited} rate-limited "
+          f"of {len(work)}", flush=True)
 
 
 if __name__ == '__main__':
