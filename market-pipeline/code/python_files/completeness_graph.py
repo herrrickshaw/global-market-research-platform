@@ -25,6 +25,13 @@ audits here, not one:
                        that report? This is mechanical, needs no LLM, and is
                        the check that would have flagged reentry_engine.
 
+  POPULATION         — for a secondary store (Cassandra), how many rows are
+                       actually POPULATED, not merely present. A load announcing
+                       "fundamentals extended to 28,986 symbols" turned out to
+                       carry prices and null fundamentals: `eps > 0` in ZERO rows
+                       in every market, `pe > 0` in 112 rows total. A COUNT(*)
+                       reports that as full coverage.
+
   GATE COVERAGE      — which regularly-run analyses apply the contamination
                        gate (contaminated(), which drops symbols with
                        uncorrected corporate actions) and which read the raw
@@ -34,7 +41,7 @@ audits here, not one:
                        MINDTREE, MOTHERSUMI, ABIRLANUVO). Scripts that skip the
                        gate silently inherit those discontinuities.
 
-WHY LANGGRAPH. The three audits are independent and fan out in parallel from a
+WHY LANGGRAPH. The four audits are independent and fan out in parallel from a
 shared inventory, then join for synthesis. That is a graph, and expressing it as
 one makes the dependency explicit and the parallelism free. The nodes are
 deterministic Python — there is no LLM in this graph and no reason for one.
@@ -136,6 +143,7 @@ class AuditState(TypedDict):
     claims: Annotated[list, operator.add]
     gates: Annotated[list, operator.add]
     power: Annotated[list, operator.add]
+    cassandra: Annotated[list, operator.add]
     notes: Annotated[list, operator.add]
     summary: str
 
@@ -311,6 +319,88 @@ def audit_gates(state: AuditState) -> dict:
     return {"gates": out}
 
 
+# Cassandra columns that a row is supposed to CARRY, split by what they mean.
+# The distinction is the point of this audit: a row can be present and current
+# on its price fields while every fundamental field beside it is null.
+CASS_FUNDAMENTAL = ("pe", "pb", "roe", "opm", "eps", "debt_to_equity")
+CASS_PRICE = ("cmp", "rsi", "ema_50")
+CASS_MARKETS = ("us", "india", "japan", "korea", "china", "europe", "hong_kong")
+
+
+def audit_cassandra(state: AuditState) -> dict:
+    """Row counts are not coverage. Measure how many rows are actually POPULATED.
+
+    🔴 WHY THIS NODE EXISTS. A load landed on 2026-07-29 announcing "fundamentals
+    extended to 28,986 symbols". Cassandra did gain ~23,000 rows and their PRICE
+    fields are genuinely populated — but `eps > 0` was true in ZERO rows in every
+    market, `pe > 0` in 112 rows total, and for Japan and China the fundamental
+    columns were entirely null. The headline counted symbols that RECEIVED A ROW.
+    Nothing in this audit could see that, because it only inspected Postgres and
+    local files, so answering "is that data real, and is it reaching the
+    analysis?" took a manual afternoon.
+
+    An empty column is more dangerous than a missing table. A missing table
+    raises an error at the point of use; a table full of nulls silently narrows
+    every downstream sample, and a COUNT(*) over it reports full coverage. So
+    presence and population are reported separately, per market, and a store that
+    is present-but-unpopulated is called out rather than counted as covered.
+
+    Read-only, and failure here is not fatal: Cassandra is a secondary store for
+    this repo, so an unreachable node yields a note rather than an aborted audit.
+    """
+    try:
+        from cassandra.cluster import Cluster
+    except ImportError:
+        return {"cassandra": [], "notes": ["cassandra-driver not installed — "
+                                           "Cassandra store NOT audited"]}
+    try:
+        cl = Cluster(["127.0.0.1"], connect_timeout=8)
+        s = cl.connect("herrrickshaw")
+    except Exception as e:                                     # noqa: BLE001
+        return {"cassandra": [], "notes": [f"Cassandra unreachable: {str(e)[:70]}"]}
+
+    out, notes = [], []
+    for mkt in CASS_MARKETS:
+        try:
+            total = s.execute(
+                "SELECT COUNT(*) FROM stock_quotes WHERE market=%s", (mkt,)
+            ).one()[0]
+        except Exception:                                      # noqa: BLE001
+            continue
+        if not total:
+            continue
+        rec = {"market": mkt, "rows": total}
+        # ALLOW FILTERING is acceptable here: this is an audit run on demand over
+        # one partition, not a hot path, and there is no secondary index to use.
+        for label, cols in (("fund", CASS_FUNDAMENTAL), ("price", CASS_PRICE)):
+            best = 0
+            for col in cols:
+                try:
+                    n = s.execute(f"SELECT COUNT(*) FROM stock_quotes WHERE "
+                                  f"market=%s AND {col} > 0 ALLOW FILTERING",
+                                  (mkt,)).one()[0]
+                except Exception:                              # noqa: BLE001
+                    continue
+                best = max(best, n)          # the BEST-populated column of the group
+            rec[label] = best
+            rec[label + "_pct"] = best / total if total else 0.0
+        # "Present but hollow": rows exist, prices are there, fundamentals are not.
+        rec["hollow"] = (rec.get("price", 0) > 0.5 * total
+                         and rec.get("fund_pct", 0) < 0.05)
+        if rec["hollow"]:
+            notes.append(
+                f"cassandra[{mkt}]: {total:,} rows, prices populated "
+                f"({rec['price']:,}) but fundamentals effectively EMPTY "
+                f"({rec['fund']:,} = {rec['fund_pct']:.1%}) — counts as coverage "
+                f"in a row count, is not coverage in an analysis")
+        out.append(rec)
+    try:
+        cl.shutdown()
+    except Exception:                                          # noqa: BLE001
+        pass
+    return {"cassandra": out, "notes": notes}
+
+
 def audit_power(state: AuditState) -> dict:
     """Is each conclusion built on the full universe, or on a top-N sample?
 
@@ -358,6 +448,8 @@ def synthesize(state: AuditState) -> dict:
     ungated = [g for g in gt if g.get("verdict", "").startswith("UNGATED")]
     pw = state.get("power", [])
     samp = [p for p in pw if str(p.get("sample_kind", "")).startswith("SAMPLE")]
+    cass = state.get("cassandra", [])
+    hollow = [x for x in cass if x.get("hollow")]
     parts = [
         f"{len(src)} sources inventoried, {len(broken)} missing/erroring, "
         f"{len(stale)} source(s) past their expected refresh cadence",
@@ -367,6 +459,8 @@ def synthesize(state: AuditState) -> dict:
         f"{len(ungated)} ungated",
         f"{len(pw)} conclusions have a declared universe, {len(samp)} rest on a "
         f"top-N liquid SAMPLE rather than the full market",
+        f"{len(cass)} Cassandra market(s) audited, {len(hollow)} present but "
+        f"hollow (rows and prices, no fundamentals)",
     ]
     return {"summary": " · ".join(parts)}
 
@@ -378,16 +472,19 @@ def build():
     g.add_node("audit_claims", audit_claims)
     g.add_node("audit_gates", audit_gates)
     g.add_node("audit_power", audit_power)
+    g.add_node("audit_cassandra", audit_cassandra)
     g.add_node("synthesize", synthesize)
     g.add_edge(START, "inventory")
-    # fan out: the three audits are independent of each other
+    # fan out: the four audits are independent of each other
     g.add_edge("inventory", "audit_claims")
     g.add_edge("inventory", "audit_gates")
     g.add_edge("inventory", "audit_power")
+    g.add_edge("inventory", "audit_cassandra")
     # join
     g.add_edge("audit_claims", "synthesize")
     g.add_edge("audit_gates", "synthesize")
     g.add_edge("audit_power", "synthesize")
+    g.add_edge("audit_cassandra", "synthesize")
     g.add_edge("synthesize", END)
     return g.compile()
 
@@ -465,6 +562,26 @@ def render(s: AuditState) -> str:
       "narrowing disappears by the time the figure is quoted downstream.")
     o()
 
+    if s.get("cassandra"):
+        o("## 5. Cassandra — rows present vs fields POPULATED")
+        o()
+        o("| market | rows | price fields | fundamentals | verdict |")
+        o("|---|--:|--:|--:|---|")
+        for x in sorted(s["cassandra"], key=lambda z: -z["rows"]):
+            v = ("🔴 HOLLOW — counts as coverage, is not coverage"
+                 if x.get("hollow") else
+                 "fundamentals present" if x.get("fund_pct", 0) >= 0.05 else "—")
+            o(f"| {x['market']} | {x['rows']:,} | {x.get('price', 0):,} "
+              f"| {x.get('fund', 0):,} ({x.get('fund_pct', 0):.1%}) | {v} |")
+        o()
+        o("> Counted as the BEST-populated column in each group, so these are "
+          "upper bounds — the true per-field coverage is lower. A row that "
+          "exists with null fundamentals is worse than a missing table: the "
+          "missing table raises an error where it is used, while the null "
+          "column silently narrows every downstream sample and still reports "
+          "full coverage to a `COUNT(*)`.")
+        o()
+
     if s.get("notes"):
         o("## Notes")
         o()
@@ -487,7 +604,7 @@ def main() -> int:
     a = ap.parse_args()
 
     app = build()
-    s = app.invoke({"sources": [], "claims": [], "gates": [], "power": [],
+    s = app.invoke({"sources": [], "claims": [], "gates": [], "power": [], "cassandra": [],
                     "notes": [],
                     "summary": ""})
     if a.json:

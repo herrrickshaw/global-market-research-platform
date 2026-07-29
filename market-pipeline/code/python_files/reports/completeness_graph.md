@@ -1,25 +1,25 @@
 # Completeness audit — data, claims, and gates
 
-Generated 2026-07-28 by `completeness_graph.py` (LangGraph, 4 nodes, deterministic — no LLM).
+Generated 2026-07-29 by `completeness_graph.py` (LangGraph, 4 nodes, deterministic — no LLM).
 
-**15 sources inventoried, 0 missing/erroring, 0 source(s) past their expected refresh cadence · 8 scheduled scripts checked, 1 quoting numbers their own cited report no longer contains · 8 analyses checked for the contamination gate, 0 ungated · 30 conclusions have a declared universe, 8 rest on a top-N liquid SAMPLE rather than the full market**
+**15 sources inventoried, 0 missing/erroring, 0 source(s) past their expected refresh cadence · 8 scheduled scripts checked, 1 quoting numbers their own cited report no longer contains · 8 analyses checked for the contamination gate, 0 ungated · 30 conclusions have a declared universe, 8 rest on a top-N liquid SAMPLE rather than the full market · 7 Cassandra market(s) audited, 3 present but hollow (rows and prices, no fundamentals)**
 
 ## 1. Data completeness
 
 | source | rows | symbols | span | stale (d) | cadence | crit |
 |---|--:|--:|---|--:|---|:--:|
-| `bhavcopy.cleaned_ohlcv` | 1,241,103 | 7,841 | 2025-06-23 -> 2026-07-27 | 1 | daily | ✅ |
-| `bhavcopy.nse_deep_ohlcv` | 4,423,382 | 3,476 | 2016-01-01 -> 2026-07-13 | 15 | static |  |
-| `fundamentals.india_pe_daily` | 1,961,485 | 1,744 | 2019-01-17 -> 2026-07-27 | 1 | daily | ✅ |
-| `fundamentals.india_quarterly` | 53,794 | 2,575 | 2018-05-21 -> 2026-07-27 | 1 | quarterly | ✅ |
-| `fundamentals.ratios` | 9,302 | 9,281 | — | — | weekly |  |
-| `funds.nav` | 22,327,834 | 22,668 | 2016-07-28 -> 2026-07-27 | 1 | daily |  |
-| `indices.nse_daily` | 240,314 | 173 | 2016-07-28 -> 2026-07-27 | 1 | daily |  |
-| `indices.nse_tri` | 22,266 | 17 | 2016-08-01 -> 2026-07-27 | 1 | daily |  |
+| `bhavcopy.cleaned_ohlcv` | 1,241,361 | 7,838 | 2025-06-24 -> 2026-07-28 | 1 | daily | ✅ |
+| `bhavcopy.nse_deep_ohlcv` | 4,423,382 | 3,476 | 2016-01-01 -> 2026-07-13 | 16 | static |  |
+| `fundamentals.india_pe_daily` | 1,961,485 | 1,744 | 2019-01-17 -> 2026-07-27 | 2 | daily | ✅ |
+| `fundamentals.india_quarterly` | 53,794 | 2,575 | 2018-05-21 -> 2026-07-27 | 2 | quarterly | ✅ |
+| `fundamentals.ratios` | 9,478 | 9,456 | — | — | weekly |  |
+| `funds.nav` | 22,327,834 | 22,668 | 2016-07-28 -> 2026-07-27 | 2 | daily |  |
+| `indices.nse_daily` | 240,314 | 173 | 2016-07-28 -> 2026-07-27 | 2 | daily |  |
+| `indices.nse_tri` | 22,266 | 17 | 2016-08-01 -> 2026-07-27 | 2 | daily |  |
 | `indices.custom_daily` | 61,963 | 31 | — | — | weekly |  |
 | `market_daily.snapshots` | 153,858 | 17,389 | — | — | daily | ✅ |
-| `market_daily.ticker_freshness` | 21,288 | 21,207 | — | — | daily | ✅ |
-| `public.ohlcv_history` | 38,235,027 | — | 2011-01-04 -> 2026-07-17 | 11 | external |  |
+| `market_daily.ticker_freshness` | 21,285 | 21,204 | — | — | daily | ✅ |
+| `public.ohlcv_history` | 38,235,027 | — | 2011-01-04 -> 2026-07-17 | 12 | external |  |
 | `public.global_fundamentals` | 245,116 | 25,430 | — | — | external |  |
 | `india split factors` | 688 | 468 | — | — | — | ✅ |
 | `india unverifiable` | 29 | 29 | — | — | — | ✅ |
@@ -86,5 +86,25 @@ Generated 2026-07-28 by `completeness_graph.py` (LangGraph, 4 nodes, determinist
 | `valuation_reversion_us.md` | — | — | — | 109 |
 
 > 🔶 marks a conclusion measured on the most liquid slice of the market. That is not a defect — liquidity gating is deliberate and keeps the result tradeable — but it narrows what the number is ABOUT, and the narrowing disappears by the time the figure is quoted downstream.
+
+## 5. Cassandra — rows present vs fields POPULATED
+
+| market | rows | price fields | fundamentals | verdict |
+|---|--:|--:|--:|---|
+| us | 6,694 | 6,689 | 72 (1.1%) | 🔴 HOLLOW — counts as coverage, is not coverage |
+| china | 5,203 | 5,202 | 2,993 (57.5%) | fundamentals present |
+| japan | 4,708 | 3,708 | 3,083 (65.5%) | fundamentals present |
+| korea | 2,764 | 2,763 | 2,597 (94.0%) | fundamentals present |
+| hong_kong | 2,764 | 2,764 | 0 (0.0%) | 🔴 HOLLOW — counts as coverage, is not coverage |
+| india | 2,369 | 2,369 | 276 (11.7%) | fundamentals present |
+| europe | 999 | 992 | 25 (2.5%) | 🔴 HOLLOW — counts as coverage, is not coverage |
+
+> Counted as the BEST-populated column in each group, so these are upper bounds — the true per-field coverage is lower. A row that exists with null fundamentals is worse than a missing table: the missing table raises an error where it is used, while the null column silently narrows every downstream sample and still reports full coverage to a `COUNT(*)`.
+
+## Notes
+
+- 🔴 cassandra[us]: 6,694 rows, prices populated (6,689) but fundamentals effectively EMPTY (72 = 1.1%) — counts as coverage in a row count, is not coverage in an analysis
+- 🔴 cassandra[europe]: 999 rows, prices populated (992) but fundamentals effectively EMPTY (25 = 2.5%) — counts as coverage in a row count, is not coverage in an analysis
+- 🔴 cassandra[hong_kong]: 2,764 rows, prices populated (2,764) but fundamentals effectively EMPTY (0 = 0.0%) — counts as coverage in a row count, is not coverage in an analysis
 
 > Completeness is not correctness. This audit proves a source is present, fresh, internally consistent with what quotes it, and gated — not that the numbers in it are right. `reports/data_sufficiency.md` is the cautionary case: it reports a US liquid universe of 6 stocks and a span ending 2029, both impossible, while looking like a clean pass.
