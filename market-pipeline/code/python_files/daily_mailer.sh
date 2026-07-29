@@ -82,10 +82,11 @@ step() {
 }
 
 # Phase selection. Neither flag = both phases, so a manual run still works.
-RUN_DATA=1; RUN_SEND=1
+RUN_DATA=1; RUN_SEND=1; IS_DRAFT=0
 for a in "$@"; do
   [ "$a" = "--data" ] && RUN_SEND=0
   [ "$a" = "--send" ] && RUN_DATA=0
+  [ "$a" = "--draft" ] && IS_DRAFT=1
 done
 
 FAILURES=()
@@ -201,3 +202,35 @@ FAILURES=()
 
   echo "=== done $(date) ==="
 } 2>&1 | tee -a "$LOG"
+
+# ── chain the research partition ────────────────────────────────────────────
+# daily_research.sh used to run on its own fixed clock guess (08:30), independent
+# of whether --send had actually finished by then. That is not a partition of
+# THIS run, it is a second run that happens to be scheduled nearby — if --send
+# overran, research would start on top of it and immediately exit on the lock
+# (wasted cron cycle, research silently skipped for the day); if --send finished
+# early, research sat idle for no reason.
+#
+# Launched here instead: the brief has already been sent (or the alert already
+# fired) by this point, so nothing downstream is waiting on research, and
+# daily_mailer.sh must not block for the ~2h research run before it can exit.
+# Backgrounded and disowned so it does not.
+#
+# The EXIT trap above (line ~76) still holds /tmp/daily_pipeline.lock for the
+# few remaining instructions of THIS script, so daily_research.sh's own mkdir
+# will find it briefly occupied and fall into its wait loop — harmless, since
+# that loop polls a live pid and the trap releases the lock within a second of
+# this line running; worst case is one unneeded 60s poll interval on a ~2h run.
+# It is not, and does not need to be, a hand-off synchronised any tighter than
+# that.
+#
+# Only fires after a REAL send phase (RUN_SEND=1, IS_DRAFT=0), which is the
+# actual end of "today's run" — not after --data alone, and not after --draft,
+# which are partial/test invocations that should not also trigger 2 hours of
+# research work. Checked across ALL args, not just $1: --draft can appear
+# anywhere in "$@".
+if [ "$RUN_SEND" = "1" ] && [ "$IS_DRAFT" = "0" ]; then
+  nohup ./daily_research.sh > /dev/null 2>&1 &
+  disown
+  echo "  chained: daily_research.sh started in the background (pid $!)"
+fi

@@ -16,8 +16,19 @@
 #     being reported as broken.
 #
 # Nothing here gates an email, so a failure is a note rather than an alarm, and
-# the schedule can be whatever suits the work: correlations and indices weekly,
-# backtests monthly, collectors on their own cadence.
+# the schedule within a run can be whatever suits the work: correlations and
+# indices weekly, backtests monthly, collectors on their own cadence.
+#
+# 🔴 THIS IS A PARTITION OF THE DAILY RUN, NOT AN INDEPENDENTLY-SCHEDULED JOB.
+# It was first given its own fixed-clock cron (08:30 IST), on the assumption
+# that daily_mailer.sh --send would always be done by then. That is a guess, not
+# a dependency — if --send overran, research started on top of it and
+# immediately exited on the lock (a skipped day, not a delayed one); if --send
+# finished early, research sat idle for no reason. daily_mailer.sh now launches
+# this script itself, in the background, the moment --send actually completes
+# (see the bottom of daily_mailer.sh) — so this is chained, not clocked. The
+# lock-wait logic below still matters for a manual/ad-hoc invocation of this
+# script on its own.
 #
 # 🔴 SCANS FOR THE PARKED MARKETS LIVE HERE. Europe, Japan and Korea are out of
 # the brief because their fundamentals cannot support a per-name claim, but they
@@ -85,12 +96,19 @@ NOTES=()
   # ── correlation scans ─────────────────────────────────────────────────────
   # US is weekly by design: its matrix is the largest and changes slowly.
   step "[R4] correlation scans (NSE · Europe · Japan · Korea)"
-  for M in nse europe japan korea; do
-    $PY market_correlation_scan.py --market "$M" || NOTES+=("correlation: $M")
+  # 🔴 UPPERCASE, and --output-dir is required. The first version passed lowercase
+  # codes and omitted the output dir; argparse rejected all four with a usage
+  # message and the run recorded them as failures. The choices are
+  # {NSE,US,BSE,JAPAN,KOREA,CHINA,HK,EUROPE} — copied from daily_pipeline.sh
+  # rather than guessed, which is what I should have done first.
+  for M in NSE EUROPE JAPAN KOREA; do
+    $PY market_correlation_scan.py --market "$M" --output-dir correlation_scan \
+      || NOTES+=("correlation: $M")
   done
   if [ "$DOW" = "1" ] || [ "$FORCE_WEEKLY" = "1" ]; then
     step "[R5] correlation scan — US (weekly, Mondays)"
-    $PY market_correlation_scan.py --market us || NOTES+=("correlation: us")
+    $PY market_correlation_scan.py --market US --output-dir correlation_scan \
+      || NOTES+=("correlation: US")
   fi
 
   # ── weekly research ───────────────────────────────────────────────────────
