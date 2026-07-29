@@ -91,20 +91,17 @@ Generated 2026-07-29 by `completeness_graph.py` (LangGraph, 4 nodes, determinist
 
 | market | rows | price fields | fundamentals | verdict |
 |---|--:|--:|--:|---|
-| us | 9,278 | 0 | 0 (0.0%) | — |
-| china | 5,188 | 0 | 5,188 (100.0%) | 🔴 SCORE IN A RATIO COLUMN — populated, and wrong |
-| india | 3,480 | 3 | 3,479 (100.0%) | fundamentals present |
+| us | 9,428 | 6,435 | 9,278 (98.4%) | fundamentals present |
+| china | 5,188 | 0 | 5,145 (99.2%) | fundamentals present |
+| india | 3,484 | 2,367 | 3,480 (99.9%) | fundamentals present |
 | japan | 3,083 | 0 | 3,083 (100.0%) | 🔴 SCORE IN A RATIO COLUMN — populated, and wrong |
-| korea | 2,597 | 0 | 2,597 (100.0%) | 🔴 SCORE IN A RATIO COLUMN — populated, and wrong |
-| europe | 1,709 | 0 | 1,709 (100.0%) | 🔴 SCORE IN A RATIO COLUMN — populated, and wrong |
+| korea | 2,597 | 0 | 2,176 (83.8%) | fundamentals present |
+| europe | 1,824 | 990 | 1,709 (93.7%) | fundamentals present |
 
 > Counted as the BEST-populated column in each group, so these are upper bounds — the true per-field coverage is lower. A row that exists with null fundamentals is worse than a missing table: the missing table raises an error where it is used, while the null column silently narrows every downstream sample and still reports full coverage to a `COUNT(*)`.
 
 ## Notes
 
-- 🔴 cassandra[japan]: pb(4 distinct), roe(4 distinct), opm(8 distinct) — whole numbers over a handful of distinct values is a SCORE, not a ratio. Populated, and wrong. Anything reading these columns gets a 0-100 grade in place of a multiple.
-- 🔴 cassandra[korea]: roe(3 distinct) — whole numbers over a handful of distinct values is a SCORE, not a ratio. Populated, and wrong. Anything reading these columns gets a 0-100 grade in place of a multiple.
-- 🔴 cassandra[china]: roe(4 distinct) — whole numbers over a handful of distinct values is a SCORE, not a ratio. Populated, and wrong. Anything reading these columns gets a 0-100 grade in place of a multiple.
-- 🔴 cassandra[europe]: pb(4 distinct) — whole numbers over a handful of distinct values is a SCORE, not a ratio. Populated, and wrong. Anything reading these columns gets a 0-100 grade in place of a multiple.
+- 🔴 cassandra[japan]: opm(8 distinct) — whole numbers over a handful of distinct values is a SCORE, not a ratio. Populated, and wrong. Anything reading these columns gets a 0-100 grade in place of a multiple.
 
 > Completeness is not correctness. This audit proves a source is present, fresh, internally consistent with what quotes it, and gated — not that the numbers in it are right. `reports/data_sufficiency.md` is the cautionary case: it reports a US liquid universe of 6 stocks and a span ending 2029, both impossible, while looking like a clean pass.
