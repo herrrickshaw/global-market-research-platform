@@ -120,6 +120,30 @@ NOTES=()
     $PY bundle_validation.py > /dev/null || NOTES+=("bundle validation")
   fi
 
+  # ── ops: warehouse + backup ───────────────────────────────────────────────
+  # Moved here from daily_pipeline [15]/[16]. The backup is what made that job
+  # 9 hours — it has nothing to do with the email and must never be able to
+  # delay it. nse_xbrl/xml (98,289 files) is now excluded and carried as a
+  # single tar.zst, and the rclone account lock serialises against the other
+  # backup script.
+  step "[R13] warehouse ingest + ticker freshness ledger"
+  $PY bhavcopy_raw_archive.py || NOTES+=("ingest: raw bhavcopy archive")
+  /usr/bin/python3 /Users/umashankar/scripts/bhavcopy_to_db.py --incremental \
+    || NOTES+=("ingest: bhavcopy incremental")
+  /usr/bin/python3 /Users/umashankar/scripts/bhavcopy_to_db.py \
+    --to-postgres "dbname=market_data host=/tmp user=umashankar" \
+    || NOTES+=("ingest: bhavcopy -> postgres")
+  /usr/bin/python3 /Users/umashankar/scripts/warehouse_ohlcv_sync.py --apply \
+    || NOTES+=("ingest: warehouse ohlcv parquet sync")
+  /usr/bin/python3 /Users/umashankar/scripts/market_ingest.py \
+    || NOTES+=("ingest: market snapshots")
+  mkdir -p reports
+  /usr/bin/python3 /Users/umashankar/scripts/market_ingest.py \
+    --csv "$PWD/reports/ticker_freshness.csv" || NOTES+=("ingest: freshness csv")
+
+  step "[R14] cloud backup (rclone -> Dropbox)"
+  /Users/umashankar/scripts/cloud_backup.sh || NOTES+=("cloud: rclone backup")
+
   if [ ${#NOTES[@]} -gt 0 ]; then
     # A NOTE, not an alert. Nothing here gates an email, and mixing these into
     # the brief's alert is what made "the daily brief failed" mean a rainfall

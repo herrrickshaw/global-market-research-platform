@@ -23,10 +23,30 @@
 # scanning them for a brief that will not mention them is pure latency. Their
 # scans still run in daily_research.sh, which is where a market gets rehabilitated.
 #
-#   ./daily_mailer.sh            # refresh -> screen -> validate -> SEND
-#   ./daily_mailer.sh --draft    # everything except the send; writes brief_today.html
+#   ./daily_mailer.sh            # data + send in one pass
+#   ./daily_mailer.sh --data     # PHASE 1 only: refresh India + US market data
+#   ./daily_mailer.sh --send     # PHASE 2 only: screen -> validate -> SEND
+#   ./daily_mailer.sh --draft    # everything except the send
 #
-# Expected runtime ~25-40 min, dominated by the US scan (~7,400 tickers).
+# 🔴 WHY TWO PHASES, AND WHY THE OLD 00:30 SLOT WAS WRONG. US markets close at
+# 16:00 ET = 01:30 IST under EDT, 02:30 IST under EST. The pipeline was scheduled
+# at 00:30 IST, so it scanned the US MID-SESSION every single weekday, by
+# construction. That is why [13d] kept flagging US drift and why its tolerance
+# had to be loosened to 4% — the scan was capturing an intraday price and
+# comparing it against a later one. The fix is not a wider tolerance, it is a
+# later start.
+#
+#   PHASE 1 (--data)  03:00 IST — after the US close in BOTH DST regimes, so
+#                     India's 15:30 close and the US 16:00 ET close are final.
+#   PHASE 2 (--send)  06:30 IST — both markets shut, nothing moving. A reconcile
+#                     here compares a settled scan against a settled quote, so a
+#                     difference means STALENESS rather than drift, which is the
+#                     only condition under which that gate means anything.
+#
+# Splitting them also means a slow scan cannot delay the brief: phase 1 has three
+# and a half hours of slack before phase 2 needs its output.
+#
+# Expected runtime ~25-40 min for phase 1, ~5 min for phase 2.
 set -uo pipefail
 cd "$(dirname "$0")"
 
@@ -61,9 +81,16 @@ step() {
   echo "$*"
 }
 
+# Phase selection. Neither flag = both phases, so a manual run still works.
+RUN_DATA=1; RUN_SEND=1
+for a in "$@"; do
+  [ "$a" = "--data" ] && RUN_SEND=0
+  [ "$a" = "--send" ] && RUN_DATA=0
+done
+
 FAILURES=()
 {
-  echo "=== daily mailer $(date) ==="
+  echo "=== daily mailer $(date) · data=$RUN_DATA send=$RUN_SEND ==="
 
   # ── 1. gates ───────────────────────────────────────────────────────────────
   step "[1/13] dependency check"
@@ -72,6 +99,7 @@ FAILURES=()
   step "[2/13] pre-flight: scan input gates"
   $PY preflight_scan_inputs.py || FAILURES+=("STARTUP: pre-flight input gate(s) failed")
 
+  if [ "$RUN_DATA" = "1" ]; then
   # ── 2. India ───────────────────────────────────────────────────────────────
   step "[3/13] India EOD refresh (official bhavcopy, incremental)"
   $PY bhavcopy_history.py 400 \
@@ -99,6 +127,9 @@ FAILURES=()
   step "[8/13] US combined report (reuses the fresh US scan)"
   $PY daily_combined_report.py --market US --html \
     || { echo "  US combined report failed (continuing)"; FAILURES+=("US: combined report"); }
+  fi   # end phase 1
+
+  if [ "$RUN_SEND" = "1" ]; then
 
   # ── 4. watchlist + screens ─────────────────────────────────────────────────
   step "[9/13] watchlist repair (renames/delists/ETFs + coverage gate)"
@@ -157,6 +188,8 @@ FAILURES=()
       $PY send_mailer.py --draft \
         || { echo "  draft save failed"; FAILURES+=("mailer: draft save"); }
   fi
+
+  fi   # end phase 2
 
   if [ ${#FAILURES[@]} -gt 0 ]; then
     echo "[ALERT] ${#FAILURES[@]} step(s) failed: ${FAILURES[*]}"
