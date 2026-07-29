@@ -1,3 +1,5 @@
+> ⚠️ **SUPERSEDED (2026-07-29)**: The fundamentals these docs proposed collecting via external APIs ALREADY EXIST in Postgres `market_data.global_fundamentals` (237k rows, official sec_edgar/dart/jp_master/eastmoney/screener_in pipelines, built 2026-07-27). Use `bridge_pg_fundamentals_to_cassandra.py` to sync warehouse → Cassandra. Do NOT re-collect via APIs.
+
 # Fundamentals API Testing Results — 2026-07-29
 
 ## Executive Summary
@@ -183,4 +185,3 @@ Status: 200 OK (news only, no fundamentals)
 - `test_sec_edgar_fundamentals.py` — SEC EDGAR test (needs library workaround)
 - `test_dart_financials.py` — DART API test ✅ PASSED
 - `test_marketaux_api.py` — MarketAux test ❌ FAILED
-

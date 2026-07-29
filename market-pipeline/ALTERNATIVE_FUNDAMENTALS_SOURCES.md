@@ -1,3 +1,5 @@
+> ⚠️ **SUPERSEDED (2026-07-29)**: The fundamentals these docs proposed collecting via external APIs ALREADY EXIST in Postgres `market_data.global_fundamentals` (237k rows, official sec_edgar/dart/jp_master/eastmoney/screener_in pipelines, built 2026-07-27). Use `bridge_pg_fundamentals_to_cassandra.py` to sync warehouse → Cassandra. Do NOT re-collect via APIs.
+
 # Alternative Fundamentals Data Sources — Capability Map
 
 **Objective**: Supplement 20-column canonical fundamentals beyond current quality_score fallback.  
