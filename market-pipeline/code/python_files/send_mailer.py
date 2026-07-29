@@ -163,6 +163,26 @@ def send(subject: str, text: str, html: str, attachments=None,
         s.sendmail(user, [a.strip() for a in to.split(",")], msg.as_string())
     print(f"  sent '{subject}' → {to}"
           + (f" (+{len(attachments)} attachment)" if attachments else ""))
+    # Durable proof that a brief went out, for anything that later needs to ask
+    # "was one actually sent?" — the send was previously recorded ONLY as a line
+    # of stdout, so no other process could tell. On 2026-07-29 the pipeline's
+    # end-of-run alert reported "mailer: NOT SENT" at 08:08 from a FAILURES entry
+    # recorded at 22:55, four and a half hours after a brief had in fact been
+    # sent out-of-band at 03:36. Written after sendmail() returns, so it records
+    # a send that happened, never one that was merely attempted.
+    try:
+        import datetime as _dtm
+        import json as _json
+        from pathlib import Path as _P
+        _m = _P(__file__).resolve().parent / "state"
+        _m.mkdir(exist_ok=True)
+        (_m / "last_brief_sent.json").write_text(_json.dumps({
+            "sent_at": _dtm.datetime.now().isoformat(timespec="seconds"),
+            "subject": subject, "to": to, "pid": os.getpid(),
+        }, indent=2))
+    except Exception as _e:                                   # noqa: BLE001
+        # A marker failure must never turn a SUCCESSFUL send into a failure.
+        print(f"  (send marker not written: {str(_e)[:60]})")
     return True
 
 
