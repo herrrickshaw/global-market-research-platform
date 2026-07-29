@@ -114,3 +114,16 @@ market-pipeline/code/python_files/watchlist_full.html
 market-pipeline/code/python_files/data/benchmark_holdings/
 market-pipeline/code/python_files/data/nse_equity_list.csv
 market-pipeline/code/python_files/data/nse_symbolchange.csv
+
+# ── run detritus (added 2026-07-29) ──────────────────────────────────────────
+# These were already TRACKED when this block was added, so ignoring them alone
+# was a no-op — git keeps tracking what it already tracks. They were untracked
+# with `git rm --cached` in the same commit; the local copies are untouched.
+# 205,050 insertions went to this PUBLIC repo on 2026-07-29 and carried a
+# .DS_Store, two empty .out files, a stderr capture and two watchlist backups
+# with them. None were secret, all are permanent in history now.
+.DS_Store
+**/.DS_Store
+*.err
+manual_run_*.out
+*.bak-*
