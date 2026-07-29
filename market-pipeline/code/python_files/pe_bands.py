@@ -129,7 +129,7 @@ def build(a) -> int:
                               "fy_end": "period_end"}))
         print(f"screener.in annual: {len(q):,} obs · {q.symbol.nunique():,} "
               f"symbols with >= {MIN_ANNUAL} years", flush=True)
-        return _bands(q, con, P)
+        return _bands(q, con, P, a.source)
     q = con.execute(f'''SELECT symbol, period_end, filing_date, eps
                         FROM pg."{SCHEMA}".india_quarterly
                         WHERE eps IS NOT NULL''').df()
@@ -180,10 +180,10 @@ def build(a) -> int:
         print("no symbol has enough history yet — fetch more filings first")
         return 1
 
-    return _bands(q, con, P)
+    return _bands(q, con, P, a.source)
 
 
-def _bands(q, con, P) -> int:
+def _bands(q, con, P, source: str = "xbrl") -> int:
     px, _ = P.load_prices()
     out = []
     for sym, g in q.groupby("symbol"):
@@ -233,8 +233,19 @@ def _bands(q, con, P) -> int:
         print("no overlap between parsed EPS and the price panel"); return 1
     d = pd.concat(out, ignore_index=True)
     # cross-sectional decile per date — "cheapest tenth TODAY", level-invariant
+    # 🔴 THIS PRODUCED ELEVEN BUCKETS, NOT TEN. The previous form was
+    #   rank(pct=True).mul(10).clip(upper=10).fillna(0).astype(int)
+    # and astype(int) TRUNCATES: a percentile rank runs (0, 1], so ×10 gives
+    # (0, 10] and int() floors the bottom of the range to 0 while ONLY the single
+    # highest-ranked symbol — the one whose rank is exactly 1.0 — reaches 10.
+    # Deciles 0..9 held ~143 symbols each and decile 10 held exactly ONE. Any
+    # comparison of "the expensive decile" was therefore reading a single stock.
+    # Surfaced immediately by writing the tier table into the report artifact on
+    # 2026-07-29, having been invisible while the panel only lived in Postgres.
+    # ceil maps (0, 1] onto 1..10 with no truncation and no orphan bucket.
     d["tier"] = (d.groupby("obs_date").pe
-                  .rank(pct=True).mul(10).clip(upper=10).fillna(0).astype(int))
+                  .rank(pct=True).mul(10).apply(np.ceil)
+                  .clip(lower=1, upper=10).fillna(0).astype(int))
     con.execute(DDL)
     con.register("inc", d)
     con.execute(f'DELETE FROM pg."{SCHEMA}".india_pe_daily')
@@ -243,7 +254,114 @@ def _bands(q, con, P) -> int:
     print(f"  {d.obs_date.min().date()} -> {d.obs_date.max().date()}")
     print("\nband occupancy:")
     print(d.band.value_counts(normalize=True).mul(100).round(1).to_string())
+    _write_report(source, d, con)
     return 0
+
+
+def _write_report(source: str, d, con) -> None:
+    """Persist what the build measured, including its own accuracy.
+
+    Until 2026-07-29 this script wrote to Postgres and printed to a terminal and
+    produced no document at all, so the figures it is judged on — coverage, band
+    occupancy, and the ~20.5% median error against fundamentals.ratios that
+    justifies `--source xbrl` being the default — existed nowhere a reader could
+    check them. Same failure as smallcap_screener's validation: a number nobody
+    can verify without re-running a multi-minute job is unsourced in practice,
+    however true it is.
+
+    The accuracy check is recomputed HERE rather than quoted, so the artefact
+    cannot drift from the panel it describes the way reentry_engine's docstring
+    drifted from its cited report.
+    """
+    import datetime as _dt
+    L: list[str] = []
+    def o(x=""):
+        L.append(x)
+
+    o("# India P/E panel — bands, tiers and accuracy")
+    o()
+    o(f"Generated {_dt.date.today()} by `pe_bands.py --build --source {source}`.")
+    o()
+    o(f"- **{len(d):,}** daily observations · **{d.symbol.nunique():,}** symbols")
+    o(f"- span **{d.obs_date.min().date()} → {d.obs_date.max().date()}**")
+    o(f"- P/E is TTM: four consecutive quarters, each stamped at its FILING "
+      f"date, so a lookup on any bar uses only what the market could already see")
+    o()
+    o("## Band occupancy")
+    o()
+    o("Bands are ±σ on **log** P/E. A multiple is ratio-scale and right-skewed —")
+    o("10→20 must count the same as 40→80 — and banding raw P/E produced")
+    o("z-scores of +78/−38 before this was corrected. σ carries a floor of 0.15")
+    o("log units, because a near-constant multiple otherwise divides by ~0 (one")
+    o("symbol reached z = −45 that way).")
+    o()
+    o("| band | share |")
+    o("|---|--:|")
+    for k, v in d.band.value_counts(normalize=True).mul(100).round(1).items():
+        o(f"| {k} | {v}% |")
+    o()
+    nan_pct = float((d.band == "nan").mean() * 100) if "band" in d else 0.0
+    o(f"> `nan` at {nan_pct:.1f}% is the honest coverage gap — symbols without "
+      f"enough consecutive quarters to form a TTM window, or without the "
+      f"{BAND_WIN}-observation history a band needs. It is reported rather than "
+      f"dropped: a hidden gap reads as coverage.")
+    o()
+
+    # Accuracy against the independently-built ratios table.
+    try:
+        r = con.execute("""select ticker as symbol, pe as pe_ref
+                           from pg.fundamentals.ratios
+                           where market='india' and pe > 0""").df()
+        last = d[d.obs_date == d.obs_date.max()][["symbol", "pe"]]
+        m = last.merge(r, on="symbol", how="inner")
+        m = m[(m.pe > 0) & (m.pe_ref > 0)]
+        if len(m) >= 30:
+            err = ((m.pe - m.pe_ref).abs() / m.pe_ref * 100)
+            o("## Accuracy vs `fundamentals.ratios`")
+            o()
+            o(f"Independent cross-check on the latest bar, {len(m):,} symbols "
+              f"present in both. `ratios` is built from a different source, so "
+              f"agreement is evidence and disagreement is a question, not proof "
+              f"either side is right.")
+            o()
+            o("| percentile | abs error |")
+            o("|---|--:|")
+            for q in (0.25, 0.50, 0.75, 0.90):
+                o(f"| p{int(q * 100)} | {err.quantile(q):.1f}% |")
+            o()
+            o(f"- **median {err.median():.1f}%** · within 25%: "
+              f"{(err <= 25).mean():.0%} · within 50%: {(err <= 50).mean():.0%}")
+            o()
+            o("> This number is why `--source` defaults to `xbrl`: the screener "
+              "path measures wider AND covers fewer symbols (1,301 vs 1,744). "
+              "Recomputed on every build rather than quoted, so it cannot drift "
+              "from the panel it describes.")
+            o()
+    except Exception as e:                                    # noqa: BLE001
+        o(f"> accuracy cross-check unavailable: {str(e)[:80]}")
+        o()
+
+    o("## Cross-sectional tiers")
+    o()
+    o("`tier` is a per-DATE decile of P/E, so tier 1 is \"cheapest tenth "
+      "TODAY\" rather than cheap against a fixed historical level. That keeps "
+      "it invariant to market-wide re-rating: in a bull market every absolute "
+      "P/E rises, and a fixed threshold would silently empty the cheap tier.")
+    o()
+    try:
+        t = d[d.obs_date == d.obs_date.max()].tier.value_counts().sort_index()
+        o("| tier (latest bar) | symbols |")
+        o("|---|--:|")
+        for k, v in t.items():
+            o(f"| {k} | {v:,} |")
+        o()
+    except Exception:                                          # noqa: BLE001
+        pass
+
+    p = HERE / "reports" / f"pe_bands_{source}.md"
+    p.parent.mkdir(exist_ok=True)
+    p.write_text("\n".join(L) + "\n")
+    print(f"\nwrote {p}")
 
 
 def extremes(a) -> int:
