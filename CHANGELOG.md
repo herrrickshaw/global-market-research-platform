@@ -7,6 +7,38 @@ All notable changes follow [Semantic Versioning](https://semver.org/):
 
 ---
 
+## [3.10.0] — 2026-07-29 — Unlimited-OCR integration (scanned-PDF fallback)
+
+### Added
+- **`ocr/`** — shared client for a remote **baidu/Unlimited-OCR** endpoint
+  (arXiv:2606.23050, "Unlimited OCR Works": R-SWA attention transcribes dozens
+  of pages in a single forward pass with constant KV cache, 32K context, MIT
+  license). The model needs an NVIDIA GPU, so it is NOT run locally — it is
+  served on Colab/EC2 GPU behind vLLM's OpenAI-compatible API and reached over
+  HTTP. Config: `UNLIMITED_OCR_URL` (env or `~/.config/market-secrets/
+  credentials.env`). CLI: `python3 -m ocr file.pdf` / `--ping`. Pages are
+  batched 8-per-request by default to exploit the single-pass design.
+- **`ocr/serve/`** — Colab notebook (free T4 + cloudflared quick tunnel) and
+  docker one-liner (`vllm/vllm-openai:unlimited-ocr`) to bring the endpoint up.
+- **`backend/parsers/pdf_parser.py`** — OCR fallback: when pdfplumber extracts
+  zero symbols (scanned/image-only portfolio PDFs), the transcript is fetched
+  and re-fed through the same table/text symbol matching, with an explicit
+  review warning. Strictly opt-in: with `UNLIMITED_OCR_URL` unset, behavior is
+  byte-identical to before.
+- **`requirements-ocr.txt`** added to every repo that parses documents/PDFs
+  (BazaarTalks, india-trade-sector-policy-recommendations,
+  ppac-ready-reckoner-data, repos/cng-cgd-retail-outlet-mapping,
+  repos/global-market-{data,scanners}, repos/global-stock-screener,
+  vehicle_fuel_mileage, market-pipeline); appended to the two existing
+  requirements.txt in this repo (root + backend).
+
+### Decisions
+- **Remote-serve over local**: no CUDA on macOS; alternatives rejected —
+  CPU/MPS transformers (unsupported/slow), tesseract (poor on tabular Indian
+  filings, no layout), paid OCR APIs (cost + the repo is public).
+- **Opt-in, never required**: OCR deps are lazy imports; pipelines must not
+  gain a hard GPU-service dependency.
+
 ## [3.9.0] — 2026-06-26 — Extensibility Registry + Approach Docs
 
 ### Added

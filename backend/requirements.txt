@@ -25,3 +25,10 @@ duckdb>=1.4.0
 # Quandl / NDL   →  pip install nasdaqdatalink
 # TradingView    →  pip install tvdatafeed
 # Interactive Brokers  →  pip install ib_insync
+
+# --- OCR fallback for scanned/image PDFs (opt-in) ---------------------------
+# Client deps for a remote baidu/Unlimited-OCR endpoint (arXiv:2606.23050).
+# Shared client: ~/ocr/  ·  serve instructions: ~/ocr/serve/README.md
+# Active only when UNLIMITED_OCR_URL is set; without it, parsing runs unchanged.
+pymupdf
+requests
