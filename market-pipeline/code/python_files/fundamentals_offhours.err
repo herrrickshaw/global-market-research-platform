@@ -1,0 +1,55 @@
+/Users/umashankar/market-pipeline/code/python_files/.venv/lib/python3.9/site-packages/urllib3/__init__.py:35: NotOpenSSLWarning: urllib3 v2 only supports OpenSSL 1.1.1+, currently the 'ssl' module is compiled with 'LibreSSL 2.8.3'. See: https://github.com/urllib3/urllib3/issues/3020
+  warnings.warn(
+/Users/umashankar/market-pipeline/code/python_files/.venv/lib/python3.9/site-packages/urllib3/__init__.py:35: NotOpenSSLWarning: urllib3 v2 only supports OpenSSL 1.1.1+, currently the 'ssl' module is compiled with 'LibreSSL 2.8.3'. See: https://github.com/urllib3/urllib3/issues/3020
+  warnings.warn(
+/Users/umashankar/market-pipeline/code/python_files/.venv/lib/python3.9/site-packages/urllib3/__init__.py:35: NotOpenSSLWarning: urllib3 v2 only supports OpenSSL 1.1.1+, currently the 'ssl' module is compiled with 'LibreSSL 2.8.3'. See: https://github.com/urllib3/urllib3/issues/3020
+  warnings.warn(
+/Users/umashankar/market-pipeline/code/python_files/.venv/lib/python3.9/site-packages/urllib3/__init__.py:35: NotOpenSSLWarning: urllib3 v2 only supports OpenSSL 1.1.1+, currently the 'ssl' module is compiled with 'LibreSSL 2.8.3'. See: https://github.com/urllib3/urllib3/issues/3020
+  warnings.warn(
+/Users/umashankar/market-pipeline/code/python_files/.venv/lib/python3.9/site-packages/urllib3/__init__.py:35: NotOpenSSLWarning: urllib3 v2 only supports OpenSSL 1.1.1+, currently the 'ssl' module is compiled with 'LibreSSL 2.8.3'. See: https://github.com/urllib3/urllib3/issues/3020
+  warnings.warn(
+Traceback (most recent call last):
+  File "/Users/umashankar/market-pipeline/code/python_files/financial_ratios.py", line 268, in <module>
+    sys.exit(main())
+  File "/Users/umashankar/market-pipeline/code/python_files/financial_ratios.py", line 256, in main
+    df = build(con)
+  File "/Users/umashankar/market-pipeline/code/python_files/financial_ratios.py", line 165, in build
+    names = _names(con)
+  File "/Users/umashankar/market-pipeline/code/python_files/financial_ratios.py", line 80, in _names
+    return con.execute(f"""
+_duckdb.IOException: IO Error: Cannot open file "/Users/umashankar/Downloads/market_cache/symbol_master.parquet": Operation not permitted
+
+LINE 5:           FROM read_parquet('/Users/umashankar/Downloads/market_cache/symb...
+                       ^
+/Users/umashankar/market-pipeline/code/python_files/.venv/lib/python3.9/site-packages/urllib3/__init__.py:35: NotOpenSSLWarning: urllib3 v2 only supports OpenSSL 1.1.1+, currently the 'ssl' module is compiled with 'LibreSSL 2.8.3'. See: https://github.com/urllib3/urllib3/issues/3020
+  warnings.warn(
+/Users/umashankar/market-pipeline/code/python_files/.venv/lib/python3.9/site-packages/urllib3/__init__.py:35: NotOpenSSLWarning: urllib3 v2 only supports OpenSSL 1.1.1+, currently the 'ssl' module is compiled with 'LibreSSL 2.8.3'. See: https://github.com/urllib3/urllib3/issues/3020
+  warnings.warn(
+/Users/umashankar/market-pipeline/code/python_files/.venv/lib/python3.9/site-packages/urllib3/__init__.py:35: NotOpenSSLWarning: urllib3 v2 only supports OpenSSL 1.1.1+, currently the 'ssl' module is compiled with 'LibreSSL 2.8.3'. See: https://github.com/urllib3/urllib3/issues/3020
+  warnings.warn(
+/Users/umashankar/market-pipeline/code/python_files/.venv/lib/python3.9/site-packages/urllib3/__init__.py:35: NotOpenSSLWarning: urllib3 v2 only supports OpenSSL 1.1.1+, currently the 'ssl' module is compiled with 'LibreSSL 2.8.3'. See: https://github.com/urllib3/urllib3/issues/3020
+  warnings.warn(
+/Users/umashankar/market-pipeline/code/python_files/.venv/lib/python3.9/site-packages/urllib3/__init__.py:35: NotOpenSSLWarning: urllib3 v2 only supports OpenSSL 1.1.1+, currently the 'ssl' module is compiled with 'LibreSSL 2.8.3'. See: https://github.com/urllib3/urllib3/issues/3020
+  warnings.warn(
+/Users/umashankar/market-pipeline/code/python_files/us_fundamentals_edgar.py:229: FutureWarning: The behavior of DataFrame concatenation with empty or all-NA entries is deprecated. In a future version, this will no longer exclude empty or all-NA columns when determining the result dtypes. To retain the old behavior, exclude the relevant entries before the concat operation.
+  merged = pd.concat([store, nd], ignore_index=True)
+/Users/umashankar/market-pipeline/code/python_files/financial_ratios.py:173: FutureWarning: The behavior of DataFrame concatenation with empty or all-NA entries is deprecated. In a future version, this will no longer exclude empty or all-NA columns when determining the result dtypes. To retain the old behavior, exclude the relevant entries before the concat operation.
+  df = pd.concat([p for p in parts if not p.empty], ignore_index=True)
+/Users/umashankar/market-pipeline/code/python_files/financial_ratios.py:173: FutureWarning: The behavior of DataFrame concatenation with empty or all-NA entries is deprecated. In a future version, this will no longer exclude empty or all-NA columns when determining the result dtypes. To retain the old behavior, exclude the relevant entries before the concat operation.
+  df = pd.concat([p for p in parts if not p.empty], ignore_index=True)
+/Users/umashankar/market-pipeline/code/python_files/financial_ratios.py:173: FutureWarning: The behavior of DataFrame concatenation with empty or all-NA entries is deprecated. In a future version, this will no longer exclude empty or all-NA columns when determining the result dtypes. To retain the old behavior, exclude the relevant entries before the concat operation.
+  df = pd.concat([p for p in parts if not p.empty], ignore_index=True)
+/Users/umashankar/market-pipeline/code/python_files/financial_ratios.py:173: FutureWarning: The behavior of DataFrame concatenation with empty or all-NA entries is deprecated. In a future version, this will no longer exclude empty or all-NA columns when determining the result dtypes. To retain the old behavior, exclude the relevant entries before the concat operation.
+  df = pd.concat([p for p in parts if not p.empty], ignore_index=True)
+/Users/umashankar/market-pipeline/code/python_files/us_fundamentals_edgar.py:229: FutureWarning: The behavior of DataFrame concatenation with empty or all-NA entries is deprecated. In a future version, this will no longer exclude empty or all-NA columns when determining the result dtypes. To retain the old behavior, exclude the relevant entries before the concat operation.
+  merged = pd.concat([store, nd], ignore_index=True)
+/Users/umashankar/market-pipeline/code/python_files/financial_ratios.py:173: FutureWarning: The behavior of DataFrame concatenation with empty or all-NA entries is deprecated. In a future version, this will no longer exclude empty or all-NA columns when determining the result dtypes. To retain the old behavior, exclude the relevant entries before the concat operation.
+  df = pd.concat([p for p in parts if not p.empty], ignore_index=True)
+/Users/umashankar/market-pipeline/code/python_files/financial_ratios.py:173: FutureWarning: The behavior of DataFrame concatenation with empty or all-NA entries is deprecated. In a future version, this will no longer exclude empty or all-NA columns when determining the result dtypes. To retain the old behavior, exclude the relevant entries before the concat operation.
+  df = pd.concat([p for p in parts if not p.empty], ignore_index=True)
+/Users/umashankar/market-pipeline/code/python_files/financial_ratios.py:173: FutureWarning: The behavior of DataFrame concatenation with empty or all-NA entries is deprecated. In a future version, this will no longer exclude empty or all-NA columns when determining the result dtypes. To retain the old behavior, exclude the relevant entries before the concat operation.
+  df = pd.concat([p for p in parts if not p.empty], ignore_index=True)
+/Users/umashankar/market-pipeline/code/python_files/us_fundamentals_edgar.py:229: FutureWarning: The behavior of DataFrame concatenation with empty or all-NA entries is deprecated. In a future version, this will no longer exclude empty or all-NA columns when determining the result dtypes. To retain the old behavior, exclude the relevant entries before the concat operation.
+  merged = pd.concat([store, nd], ignore_index=True)
+/Users/umashankar/market-pipeline/code/python_files/financial_ratios.py:173: FutureWarning: The behavior of DataFrame concatenation with empty or all-NA entries is deprecated. In a future version, this will no longer exclude empty or all-NA columns when determining the result dtypes. To retain the old behavior, exclude the relevant entries before the concat operation.
+  df = pd.concat([p for p in parts if not p.empty], ignore_index=True)

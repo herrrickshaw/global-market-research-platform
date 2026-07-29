@@ -162,6 +162,33 @@ paper → 10 sections + glossary, deck → 12 slides):
   to-pay ceiling) and refining cost (₹0.3–0.8/L, resource floor) — to avoid overclaiming.
   Net-mileage synthesis: RON95-calibrated engine (+2.2% from CR 10.5→12) shrinks E20's −4% to
   ≈ −1.8%, arriving with fleet turnover, composing with (not replacing) parity pricing.
+- **Bio-isobutanol pitch built** (`isobutanol_pitch_model.py` + `build_isobutanol_pitch.js`,
+  9 slides): the paper's isobutanol row turned into a venture — retrofit idle ethanol capacity
+  (the CareEdge glut) to a molecule with half the dilution (IB20 −3.5% vs E20 −6.9%) and +25%
+  ATJ/SAF yield. Decisions: the MISSING policy (no administered slab, no BIS spec, not ISS-
+  eligible) is presented as the headline gate, not a footnote — at ethanol's per-LITRE slab the
+  margin is −₹9.58/L because isobutanol yields 280 L/t vs ethanol's 400, so energy-basis pricing
+  is framed as the correct unit rather than a subsidy ask. Blending-only IRR 13.8% published
+  unflattered; the SAF routing (30% → 33.9%) named as what actually carries the case, and the
+  sensitivity's loss cells left visible. Labelled explicitly as the higher-risk sibling of the
+  molasses-to-grain conversion (technology risk: no Indian bio-isobutanol plant exists).
+- **DME blending pitch built** (`dme_pitch_model.py` + `build_dme_pitch.js`, 9 slides): the
+  fourth-quadrant finding made investable rather than contradicted. Decisions: underwrite at
+  ENERGY PARITY only (₹39/kg vs commercial LPG ₹62) with the kg-parity ₹34.7/kg margin shown as
+  "the temptation" and contractually refused; wedge = unsubsidised C&I LPG (19-kg, deregulated)
+  so the PMUY inversion never arises; domestic-carbon methanol gated by a ≤₹17/kg take-or-pay
+  contract BEFORE capex (imported methanol shown failing at ₹1.9/kg). Base IRR 26.0% / equity
+  42.1% / DSCR 1.94×; methanol at ₹20/kg compresses to 15.6% — the feed contract is the
+  investment decision. No subvention assumed (unlike CBG/ethanol pitches) — flagged as upside.
+- **DME-in-LPG evaluated on the LERC basis** (`dme_lpg_blending.py`; paper §10 + slide 13). The
+  fourth quadrant closes the framework: DME dilutes −37%/kg but LPG is SUBSIDISED, so the volume
+  dividend inverts — DME20 bills households (+₹312/yr, ₹9,325 cr pool-wide) AND the exchequer
+  (+₹1,201 cr PMUY). Anchors: LERC measured −5.26% thermal efficiency at DME20 (IS 4246, below
+  the −7.4% energy math — oxygenate recovery, same pattern as E20/octane), IS 18698:2024 20% cap.
+  Decision: methanol-route DME rejected as import substitution (feed ₹33.6/kg > ₹32.7 parity
+  ceiling — re-denominates the import bill); honest only on coal/bio routes, and DME20 needs
+  6.3 MMT/yr ≈ 6× India's methanol output. Guardrails stated: parity cylinder pricing + domestic
+  carbon only.
 - **Multi-feed distillery conversion pitch built** (`distillery_conversion_model.py` +
   `build_distillery_pitch.js`, 9 slides). The supply-match finding inverted into a deal: single-
   feed molasses plants are the overcapacity casualties, so ₹50 cr brownfield conversion (180→330

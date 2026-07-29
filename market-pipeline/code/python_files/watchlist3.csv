@@ -1,1 +1,3 @@
 symbol,market,purge_note,enrolled,baseline_price,last_price,ret_pct,rsi,rsi_zone,last_checked,promoted,trigger
+SSTK,US,19.9 RSI @ 2026-07-24,2026-07-27,5.579999923706055,5.889999866485596,5.56,22.3,BUY,2026-07-28,2026-07-28,ret +5.6% + RSI BUY zone
+INSG,US,25.7 RSI @ 2026-07-24,2026-07-27,6.659999847412109,7.019999980926514,5.41,29.4,BUY,2026-07-28,2026-07-28,ret +5.4% + RSI BUY zone

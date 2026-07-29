@@ -1,0 +1,3 @@
+symbol,market,trigger,promoted,ret_at_promotion,rsi,rsi_zone,price,days_to_trigger,drawdown_pct,marker_score
+SSTK,US,ret +5.6% + RSI BUY zone,2026-07-28,5.56,22.3,BUY,5.889999866485596,1,-76.2,2
+INSG,US,ret +5.4% + RSI BUY zone,2026-07-28,5.41,29.4,BUY,7.019999980926514,1,-65.4,2

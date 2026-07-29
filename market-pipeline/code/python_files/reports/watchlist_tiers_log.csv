@@ -133,3 +133,11 @@ date,event,symbol,market,detail
 2026-07-27,enroll,CHTR,US,baseline=123.30999755859375
 2026-07-27,enroll,SHOE,US,baseline=14.550000190734863
 2026-07-27,enroll,NXTT,US,baseline=0.6140000224113464
+2026-07-28,enroll,LBRT,US,baseline=16.860000610351562
+2026-07-28,enroll,AFCG,US,baseline=2.6700000762939453
+2026-07-28,enroll,148250.KQ,KR,baseline=2235.0
+2026-07-28,enroll,002220.KS,KR,baseline=3580.0
+2026-07-28,ageout(validated),CAPR,US,ret -64.5% after 1d — eviction confirmed
+2026-07-28,ageout(validated),AUSTENG,IN,ret -15.2% after 1d — eviction confirmed
+2026-07-28,promote→tier3,SSTK,US,ret +5.6% + RSI BUY zone
+2026-07-28,promote→tier3,INSG,US,ret +5.4% + RSI BUY zone

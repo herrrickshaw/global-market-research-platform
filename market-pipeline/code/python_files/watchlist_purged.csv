@@ -184,3 +184,58 @@ SOJE,US,purged,cheap-vs-market (LONG) | purged 2026-07-27 — prediction audit: 
 CHTR,US,purged,cheap-vs-market (LONG) | purged 2026-07-27 — prediction audit: stock bear-state + negative Kalman drift,2026-07-25,129.22,2026-07-27,prediction audit: stock bear-state + negative Kalman drift
 SHOE,US,purged,cheap-vs-market (LONG) | purged 2026-07-27 — prediction audit: stock bear-state + negative Kalman drift,2026-07-25,14.73,2026-07-27,prediction audit: stock bear-state + negative Kalman drift
 NXTT,US,purged,cheap-vs-market (LONG) | purged 2026-07-27 — prediction audit: stock bear-state + negative Kalman drift,2026-07-25,0.77,2026-07-27,prediction audit: stock bear-state + negative Kalman drift
+CANBK,IN,signal,value_rerating 2026-07-27,2026-07-27,126.46,2026-07-27
+LGBBROSLTD,IN,signal,value_rerating 2026-07-27,2026-07-27,1547.7,2026-07-27
+CANBK,IN,signal,value_rerating 2026-07-28,2026-07-28,126.46,2026-07-28
+LGBBROSLTD,IN,signal,value_rerating 2026-07-28,2026-07-28,1547.7,2026-07-28
+SSTK,US,justified,19.9 RSI @ 2026-07-28,2026-07-28,,2026-07-28
+LBRT,US,justified,22.3 RSI @ 2026-07-28,2026-07-28,,2026-07-28
+INSG,US,justified,23.0 RSI @ 2026-07-28,2026-07-28,,2026-07-28
+TLRY,US,justified,23.8 RSI @ 2026-07-28,2026-07-28,,2026-07-28
+LAC,US,justified,24.0 RSI @ 2026-07-28,2026-07-28,,2026-07-28
+AFCG,US,justified,24.6 RSI @ 2026-07-28,2026-07-28,,2026-07-28
+ALB,US,justified,25.1 RSI @ 2026-07-28,2026-07-28,,2026-07-28
+SPRY,US,justified,25.3 RSI @ 2026-07-28,2026-07-28,,2026-07-28
+051360.KQ,KR,justified,3.9 RSI @ 2026-07-28,2026-07-28,,2026-07-28
+210980.KS,KR,justified,15.1 RSI @ 2026-07-28,2026-07-28,,2026-07-28
+950160.KQ,KR,justified,17.9 RSI @ 2026-07-28,2026-07-28,,2026-07-28
+102940.KQ,KR,justified,19.5 RSI @ 2026-07-28,2026-07-28,,2026-07-28
+043100.KQ,KR,justified,21.9 RSI @ 2026-07-28,2026-07-28,,2026-07-28
+084680.KS,KR,justified,22.2 RSI @ 2026-07-28,2026-07-28,,2026-07-28
+148250.KQ,KR,justified,23.7 RSI @ 2026-07-28,2026-07-28,,2026-07-28
+179900.KQ,KR,justified,24.6 RSI @ 2026-07-28,2026-07-28,,2026-07-28
+002220.KS,KR,justified,24.7 RSI @ 2026-07-28,2026-07-28,,2026-07-28
+6928.T,JP,justified,27.8 RSI @ 2026-07-28,2026-07-28,,2026-07-28
+9412.T,JP,justified,28.2 RSI @ 2026-07-28,2026-07-28,,2026-07-28
+7273.T,JP,justified,29.5 RSI @ 2026-07-28,2026-07-28,,2026-07-28
+8783.T,JP,justified,29.6 RSI @ 2026-07-28,2026-07-28,,2026-07-28
+ABFRL,IN,evicted,evicted 2026-07-23 after 12 sessions in sell zone,,,2026-07-28
+CHAMBLFERT,IN,evicted,evicted 2026-07-23 after 12 sessions in sell zone,,,2026-07-28
+JSWDULUX,IN,evicted,nan | renamed from AKZOINDIA (2026-07-23) | evicted 2026-07-23 after 12 sessions in sell zone,2026-07-23,,2026-07-28
+CANBK,IN,signal,value_rerating 2026-07-28,2026-07-28,126.46,2026-07-28
+LGBBROSLTD,IN,signal,value_rerating 2026-07-28,2026-07-28,1547.7,2026-07-28
+SSTK,US,justified,19.9 RSI @ 2026-07-29,2026-07-29,,2026-07-29
+LBRT,US,justified,22.3 RSI @ 2026-07-29,2026-07-29,,2026-07-29
+INSG,US,justified,23.0 RSI @ 2026-07-29,2026-07-29,,2026-07-29
+TLRY,US,justified,23.8 RSI @ 2026-07-29,2026-07-29,,2026-07-29
+LAC,US,justified,24.0 RSI @ 2026-07-29,2026-07-29,,2026-07-29
+AFCG,US,justified,24.6 RSI @ 2026-07-29,2026-07-29,,2026-07-29
+ALB,US,justified,25.1 RSI @ 2026-07-29,2026-07-29,,2026-07-29
+SPRY,US,justified,25.3 RSI @ 2026-07-29,2026-07-29,,2026-07-29
+051360.KQ,KR,justified,3.8 RSI @ 2026-07-29,2026-07-29,,2026-07-29
+210980.KS,KR,justified,14.7 RSI @ 2026-07-29,2026-07-29,,2026-07-29
+950160.KQ,KR,justified,17.6 RSI @ 2026-07-29,2026-07-29,,2026-07-29
+102940.KQ,KR,justified,18.5 RSI @ 2026-07-29,2026-07-29,,2026-07-29
+148250.KQ,KR,justified,19.2 RSI @ 2026-07-29,2026-07-29,,2026-07-29
+084680.KS,KR,justified,20.7 RSI @ 2026-07-29,2026-07-29,,2026-07-29
+002220.KS,KR,justified,21.1 RSI @ 2026-07-29,2026-07-29,,2026-07-29
+043100.KQ,KR,justified,21.9 RSI @ 2026-07-29,2026-07-29,,2026-07-29
+493330.KQ,KR,justified,23.0 RSI @ 2026-07-29,2026-07-29,,2026-07-29
+6928.T,JP,justified,23.3 RSI @ 2026-07-29,2026-07-29,,2026-07-29
+4516.T,JP,justified,23.9 RSI @ 2026-07-29,2026-07-29,,2026-07-29
+7273.T,JP,justified,24.7 RSI @ 2026-07-29,2026-07-29,,2026-07-29
+4620.T,JP,justified,25.8 RSI @ 2026-07-29,2026-07-29,,2026-07-29
+3719.T,JP,justified,26.2 RSI @ 2026-07-29,2026-07-29,,2026-07-29
+9412.T,JP,justified,26.9 RSI @ 2026-07-29,2026-07-29,,2026-07-29
+4222.T,JP,justified,27.5 RSI @ 2026-07-29,2026-07-29,,2026-07-29
+8783.T,JP,justified,27.8 RSI @ 2026-07-29,2026-07-29,,2026-07-29
