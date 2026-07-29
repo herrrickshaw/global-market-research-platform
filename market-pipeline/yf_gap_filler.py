@@ -90,21 +90,32 @@ def extract(info, market, yf_ticker):
     return row
 
 
-def fetch_one(market, ticker):
-    """Returns extracted row or None. India bare symbols try .NS then .BO."""
+from yfinance.exceptions import YFRateLimitError
+
+
+def fetch_one(market, ticker, base_delay=1.2):
+    """Returns extracted row, None (dead ticker), or raises YFRateLimitError
+    after retries so the caller does NOT checkpoint it as tried.
+    India bare symbols try .NS then .BO."""
     candidates = [ticker]
     if market == 'india':
         candidates = [ticker + '.NS', ticker + '.BO']
     for cand in candidates:
-        try:
-            info = yf.Ticker(cand).info
-            # accept any non-trivial response (ETFs lack PE/sector but may
-            # still yield dividend_yield / market_cap)
-            if info and len(info) > 5:
-                return extract(info, market, ticker)
-        except Exception:
-            pass
-        time.sleep(0.2)
+        for attempt in range(3):
+            try:
+                info = yf.Ticker(cand).info
+                # accept any non-trivial response (ETFs lack PE/sector but
+                # may still yield dividend_yield / market_cap)
+                if info and len(info) > 5:
+                    return extract(info, market, ticker)
+                break  # empty-but-valid response -> try next candidate
+            except YFRateLimitError:
+                if attempt == 2:
+                    raise
+                time.sleep(120 * (attempt + 1))
+            except Exception:
+                break  # 404 etc -> next candidate
+        time.sleep(base_delay)
     return None
 
 
@@ -130,30 +141,34 @@ def main():
     if mode == 'w':
         writer.writeheader()
 
-    fetched = empty = 0
+    # SERIAL with generous pacing — Yahoo rate-limits aggressively; a
+    # parallel burst poisons hours of fetches. Rate-limited tickers are NOT
+    # checkpointed, so a re-run retries them.
+    fetched = empty = ratelimited = 0
     t0 = time.time()
-    with ThreadPoolExecutor(max_workers=4) as ex:
-        futures = {ex.submit(fetch_one, m, t): (m, t) for m, t in work}
-        for i, fut in enumerate(as_completed(futures), 1):
-            try:
-                row = fut.result()
-            except Exception:
-                row = None
-            m, t = futures[fut]
-            if row and len(row) > 2:
-                writer.writerow(row)
-                fetched += 1
-            else:
-                writer.writerow({'market': m, 'yf_ticker': t})  # mark tried
-                empty += 1
-            if i % 100 == 0:
-                out.flush()
-                rate = i / (time.time() - t0)
-                eta = (len(work) - i) / rate / 60
-                print(f"  {i}/{len(work)} | data: {fetched} empty: {empty} "
-                      f"| {rate:.1f}/s | ETA {eta:.0f}m", flush=True)
+    for i, (m, t) in enumerate(work, 1):
+        try:
+            row = fetch_one(m, t)
+        except YFRateLimitError:
+            ratelimited += 1
+            print(f"  rate-limited at {m}:{t} — backing off 10m", flush=True)
+            time.sleep(600)
+            continue  # not checkpointed; retried on next run
+        if row and len(row) > 2:
+            writer.writerow(row)
+            fetched += 1
+        else:
+            writer.writerow({'market': m, 'yf_ticker': t})  # dead ticker
+            empty += 1
+        if i % 50 == 0:
+            out.flush()
+            rate = i / (time.time() - t0)
+            eta = (len(work) - i) / rate / 3600
+            print(f"  {i}/{len(work)} | data: {fetched} empty: {empty} "
+                  f"rl: {ratelimited} | {rate:.2f}/s | ETA {eta:.1f}h", flush=True)
     out.close()
-    print(f"DONE: {fetched} with data, {empty} empty of {len(work)}", flush=True)
+    print(f"DONE: {fetched} with data, {empty} empty, {ratelimited} rate-limited "
+          f"of {len(work)}", flush=True)
 
 
 if __name__ == '__main__':
