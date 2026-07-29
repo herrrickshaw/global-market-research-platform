@@ -13,6 +13,8 @@ The last cell prints a `https://*.trycloudflare.com` URL.
 ## Option B — any CUDA box / EC2 GPU (g4dn/g5; needs GPU quota)
 
 ```bash
+# NOTE 2026-07-29: pip/docker vLLM needs CUDA 13; on CUDA 12.x boxes use the
+# Transformers+Flask recipe from serve_unlimited_ocr_colab.ipynb instead.
 docker run --gpus all -p 8000:8000 vllm/vllm-openai:unlimited-ocr \
     --model baidu/Unlimited-OCR --trust-remote-code \
     --limit-mm-per-prompt '{"image": 32}'

@@ -108,6 +108,15 @@ def _chat(image_pngs: list[bytes], timeout: float) -> str:
     return r.json()['choices'][0]['message']['content']
 
 
+# "document parsing" mode emits layout grounding tags like
+# <|det|>title [x1,y1,x2,y2]<|/det|> before each text block — strip for plain text.
+_TAG_RE = re.compile(r'<\|det\|>[^<]*<\|/det\|>|<\|[^|>]{1,20}\|>')
+
+
+def _strip_tags(text: str) -> str:
+    return re.sub(r'[ \t]+\n', '\n', _TAG_RE.sub('', text)).strip()
+
+
 def ocr_pdf_bytes(file_bytes: bytes) -> str:
     """
     OCR a whole PDF given as bytes. Pages are batched
@@ -118,9 +127,19 @@ def ocr_pdf_bytes(file_bytes: bytes) -> str:
     per_call = max(1, int(os.environ.get('UNLIMITED_OCR_PAGES_PER_CALL', '8')))
     timeout = float(os.environ.get('UNLIMITED_OCR_TIMEOUT', '600'))
     pages = _render_pdf(file_bytes, dpi=dpi)
+    retries = max(0, int(os.environ.get('UNLIMITED_OCR_RETRIES', '2')))
     chunks = []
     for i in range(0, len(pages), per_call):
-        chunks.append(_chat(pages[i:i + per_call], timeout=timeout))
+        batch = pages[i:i + per_call]
+        for attempt in range(retries + 1):
+            try:
+                chunks.append(_strip_tags(_chat(batch, timeout=timeout)))
+                break
+            except Exception:
+                if attempt == retries:
+                    # keep going: one unreadable page shouldn't sink an 87-page doc
+                    chunks.append(f'[[page {i + 1}: OCR failed after '
+                                  f'{retries + 1} attempts]]')
     return '\f'.join(chunks)
 
 
@@ -131,7 +150,7 @@ def ocr_pdf(path: str | Path) -> str:
 def ocr_image(path: str | Path) -> str:
     """OCR a single image file (png/jpg)."""
     timeout = float(os.environ.get('UNLIMITED_OCR_TIMEOUT', '600'))
-    return _chat([Path(path).read_bytes()], timeout=timeout)
+    return _strip_tags(_chat([Path(path).read_bytes()], timeout=timeout))
 
 
 def markdown_tables(text: str) -> list[list[list[str]]]:
