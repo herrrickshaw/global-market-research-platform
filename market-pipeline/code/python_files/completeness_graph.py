@@ -74,6 +74,8 @@ DSN = "dbname=market_data host=/tmp user=umashankar"
 REPORTS = HERE / "reports"
 OUT_MD = REPORTS / "completeness_graph.md"
 
+import system_state
+
 # Sources the regularly-scheduled analyses read. `critical` marks the ones a
 # daily conclusion depends on; a stale critical source is an alert, a stale
 # non-critical one is a note.
@@ -149,44 +151,69 @@ class AuditState(TypedDict):
 
 
 def _con():
-    import duckdb
-    c = duckdb.connect()
-    c.execute("INSTALL postgres")
-    c.execute("LOAD postgres")
-    c.execute(f"ATTACH '{DSN}' AS pg (TYPE postgres, READ_ONLY)")
-    return c
+    """Postgres connection via pg_client — was a DuckDB ATTACH, migrated in
+    this pass (read-only, lower risk than the Phase 2 write migrations
+    already done). Records a connection-check as a free byproduct."""
+    import pg_client
+    ok = pg_client.connect()
+    system_state.record_connection_check("postgres", ok, checked_by="completeness_graph.py")
+    if not ok:
+        raise RuntimeError("postgres unavailable")
+    return pg_client.get_connection()
+
+
+def _pg_sources():
+    """Source list from system_state.data_sources (DB-backed, so a new
+    source is one INSERT, not an edit to this module) — falling back to
+    the hardcoded PG_SOURCES constant if system_state/pg_client is
+    unavailable, same graceful-degrade style as everywhere else here."""
+    try:
+        rows = system_state.list_data_sources(kind="postgres_table")
+        if rows:
+            return [(r["source_key"], r["date_column"], r["critical"], r["cadence"])
+                    for r in rows]
+    except Exception:                                          # noqa: BLE001
+        pass
+    return PG_SOURCES
 
 
 def inventory(state: AuditState) -> dict:
     """Measure every source: rows, symbols, span, staleness."""
     out, notes = [], []
     try:
-        c = _con()
+        con = _con()
     except Exception as e:                                    # noqa: BLE001
         return {"sources": [], "notes": [f"warehouse unreachable: {str(e)[:80]}"]}
 
     today = date.today()
-    for tbl, datecol, critical, cadence in PG_SOURCES:
+    for tbl, datecol, critical, cadence in _pg_sources():
         rec = {"source": tbl, "critical": critical, "kind": "postgres",
                "cadence": cadence, "tolerance": CADENCE.get(cadence)}
         try:
-            rec["rows"] = c.execute(f"select count(*) from pg.{tbl}").fetchone()[0]
+            with con.cursor() as cur:
+                cur.execute(f"select count(*) from {tbl}")
+                rec["rows"] = cur.fetchone()[0]
         except Exception as e:                                # noqa: BLE001
+            con.rollback()
             rec |= {"rows": None, "error": str(e)[:60]}
             out.append(rec)
             continue
-        cols = [r[0] for r in c.execute(
-            f"select column_name from information_schema.columns "
-            f"where table_catalog='pg' and table_schema='{tbl.split('.')[0]}' "
-            f"and table_name='{tbl.split('.')[1]}'").fetchall()]
+        with con.cursor() as cur:
+            cur.execute(
+                "select column_name from information_schema.columns "
+                "where table_schema=%s and table_name=%s",
+                (tbl.split(".")[0], tbl.split(".")[1]))
+            cols = [r[0] for r in cur.fetchall()]
         symcol = next((x for x in ("symbol", "ticker", "yf_ticker", "scheme_code",
                                    "index_name") if x in cols), None)
         if symcol:
-            rec["symbols"] = c.execute(
-                f"select count(distinct {symcol}) from pg.{tbl}").fetchone()[0]
+            with con.cursor() as cur:
+                cur.execute(f"select count(distinct {symcol}) from {tbl}")
+                rec["symbols"] = cur.fetchone()[0]
         if datecol and datecol in cols:
-            lo, hi = c.execute(
-                f"select min({datecol}), max({datecol}) from pg.{tbl}").fetchone()
+            with con.cursor() as cur:
+                cur.execute(f"select min({datecol}), max({datecol}) from {tbl}")
+                lo, hi = cur.fetchone()
             rec["span"] = f"{str(lo)[:10]} -> {str(hi)[:10]}"
             try:
                 h = hi.date() if isinstance(hi, datetime) else hi
@@ -356,7 +383,10 @@ def audit_cassandra(state: AuditState) -> dict:
     try:
         cl = Cluster(["127.0.0.1"], connect_timeout=8)
         s = cl.connect("herrrickshaw")
+        system_state.record_connection_check("cassandra", True, checked_by="completeness_graph.py")
     except Exception as e:                                     # noqa: BLE001
+        system_state.record_connection_check("cassandra", False, error=str(e)[:200],
+                                             checked_by="completeness_graph.py")
         return {"cassandra": [], "notes": [f"Cassandra unreachable: {str(e)[:70]}"]}
 
     out, notes = [], []

@@ -260,7 +260,20 @@ def assess(d: R.Dataset) -> dict:
             "coverage": cov, "detail": detail}
 
 
-def report(section: Optional[str] = None, as_json: bool = False) -> int:
+def report(section: Optional[str] = None, as_json: bool = False, persist: bool = False) -> int:
+    # This module is stdlib-only by design (runs under both the venv and
+    # /usr/bin/python3) — system_state pulls in psycopg2/pandas via
+    # pg_client, so it is imported lazily, only inside this opt-in branch,
+    # never at module load time. A missing/unavailable persistence layer
+    # must not break the report this flag is attached to.
+    _record = None
+    if persist:
+        try:
+            import system_state as _SS
+            _record = _SS.record_data_snapshot
+        except Exception as e:                                # noqa: BLE001
+            print(f"  ! --persist unavailable: {str(e)[:80]}", file=sys.stderr)
+
     rows = []
     for d in R.DATASETS:
         if section and d.section != section:
@@ -270,6 +283,12 @@ def report(section: Optional[str] = None, as_json: bool = False) -> int:
                   "path": str(d.path), "max_age_days": d.max_age_days,
                   "note": d.note, "consumers": d.consumers})
         rows.append(a)
+        if _record:
+            try:
+                _record(d.key, a["status"], coverage_pct=a.get("coverage"),
+                        stale_days=a.get("age_days"), detail=a.get("detail") or None)
+            except Exception:                                 # noqa: BLE001
+                pass
 
     if as_json:
         print(json.dumps(rows, indent=2))
@@ -330,10 +349,14 @@ def main() -> int:
     ap.add_argument("--require", choices=R.SECTIONS,
                     help="exit 1 if any dataset in this section is stale/missing")
     ap.add_argument("--json", action="store_true", help="machine-readable output")
+    ap.add_argument("--persist", action="store_true",
+                    help="also record each dataset's status to system_state.data_snapshots "
+                         "(opt-in; pulls in psycopg2/pandas via system_state/pg_client, "
+                         "unlike the rest of this stdlib-only module)")
     args = ap.parse_args()
     if args.require:
         return require(args.require)
-    return report(section=args.section, as_json=args.json)
+    return report(section=args.section, as_json=args.json, persist=args.persist)
 
 
 if __name__ == "__main__":
