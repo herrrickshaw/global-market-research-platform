@@ -48,7 +48,10 @@ import re
 import sys
 from pathlib import Path
 
-import duckdb
+import psycopg2.extras
+
+sys.path.insert(0, "/Users/umashankar/market-pipeline/code/python_files")
+import pg_client
 
 HOME = Path("/Users/umashankar")
 # The pipeline migrated out of ~/Downloads on 2026-07-16; honor an env override.
@@ -73,22 +76,24 @@ SNAPSHOT_MARKETS = {
 }
 INDIA_LABEL = SNAPSHOT_MARKETS["india"][0]
 
+# Native Postgres DDL for pg_client.ensure_schema() — no `pg.` ATTACH-alias
+# prefix (psycopg2 talks to Postgres directly) and Postgres type names
+# (DOUBLE PRECISION, not DuckDB's bare DOUBLE). Combines the old DDL (run via
+# duckdb's attached-catalog side) and PG_SETUP (run via postgres_execute on
+# the native side, since duckdb's pg extension couldn't CREATE VIEW/ALTER on
+# the attached side) into one statement list — psycopg2 has no such split.
 DDL = f"""
-CREATE SCHEMA IF NOT EXISTS pg."{SCHEMA}";
-CREATE TABLE IF NOT EXISTS pg."{SCHEMA}".snapshots (
-  market VARCHAR, as_of_date DATE, symbol VARCHAR, ltp DOUBLE, prev_close DOUBLE,
-  change_pct DOUBLE, darvas_signal VARCHAR, source_file VARCHAR, name VARCHAR
+CREATE SCHEMA IF NOT EXISTS "{SCHEMA}";
+CREATE TABLE IF NOT EXISTS "{SCHEMA}".snapshots (
+  market VARCHAR, as_of_date DATE, symbol VARCHAR, ltp DOUBLE PRECISION,
+  prev_close DOUBLE PRECISION, change_pct DOUBLE PRECISION, darvas_signal VARCHAR,
+  source_file VARCHAR, name VARCHAR
 );
-CREATE TABLE IF NOT EXISTS pg."{SCHEMA}".ingest_log (
+CREATE TABLE IF NOT EXISTS "{SCHEMA}".ingest_log (
   run_at TIMESTAMP, market VARCHAR, geography VARCHAR, source VARCHAR,
   last_data_date DATE, rows_appended BIGINT, total_rows BIGINT,
   status VARCHAR, detail VARCHAR
 );
-"""
-
-# Raw SQL run inside Postgres itself (duckdb's pg extension can't CREATE VIEW /
-# ALTER on the attached side, so these go through postgres_execute).
-PG_SETUP = f"""
 ALTER TABLE "{SCHEMA}".snapshots ADD COLUMN IF NOT EXISTS name varchar;
 CREATE TABLE IF NOT EXISTS "{SCHEMA}".symbol_names (
   symbol varchar PRIMARY KEY, name varchar, exchange varchar);
@@ -117,33 +122,24 @@ FROM india i LEFT JOIN "{SCHEMA}".symbol_names n ON n.symbol = i.symbol;
 
 
 def connect():
-    con = duckdb.connect()
-    con.execute("INSTALL postgres"); con.execute("LOAD postgres")
-    con.execute(f"ATTACH '{DSN}' AS pg (TYPE postgres)")
-    for stmt in filter(None, (s.strip() for s in DDL.split(";"))):
-        con.execute(stmt)
-    con.execute("CALL postgres_execute('pg', ?)", [PG_SETUP])
-    # PG_SETUP may have just added columns/views; duckdb's attached-catalog cache
-    # predates it, so flush or INSERTs bind against the old column list.
-    con.execute("CALL pg_clear_cache()")
-    return con
+    pg_client.connect()
+    pg_client.ensure_schema([s.strip() for s in DDL.split(";") if s.strip()])
+    return pg_client.get_connection()
 
 
 def refresh_symbol_names(con) -> None:
     """Refresh the symbol->name lookup from symbol_master.parquet (dedup, NSE first)."""
     if not SYMBOL_MASTER.exists():
         return
-    con.execute("CALL postgres_execute('pg', ?)", [f'TRUNCATE "{SCHEMA}".symbol_names'])
-    con.execute(f"""
-        INSERT INTO pg."{SCHEMA}".symbol_names
-        SELECT symbol, name, exchange FROM (
-          SELECT symbol, name, exchange,
-                 row_number() OVER (PARTITION BY symbol
-                     ORDER BY CASE exchange WHEN 'NSE' THEN 0 WHEN 'BSE' THEN 1 ELSE 2 END) rn
-          FROM read_parquet('{SYMBOL_MASTER}')
-          WHERE symbol IS NOT NULL AND name IS NOT NULL
-        ) WHERE rn = 1
-    """)
+    import pandas as pd
+    df = pd.read_parquet(SYMBOL_MASTER)
+    df = df[df.symbol.notna() & df.name.notna()].copy()
+    rank = {"NSE": 0, "BSE": 1}
+    df["_rn"] = df["exchange"].map(lambda e: rank.get(e, 2))
+    df = df.sort_values("_rn").drop_duplicates("symbol", keep="first")
+    rows = list(df[["symbol", "name", "exchange"]].itertuples(index=False, name=None))
+    pg_client.delete_and_insert(SCHEMA, "symbol_names", "", (), rows,
+                                ["symbol", "name", "exchange"], truncate=True)
 
 
 def _date_from_name(p: Path) -> dt.date | None:
@@ -152,25 +148,33 @@ def _date_from_name(p: Path) -> dt.date | None:
 
 
 def log(con, market, geo, source, last_date, appended, total, status, detail=""):
-    con.execute(
-        f'INSERT INTO pg."{SCHEMA}".ingest_log VALUES (?,?,?,?,?,?,?,?,?)',
-        [dt.datetime.now(), market, geo, source, last_date, appended, total, status, detail],
+    pg_client.append_rows(
+        SCHEMA, "ingest_log",
+        ["run_at", "market", "geography", "source", "last_data_date",
+         "rows_appended", "total_rows", "status", "detail"],
+        [(dt.datetime.now(), market, geo, source, last_date, appended, total, status, detail)],
     )
 
 
 def ingest_india(con) -> None:
     """India already has a real OHLCV series; record its true high-water mark."""
     try:
-        n = con.execute("SELECT count(*) FROM pg.bhavcopy.bhavcopy_ohlcv").fetchone()[0]
-        mx = con.execute("SELECT max(trade_date) FROM pg.bhavcopy.bhavcopy_ohlcv").fetchone()[0]
+        with con.cursor() as cur:
+            cur.execute("SELECT count(*) FROM bhavcopy.bhavcopy_ohlcv")
+            n = cur.fetchone()[0]
+            cur.execute("SELECT max(trade_date) FROM bhavcopy.bhavcopy_ohlcv")
+            mx = cur.fetchone()[0]
     except Exception as e:
+        con.rollback()   # a failed statement poisons the whole transaction until rolled back
         log(con, "india", INDIA_LABEL, "bhavcopy", None, 0, 0, "failed", str(e)[:180])
         print(f"  india    FAILED  {str(e)[:70]}")
         return
-    prev = con.execute(
-        f"""SELECT max(last_data_date) FROM pg."{SCHEMA}".ingest_log
-            WHERE market='india' AND status<>'failed'"""
-    ).fetchone()[0]
+    with con.cursor() as cur:
+        cur.execute(
+            f"""SELECT max(last_data_date) FROM "{SCHEMA}".ingest_log
+                WHERE market='india' AND status<>'failed'"""
+        )
+        prev = cur.fetchone()[0]
     status = "ok" if (prev is None or mx > prev) else "no_new_data"
     log(con, "india", INDIA_LABEL, "bhavcopy", mx, 0, n, status,
         "append handled by scripts/bhavcopy_to_db.py --incremental")
@@ -216,9 +220,11 @@ def _load_snapshot_file(con, market: str, geo: str, f: Path, as_of: dt.date) -> 
         "source_file": f.name,
         "name": text("Name", "Company", "Company_Name"),
     })
-    con.register("out_df", out)
-    con.execute(f'INSERT INTO pg."{SCHEMA}".snapshots SELECT * FROM out_df')
-    con.unregister("out_df")
+    cols = ["market", "as_of_date", "symbol", "ltp", "prev_close",
+            "change_pct", "darvas_signal", "source_file", "name"]
+    rows = [tuple(None if v != v else v for v in r)   # NaN -> NULL
+            for r in out[cols].itertuples(index=False, name=None)]
+    pg_client.append_rows(SCHEMA, "snapshots", cols, rows)
     return len(out)
 
 
@@ -242,9 +248,9 @@ def ingest_snapshot(con, market: str) -> None:
         print(f"  {market:8s} FAILED       cannot parse dates in {sub}/")
         return
 
-    have = {r[0] for r in con.execute(
-        f'SELECT DISTINCT as_of_date FROM pg."{SCHEMA}".snapshots WHERE market=?', [market]
-    ).fetchall()}
+    with con.cursor() as cur:
+        cur.execute(f'SELECT DISTINCT as_of_date FROM "{SCHEMA}".snapshots WHERE market=%s', (market,))
+        have = {r[0] for r in cur.fetchall()}
     todo = sorted(d for d in by_date if d not in have)
     latest = max(by_date)
 
@@ -254,14 +260,15 @@ def ingest_snapshot(con, market: str) -> None:
         try:
             n = _load_snapshot_file(con, market, geo, f, d)
         except Exception as e:
+            con.rollback()
             log(con, market, geo, f.name, d, 0, 0, "failed", str(e)[:180])
             print(f"  {market:8s} FAILED       {d}: {str(e)[:60]}")
             continue
         appended += n
 
-    total = con.execute(
-        f'SELECT count(*) FROM pg."{SCHEMA}".snapshots WHERE market=?', [market]
-    ).fetchone()[0]
+    with con.cursor() as cur:
+        cur.execute(f'SELECT count(*) FROM "{SCHEMA}".snapshots WHERE market=%s', (market,))
+        total = cur.fetchone()[0]
     if appended:
         log(con, market, geo, by_date[latest].name, latest, appended, total, "ok",
             f"backfilled {len(todo)} date(s): {', '.join(str(d) for d in todo)}")
@@ -274,12 +281,14 @@ def ingest_snapshot(con, market: str) -> None:
 
 
 def status(con) -> None:
-    rows = con.execute(f"""
-        SELECT market, geography, source, last_data_date, total_rows, status, run_at
-        FROM (SELECT *, row_number() OVER (PARTITION BY market ORDER BY run_at DESC) rn
-              FROM pg."{SCHEMA}".ingest_log) t
-        WHERE rn=1 ORDER BY market
-    """).fetchall()
+    with con.cursor() as cur:
+        cur.execute(f"""
+            SELECT market, geography, source, last_data_date, total_rows, status, run_at
+            FROM (SELECT *, row_number() OVER (PARTITION BY market ORDER BY run_at DESC) rn
+                  FROM "{SCHEMA}".ingest_log) t
+            WHERE rn=1 ORDER BY market
+        """)
+        rows = cur.fetchall()
     today = dt.date.today()
     print(f"\n=== MARKET DATA FRESHNESS (as of {today}) ===")
     print(f"  {'MARKET':8s} {'GEOGRAPHY':32s} {'LAST DATA':11s} {'AGE':>4s} {'ROWS':>11s}  STATUS")
@@ -292,17 +301,23 @@ def status(con) -> None:
 
 def tickers(con, market: str, limit: int | None, csv_path: str | None) -> None:
     """The per-ticker routine check: ticker, name, market, date of last update."""
+    import pandas as pd
     where = "" if market == "all" else f"WHERE market = '{market}'"
     q = f"""SELECT ticker, name, market, last_update
-            FROM pg."{SCHEMA}".ticker_freshness {where}
+            FROM "{SCHEMA}".ticker_freshness {where}
             ORDER BY market, ticker"""
     if csv_path:
-        con.execute(f"COPY ({q}) TO '{csv_path}' (HEADER, DELIMITER ',')")
-        n = con.execute(f"SELECT count(*) FROM ({q})").fetchone()[0]
+        pd.read_sql(q, con).to_csv(csv_path, index=False)
+        with con.cursor() as cur:
+            cur.execute(f"SELECT count(*) FROM ({q}) t")
+            n = cur.fetchone()[0]
         print(f"wrote {n:,} tickers -> {csv_path}")
         return
-    rows = con.execute(q + (f" LIMIT {limit}" if limit else "")).fetchall()
-    total = con.execute(f"SELECT count(*) FROM ({q})").fetchone()[0]
+    with con.cursor() as cur:
+        cur.execute(q + (f" LIMIT {limit}" if limit else ""))
+        rows = cur.fetchall()
+        cur.execute(f"SELECT count(*) FROM ({q}) t")
+        total = cur.fetchone()[0]
     today = dt.date.today()
     print(f"\n=== PER-TICKER FRESHNESS ({total:,} tickers, as of {today}) ===")
     print(f"  {'TICKER':14s} {'NAME':40s} {'MARKET':8s} {'LAST UPDATE':11s} {'AGE':>4s}")
