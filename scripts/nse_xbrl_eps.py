@@ -41,8 +41,10 @@ import xml.etree.ElementTree as ET
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 
-import duckdb
 import pandas as pd
+
+sys.path.insert(0, "/Users/umashankar/market-pipeline/code/python_files")
+import pg_client
 
 CACHE = Path("/Users/umashankar/market-pipeline/market_cache/nse_xbrl")
 XMLDIR = CACHE / "xml"
@@ -101,10 +103,11 @@ PAT_TAGS = ("ProfitLossForThePeriod",
 REV_TAGS = ("RevenueFromOperations", "Income", "TotalIncome")
 
 DDL = f"""
-CREATE SCHEMA IF NOT EXISTS pg."{SCHEMA}";
-CREATE TABLE IF NOT EXISTS pg."{SCHEMA}".india_quarterly (
+CREATE SCHEMA IF NOT EXISTS "{SCHEMA}";
+CREATE TABLE IF NOT EXISTS "{SCHEMA}".india_quarterly (
   symbol VARCHAR, period_start DATE, period_end DATE, consolidated BOOLEAN,
-  eps DOUBLE, pat DOUBLE, revenue DOUBLE, filing_date TIMESTAMP, src VARCHAR
+  eps DOUBLE PRECISION, pat DOUBLE PRECISION, revenue DOUBLE PRECISION,
+  filing_date TIMESTAMP, src VARCHAR
 );
 """
 
@@ -234,17 +237,15 @@ def parse_local(a) -> int:
     # dedupe on the PARSED period: consolidated preferred, then latest filing
     df = (df.sort_values(["consolidated", "filing_date"])
             .drop_duplicates(["symbol", "period_end"], keep="last"))
-    con = duckdb.connect()
-    con.execute("INSTALL postgres"); con.execute("LOAD postgres")
-    con.execute(f"ATTACH '{DSN}' AS pg (TYPE postgres)")
-    for s in filter(None, (x.strip() for x in DDL.split(";"))):
-        con.execute(s)
-    con.register("inc", df)
-    con.execute(f'DELETE FROM pg."{SCHEMA}".india_quarterly WHERE src IN '
-                "(SELECT DISTINCT src FROM inc)")
-    con.execute(f'INSERT INTO pg."{SCHEMA}".india_quarterly '
-                "SELECT symbol,period_start,period_end,consolidated,eps,pat,"
-                "revenue,filing_date,src FROM inc")
+    pg_client.connect()
+    pg_client.ensure_schema([s.strip() for s in DDL.split(";") if s.strip()])
+    cols = ["symbol", "period_start", "period_end", "consolidated", "eps",
+            "pat", "revenue", "filing_date", "src"]
+    srcs = sorted(df.src.unique().tolist())
+    out_rows = [tuple(None if v != v else v for v in r)   # NaN -> NULL
+                for r in df[cols].itertuples(index=False, name=None)]
+    pg_client.delete_and_insert(SCHEMA, "india_quarterly", "src = ANY(%s)",
+                                (srcs,), out_rows, cols)
     print(f"\nparsed {len(df):,} quarters · {df.symbol.nunique():,} symbols · "
           f"{bad:,} unusable")
     print(f"period_end {df.period_end.min()} -> {df.period_end.max()}")
@@ -282,19 +283,23 @@ def fetch(a) -> int:
 
 
 def status(a) -> int:
-    con = duckdb.connect()
-    con.execute("INSTALL postgres"); con.execute("LOAD postgres")
-    con.execute(f"ATTACH '{DSN}' AS pg (TYPE postgres)")
+    pg_client.connect()
+    con = pg_client.get_connection()
     try:
-        n, s, mn, mx = con.execute(
-            f'SELECT count(*), count(DISTINCT symbol), min(period_end), '
-            f'max(period_end) FROM pg."{SCHEMA}".india_quarterly').fetchone()
+        with con.cursor() as cur:
+            cur.execute(
+                f'SELECT count(*), count(DISTINCT symbol), min(period_end), '
+                f'max(period_end) FROM "{SCHEMA}".india_quarterly')
+            n, s, mn, mx = cur.fetchone()
     except Exception as e:                                # noqa: BLE001
+        con.rollback()
         print(f"table absent: {str(e)[:80]}"); return 1
     print(f"india_quarterly: {n:,} rows · {s:,} symbols · {mn} -> {mx}")
-    r = con.execute(f'''SELECT extract(year from period_end) y, count(*) n,
-        count(DISTINCT symbol) s FROM pg."{SCHEMA}".india_quarterly
-        GROUP BY 1 ORDER BY 1''').fetchall()
+    with con.cursor() as cur:
+        cur.execute(f'''SELECT extract(year from period_end) y, count(*) n,
+            count(DISTINCT symbol) s FROM "{SCHEMA}".india_quarterly
+            GROUP BY 1 ORDER BY 1''')
+        r = cur.fetchall()
     for y, nn, ss in r:
         print(f"   {int(y)}  {nn:>6,} quarters  {ss:>5,} symbols")
     return 0
