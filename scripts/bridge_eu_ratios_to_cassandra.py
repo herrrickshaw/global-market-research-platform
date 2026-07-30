@@ -164,8 +164,18 @@ def write_cassandra(d: pd.DataFrame) -> tuple[int, int]:
     from cassandra.query import UNSET_VALUE
 
     s = Cluster(["127.0.0.1"]).connect("herrrickshaw")
+    # 🔴 fundamentals_source MUST BE SET, not just pe/pb/roe. Found only after
+    # writing 424 rows without it: the column already exists and was already
+    # populated ('median_imputed' for ~all rows in every market, confirmed
+    # 2026-07-30), and every row this script fixes with a REAL derived ratio
+    # was left carrying that stale imputed label — indistinguishable from
+    # imputed to anything that reads the flag (including the very audit that
+    # is about to be built to report measured-vs-imputed coverage). A ratio
+    # this script computes is genuinely derived from filed financials + a
+    # traded price, not a placeholder, so it is labeled accordingly.
     stmt = s.prepare(
-        "UPDATE stock_quotes SET pe = ?, pb = ?, roe = ? "
+        "UPDATE stock_quotes SET pe = ?, pb = ?, roe = ?, "
+        "fundamentals_source = 'derived_price_join' "
         "WHERE market = 'europe' AND yf_ticker = ?"
     )
     written = skipped = 0
