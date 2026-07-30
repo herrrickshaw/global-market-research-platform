@@ -59,6 +59,8 @@ HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
 sys.path.insert(0, "/Users/umashankar/scripts")
 
+import pg_client
+
 DSN = "dbname=market_data host=/tmp user=umashankar"
 SCHEMA = "indices"
 BAND_LO, BAND_HI = 200, 450
@@ -67,14 +69,17 @@ COST_BPS = 100.0
 BASE = 1000.0
 WARMUP = 260
 
+# Native Postgres DDL for pg_client.ensure_schema() — no `pg.` ATTACH-alias
+# prefix (psycopg2 talks to Postgres directly) and Postgres type names
+# (DOUBLE PRECISION, not DuckDB's bare DOUBLE). Combines the old DDL (run via
+# duckdb's attached-catalog side) and PG_SETUP (run via postgres_execute on
+# the native side) into one statement list, since psycopg2 has no such split.
 DDL = f"""
-CREATE SCHEMA IF NOT EXISTS pg."{SCHEMA}";
-CREATE TABLE IF NOT EXISTS pg."{SCHEMA}".custom_daily (
+CREATE SCHEMA IF NOT EXISTS "{SCHEMA}";
+CREATE TABLE IF NOT EXISTS "{SCHEMA}".custom_daily (
   index_code VARCHAR, index_name VARCHAR, index_date DATE,
-  level DOUBLE, n_members INTEGER
+  level DOUBLE PRECISION, n_members INTEGER
 );
-"""
-PG_SETUP = f"""
 CREATE UNIQUE INDEX IF NOT EXISTS custom_daily_pk
   ON "{SCHEMA}".custom_daily (index_code, index_date);
 """
@@ -435,7 +440,6 @@ def build_peers(px, tv, rets, dates, cost):
 
 
 def build(a) -> int:
-    import duckdb
     import pead_liquidity_study as P
     from smallcap_screener import flags
 
@@ -500,26 +504,24 @@ def build(a) -> int:
     for code, vals in build_global(cost).items():
         series[code] = vals
 
-    con = duckdb.connect()
-    con.execute("INSTALL postgres"); con.execute("LOAD postgres")
-    con.execute(f"ATTACH '{DSN}' AS pg (TYPE postgres)")
-    for s in filter(None, (x.strip() for x in DDL.split(";"))):
-        con.execute(s)
-    con.execute("CALL postgres_execute('pg', ?)", [PG_SETUP])
-    con.execute("CALL pg_clear_cache()")
-
     rows = []
     for k, vals in series.items():
         for d, lv, n in vals:
             rows.append({"index_code": k, "index_name": SPECS[k],
                          "index_date": d.date(), "level": lv, "n_members": n})
     df = pd.DataFrame(rows)
-    con.register("inc", df)
-    con.execute(f'DELETE FROM pg."{SCHEMA}".custom_daily WHERE index_code IN '
-                "(SELECT DISTINCT index_code FROM inc)")
-    con.execute(f'INSERT INTO pg."{SCHEMA}".custom_daily SELECT * FROM inc')
-    con.unregister("inc")
-    print(f"wrote {len(df):,} rows across {df.index_code.nunique()} indices\n")
+
+    if pg_client.connect():
+        pg_client.ensure_schema([s.strip() for s in DDL.split(";") if s.strip()])
+        codes = sorted(df.index_code.unique().tolist())
+        cols = ["index_code", "index_name", "index_date", "level", "n_members"]
+        tuples = list(df[cols].itertuples(index=False, name=None))
+        pg_client.delete_and_insert(
+            SCHEMA, "custom_daily", "index_code = ANY(%s)", (codes,), tuples, cols,
+        )
+        print(f"wrote {len(df):,} rows across {df.index_code.nunique()} indices\n")
+    else:
+        print("! postgres unavailable — custom indices not written\n")
     return status(a)
 
 

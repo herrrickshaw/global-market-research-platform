@@ -53,6 +53,23 @@ except Exception:
     FUND_DIR = Path("/Users/umashankar/market-pipeline/market_cache/fundamentals")
     PG_DSN = "dbname=market_data host=/tmp user=umashankar"
 
+import pg_client
+
+# Postgres column types for the `cols` list build() emits (see COLUMN_TYPES
+# below) — used by write_outputs()'s pg_client.replace_table_atomic() call.
+COLUMN_TYPES = {
+    "market": "text", "ticker": "text", "name": "text", "currency": "text",
+    "fy_end": "date", "close": "double precision", "close_date": "date",
+    "mcap_local": "double precision", "pe": "double precision",
+    "pb": "double precision", "roe": "double precision", "roa": "double precision",
+    "roce": "double precision", "debt_to_equity": "double precision",
+    "current_ratio": "double precision", "gross_margin": "double precision",
+    "operating_margin": "double precision", "net_margin": "double precision",
+    "fcf_yield": "double precision", "cfo_to_ni": "double precision",
+    "asset_turnover": "double precision", "revenue_growth": "double precision",
+    "source": "text", "computed_at": "timestamptz",
+}
+
 BHAV = Path("/Users/umashankar/market-pipeline/data/bhavcopy_cache")
 # Live tree, NOT ~/Downloads (TCC-denied under launchd — see symbol_master.py's
 # two-trees warning; the 2026-07-23 00:30 run failed on the Downloads path).
@@ -186,27 +203,26 @@ def build(con) -> pd.DataFrame:
     return df[cols]
 
 
-def write_outputs(con, df: pd.DataFrame) -> None:
+def write_outputs(con, df: pd.DataFrame, dry_run: bool = False) -> None:
     OUT_PARQUET.parent.mkdir(parents=True, exist_ok=True)
     tmp = OUT_PARQUET.with_suffix(".parquet.tmp")
     df.to_parquet(tmp, index=False)
     tmp.replace(OUT_PARQUET)
     OUT_CSV.parent.mkdir(parents=True, exist_ok=True)
     df.to_csv(OUT_CSV, index=False)
-    # Postgres: full replace — this is a derived table, the stores are the truth
-    try:
-        con.execute("INSTALL postgres"); con.execute("LOAD postgres")
-        con.execute(f"ATTACH '{PG_DSN}' AS pg (TYPE postgres)")
-        con.execute("CALL postgres_execute('pg', 'CREATE SCHEMA IF NOT EXISTS fundamentals')")
-        con.execute("CALL pg_clear_cache()")
-        con.register("ratios_df", df)
-        con.execute("CALL postgres_execute('pg', 'DROP TABLE IF EXISTS fundamentals.ratios')")
-        con.execute("CALL pg_clear_cache()")
-        con.execute("CREATE TABLE pg.fundamentals.ratios AS SELECT * FROM ratios_df")
-        con.unregister("ratios_df")
-        print(f"  pg fundamentals.ratios replaced ({len(df):,} rows)")
-    except Exception as e:
-        print(f"  ! postgres write skipped: {str(e)[:80]}")
+    # Postgres: full atomic replace via pg_client — this is a derived table,
+    # the stores are the truth. --dry-run targets a scratch schema so the
+    # column_types mapping can be validated before touching fundamentals.ratios.
+    schema = "zz_financial_ratios_dry_run" if dry_run else "fundamentals"
+    if pg_client.connect():
+        try:
+            n = pg_client.replace_table_atomic(schema, "ratios", df, COLUMN_TYPES)
+            print(f"  pg {schema}.ratios replaced ({n:,} rows)"
+                  + (" [DRY RUN — scratch schema, not fundamentals.ratios]" if dry_run else ""))
+        except Exception as e:
+            print(f"  ! postgres write skipped: {str(e)[:80]}")
+    else:
+        print("  ! postgres unavailable — skipped")
     print(f"  wrote {OUT_PARQUET}")
     print(f"  wrote {OUT_CSV} ({len(df):,} rows)")
 
@@ -250,6 +266,8 @@ def main() -> int:
     ap.add_argument("--ticker", help="print one ticker's ratios (from last build)")
     ap.add_argument("--market", default="all", choices=["all", "india", "us"])
     ap.add_argument("--status", action="store_true")
+    ap.add_argument("--dry-run", action="store_true",
+                    help="write Postgres output to a scratch schema instead of fundamentals.ratios")
     a = ap.parse_args()
     con = duckdb.connect()
 
@@ -266,7 +284,7 @@ def main() -> int:
     if df.empty:
         print("no store data — run the off-hours collectors first")
         return 1
-    write_outputs(con, df)
+    write_outputs(con, df, dry_run=a.dry_run)
     show_status(df)
     if a.ticker:
         show_ticker(df, a.ticker, a.market)
