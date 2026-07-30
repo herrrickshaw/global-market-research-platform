@@ -206,11 +206,70 @@ def send(subject: str, text: str, html: str, attachments=None,
     return True
 
 
+def _technical_section() -> str:
+    """Tier 2 (EU/JP/KR, daily) + Tier 3 (everything else, weekly) Darvas
+    signal counts — TECHNICAL ONLY, never a fundamentals-based pick. Added
+    2026-07-31 per the user's 3-tier priority (market_tiers.py): tier 1
+    (IN/US) keeps its full fundamentals-backed digest above unchanged;
+    watchlist_markets.PARKED's reasons tier 2/3 can't carry a per-name
+    fundamentals claim are still real and unchanged — this section only
+    ever reports Darvas breakout counts from market_daily.snapshots, which
+    weekly_extended_scan.py (tier 3) and the existing daily scans (tier 2)
+    already populate. Failure-isolated like every other optional block
+    here — must never block the core brief."""
+    try:
+        import pg_client
+        import watchlist_markets as WM
+        if not pg_client.connect():
+            return ""
+        conn = pg_client.get_connection()
+        cur = conn.cursor()
+        cur.execute("""
+            WITH latest AS (
+                SELECT market, MAX(as_of_date) AS d FROM market_daily.snapshots GROUP BY market
+            )
+            SELECT s.market, l.d,
+                   COUNT(*) FILTER (WHERE s.darvas_signal ILIKE '%%BUY%%') AS signals,
+                   COUNT(*) AS total
+            FROM market_daily.snapshots s JOIN latest l ON s.market = l.market AND s.as_of_date = l.d
+            GROUP BY s.market, l.d
+        """)
+        by_market = {WM.norm(m): (asof, sig, tot) for m, asof, sig, tot in cur.fetchall()}
+
+        def _row(tier: int, label: str) -> str:
+            parts = []
+            for m in WM.technical_markets(tier):
+                hit = by_market.get(m)
+                if not hit:
+                    continue
+                asof, sig, tot = hit
+                parts.append(f"{m} {sig}/{tot} ({asof:%d %b})")
+            return (f'<div style="margin:3px 0"><b>{label}:</b> ' + " · ".join(parts) + "</div>"
+                    if parts else "")
+
+        t2 = _row(2, "Tier 2 — daily, technical only")
+        t3 = _row(3, "Tier 3 — weekly, technical only")
+        if not (t2 or t3):
+            return ""
+        return (
+            '<div style="background:#eef4f6;border-left:4px solid #0B2F4A;'
+            'padding:10px 14px;margin:12px 0;border-radius:6px;font-size:13px">'
+            '<b>📈 Also watching (Darvas breakout counts, no fundamentals claim)</b>'
+            + t2 + t3 +
+            '<div style="color:#777;font-size:11px;margin-top:4px">Tier 2/3 fundamentals '
+            'coverage gap is unchanged (see watchlist_markets.PARKED) — these counts are '
+            'price/volume signals only, never a per-name pick.</div></div>')
+    except Exception as e:  # noqa: BLE001 — isolation is the whole point
+        print(f"  technical section skipped: {str(e)[:100]}")
+        return ""
+
+
 if __name__ == "__main__":
     import datetime as _dt
 
     subject, text, html = build()
     digest_html, digest_subj, digest_full, pngs = _digest_section()
+    technical_html = _technical_section()
 
     # Web copy of the full watchlist (2026-07-27): upload to GDrive via rclone
     # and put the share link at the top of the digest — the attachment stays,
@@ -336,6 +395,7 @@ if __name__ == "__main__":
             + '<div style="margin:22px 0 10px;border-top:3px solid #0B2F4A"></div>'
             + wl_link
             + pred_html
+            + technical_html
             + digest_html)
     subject += digest_subj
     attachments = None
