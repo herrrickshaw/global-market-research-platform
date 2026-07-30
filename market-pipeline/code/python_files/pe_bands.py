@@ -46,28 +46,25 @@ import pandas as pd
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
 sys.path.insert(0, "/Users/umashankar/scripts")
+import pg_client
+
 DSN = "dbname=market_data host=/tmp user=umashankar"
 SCHEMA = "fundamentals"
+COLUMN_TYPES = {
+    "symbol": "text", "obs_date": "date", "close": "double precision",
+    "ttm_eps": "double precision", "pe": "double precision",
+    "pe_mean": "double precision", "pe_sd": "double precision",
+    "pe_z": "double precision", "band": "text", "tier": "integer",
+}
 MIN_ANNUAL = 6       # annual observations needed on the screener path
 MIN_Q = 8            # quarters of TTM history before a band is meaningful
 BAND_WIN = 12        # trailing quarters for the rolling mean/sigma
 K = 2.0
 SD_FLOOR_LOG = 0.15  # minimum sigma of log P/E — see _bands()
 
-DDL = f"""
-CREATE TABLE IF NOT EXISTS pg."{SCHEMA}".india_pe_daily (
-  symbol VARCHAR, obs_date DATE, close DOUBLE, ttm_eps DOUBLE, pe DOUBLE,
-  pe_mean DOUBLE, pe_sd DOUBLE, pe_z DOUBLE, band VARCHAR, tier INTEGER
-);
-"""
-
-
 def connect():
-    import duckdb
-    con = duckdb.connect()
-    con.execute("INSTALL postgres"); con.execute("LOAD postgres")
-    con.execute(f"ATTACH '{DSN}' AS pg (TYPE postgres)")
-    return con
+    pg_client.connect()
+    return pg_client.get_connection()
 
 
 
@@ -130,9 +127,9 @@ def build(a) -> int:
         print(f"screener.in annual: {len(q):,} obs · {q.symbol.nunique():,} "
               f"symbols with >= {MIN_ANNUAL} years", flush=True)
         return _bands(q, con, P, a.source)
-    q = con.execute(f'''SELECT symbol, period_end, filing_date, eps
-                        FROM pg."{SCHEMA}".india_quarterly
-                        WHERE eps IS NOT NULL''').df()
+    q = pd.read_sql(f'''SELECT symbol, period_end, filing_date, eps
+                        FROM "{SCHEMA}".india_quarterly
+                        WHERE eps IS NOT NULL''', con)
     if q.empty:
         print("no parsed quarters — run scripts/nse_xbrl_eps.py --parse-local")
         return 1
@@ -246,10 +243,7 @@ def _bands(q, con, P, source: str = "xbrl") -> int:
     d["tier"] = (d.groupby("obs_date").pe
                   .rank(pct=True).mul(10).apply(np.ceil)
                   .clip(lower=1, upper=10).fillna(0).astype(int))
-    con.execute(DDL)
-    con.register("inc", d)
-    con.execute(f'DELETE FROM pg."{SCHEMA}".india_pe_daily')
-    con.execute(f'INSERT INTO pg."{SCHEMA}".india_pe_daily SELECT * FROM inc')
+    pg_client.replace_table_atomic(SCHEMA, "india_pe_daily", d, COLUMN_TYPES)
     print(f"wrote {len(d):,} daily P/E observations · {d.symbol.nunique():,} symbols")
     print(f"  {d.obs_date.min().date()} -> {d.obs_date.max().date()}")
     print("\nband occupancy:")
@@ -309,9 +303,9 @@ def _write_report(source: str, d, con) -> None:
 
     # Accuracy against the independently-built ratios table.
     try:
-        r = con.execute("""select ticker as symbol, pe as pe_ref
-                           from pg.fundamentals.ratios
-                           where market='india' and pe > 0""").df()
+        r = pd.read_sql("""select ticker as symbol, pe as pe_ref
+                           from fundamentals.ratios
+                           where market='india' and pe > 0""", con)
         last = d[d.obs_date == d.obs_date.max()][["symbol", "pe"]]
         m = last.merge(r, on="symbol", how="inner")
         m = m[(m.pe > 0) & (m.pe_ref > 0)]
@@ -338,6 +332,7 @@ def _write_report(source: str, d, con) -> None:
               "from the panel it describes.")
             o()
     except Exception as e:                                    # noqa: BLE001
+        con.rollback()
         o(f"> accuracy cross-check unavailable: {str(e)[:80]}")
         o()
 
@@ -366,8 +361,8 @@ def _write_report(source: str, d, con) -> None:
 
 def extremes(a) -> int:
     con = connect()
-    d = con.execute(f'''SELECT * FROM pg."{SCHEMA}".india_pe_daily
-        WHERE obs_date = (SELECT max(obs_date) FROM pg."{SCHEMA}".india_pe_daily)''').df()
+    d = pd.read_sql(f'''SELECT * FROM "{SCHEMA}".india_pe_daily
+        WHERE obs_date = (SELECT max(obs_date) FROM "{SCHEMA}".india_pe_daily)''', con)
     if d.empty:
         print("nothing built"); return 1
     print(f"as of {d.obs_date.iloc[0]} · {len(d)} symbols with a band\n")
@@ -383,8 +378,8 @@ def extremes(a) -> int:
 
 def show(a) -> int:
     con = connect()
-    d = con.execute(f'''SELECT * FROM pg."{SCHEMA}".india_pe_daily
-                        WHERE symbol = ? ORDER BY obs_date''', [a.show]).df()
+    d = pd.read_sql(f'''SELECT * FROM "{SCHEMA}".india_pe_daily
+                        WHERE symbol = %s ORDER BY obs_date''', con, params=[a.show])
     if d.empty:
         print(f"no P/E band for {a.show}"); return 1
     print(f"{a.show}: {len(d):,} days · {d.obs_date.min()} -> {d.obs_date.max()}")
