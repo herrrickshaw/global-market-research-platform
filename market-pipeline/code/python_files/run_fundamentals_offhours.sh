@@ -31,4 +31,17 @@ RC=$?
 # whatever the stores now hold + latest closes. /usr/bin/python3, NOT the venv —
 # duckdb lives there (the same split documented in daily_pipeline step 15).
 /usr/bin/python3 financial_ratios.py || echo "ratio rebuild failed (continuing)"
+# JP/KR/CN point-in-time earnings via yfinance earnings_dates — fixes the
+# fabricated fy_end+90d dates found in the 2026-07-31 data-linkage audit.
+# ~11,500-symbol universe, 150/market/session (~450 symbols, ~2 yfinance
+# calls each at 0.35s pacing) trickles the full backfill over many off-hours
+# sessions, same "hash-ordered, representative at every stage" pattern as
+# the NSE XBRL trickle above — added HERE, not a new plist, per this repo's
+# own "second uncoupled schedule causes drift" lesson (see [[project_market_data_warehouse]]).
+"$PY" yf_intl_pit_fundamentals.py --collect --market ALL --limit 150 || echo "intl PIT collect failed (continuing)"
+"$PY" yf_intl_pit_fundamentals.py --load || echo "intl PIT load failed (continuing)"
+# Refresh the consolidated cross-repo ticker dictionary (ticker/market/name/
+# freshness/liquidity/earnings) — pure DB join, no network calls, cheap to
+# run every session so it never drifts far behind its sources.
+"$PY" build_ticker_reference.py --build || echo "ticker_reference build failed (continuing)"
 exit $RC

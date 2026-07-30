@@ -286,3 +286,44 @@ def append_rows(schema: str, table: str, columns: Sequence[str], rows: Sequence[
     except Exception:
         _conn.rollback()
         raise
+
+
+def upsert_rows(
+    schema: str,
+    table: str,
+    columns: Sequence[str],
+    rows: Sequence[tuple],
+    conflict_cols: Sequence[str],
+    update_cols: Optional[Sequence[str]] = None,
+) -> int:
+    """
+    INSERT ... ON CONFLICT (conflict_cols) DO UPDATE — for incremental
+    collectors that re-run over the same keys repeatedly (a resumable
+    backfill, an off-hours trickle) and need each run to be idempotent
+    without a delete/rebuild step. `conflict_cols` must match a real
+    UNIQUE/PK constraint on the table. `update_cols` defaults to every
+    column not in `conflict_cols`; pass an explicit (possibly empty) list
+    to change that — an empty list becomes ON CONFLICT DO NOTHING.
+    Returns the number of rows submitted (insert+update are not
+    distinguished; 0 if `rows` is empty).
+    """
+    if _conn is None or not rows:
+        return 0
+    if update_cols is None:
+        update_cols = [c for c in columns if c not in conflict_cols]
+    quoted_cols = ", ".join(f'"{c}"' for c in columns)
+    conflict_target = ", ".join(f'"{c}"' for c in conflict_cols)
+    sql = f'INSERT INTO "{schema}"."{table}" ({quoted_cols}) VALUES %s ON CONFLICT ({conflict_target})'
+    if update_cols:
+        set_clause = ", ".join(f'"{c}" = EXCLUDED."{c}"' for c in update_cols)
+        sql += f' DO UPDATE SET {set_clause}'
+    else:
+        sql += ' DO NOTHING'
+    try:
+        with _conn.cursor() as cur:
+            psycopg2.extras.execute_values(cur, sql, rows)
+        _conn.commit()
+        return len(rows)
+    except Exception:
+        _conn.rollback()
+        raise

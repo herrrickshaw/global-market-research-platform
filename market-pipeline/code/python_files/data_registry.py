@@ -209,6 +209,13 @@ DATASETS: List[Dataset] = [
             "screener_in.py", "ingest", DAILY, 3.0,
             "cash-conversion-cycle screen scraped from screener.in",
             ["send_mailer.py"]),
+    Dataset("intl_pit.cache", MARKET_CACHE / "intl_pit",
+            "yf_intl_pit_fundamentals.py", "ingest", "off-hours trickle (resumable backfill)", None,
+            "🔴 per-symbol raw yfinance earnings_dates+quarterly_income_stmt cache, JP/KR/CN — "
+            "the source this session's fix for the fabricated fy_end+90d PIT dates trickles from; "
+            "loads into Postgres fundamentals.intl_pit_quarterly / fundamentals.next_earnings "
+            "(see system_state.list_data_sources()). max_age_days=None: a partial backfill is "
+            "expected, not stale — check coverage via `yf_intl_pit_fundamentals.py --status`."),
 
     # ---- mailer ----------------------------------------------------------
     Dataset("scan.india", CODE / "indian_full_scan",
