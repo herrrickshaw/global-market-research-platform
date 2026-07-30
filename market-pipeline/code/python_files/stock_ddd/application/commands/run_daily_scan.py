@@ -53,6 +53,16 @@ from domain.shared.events import (
 )
 from domain.shared.value_objects import Exchange, Ticker
 
+# Market priority — mirrors watchlist_markets.COVERED = ("IN", "US"): India is
+# the primary/most-authoritative market for this pipeline (live NSE feed),
+# US is secondary. A market string outside this map still gets its own error
+# in result.errors instead of silently contributing zero tickers.
+MARKET_PRIORITY  = ["IN", "US"]
+MARKET_EXCHANGES = {
+    "IN": [Exchange.NSE, Exchange.BSE],
+    "US": [Exchange.NASDAQ, Exchange.NYSE],
+}
+
 
 # ── Command ───────────────────────────────────────────────────────────────────
 
@@ -152,16 +162,42 @@ class RunDailyScanHandler:
             print(f"  [DailyScan] Context error: {e}")
 
         # ── Step 2: Symbol universe ────────────────────────────────────────────
+        # Priority-ordered across every requested market — not just an "IN"
+        # special case. IN uses the live NSE feed (fastest, most current
+        # source), falling back to the IStockRepository port (symbol_master
+        # cache) if that feed is unavailable. US and any future market go
+        # straight through the same market-agnostic port. A requested market
+        # with no wiring yet gets an explicit error, not silence.
         print("  [DailyScan] Step 2 — Symbol universe …")
         all_tickers: List[Ticker] = []
-        if "IN" in command.markets:
-            try:
-                nse_syms  = self._live_service.get_all_nse_symbols()
-                bse_syms  = []  # TODO: add BSE via ILiveMarketDataService
-                all_tickers += [Ticker(s, Exchange.NSE) for s in nse_syms]
-                all_tickers += [Ticker(s, Exchange.BSE) for s in bse_syms]
-            except Exception as e:
-                result.errors.append(f"NSE symbols: {e}")
+        requested = sorted(
+            dict.fromkeys(command.markets),
+            key=lambda m: MARKET_PRIORITY.index(m) if m in MARKET_PRIORITY else len(MARKET_PRIORITY),
+        )
+        for market in requested:
+            if market == "IN":
+                try:
+                    nse_syms = self._live_service.get_all_nse_symbols()
+                    if not nse_syms:
+                        raise ValueError("live NSE feed returned no symbols")
+                    bse_syms = []  # TODO: add BSE via ILiveMarketDataService
+                    all_tickers += [Ticker(s, Exchange.NSE) for s in nse_syms]
+                    all_tickers += [Ticker(s, Exchange.BSE) for s in bse_syms]
+                except Exception as e:
+                    result.errors.append(f"IN live symbols: {e} — falling back to cached registry")
+                    try:
+                        for exch in MARKET_EXCHANGES["IN"]:
+                            all_tickers += self._stock_repo.get_all_tickers(exch)
+                    except Exception as e2:
+                        result.errors.append(f"IN symbols: {e2}")
+            elif market in MARKET_EXCHANGES:
+                try:
+                    for exch in MARKET_EXCHANGES[market]:
+                        all_tickers += self._stock_repo.get_all_tickers(exch)
+                except Exception as e:
+                    result.errors.append(f"{market} symbols: {e}")
+            else:
+                result.errors.append(f"Market '{market}' not yet supported — no ticker source wired")
 
         if command.top:
             all_tickers = all_tickers[:command.top]

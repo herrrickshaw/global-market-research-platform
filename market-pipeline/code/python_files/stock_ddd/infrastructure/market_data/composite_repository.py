@@ -66,6 +66,8 @@ class CompositeStockRepository(IStockRepository):
     All yfinance and Parquet logic is contained here — invisible to Domain.
     """
 
+    _symbol_master_cache = None  # class-level: shared, lazily-loaded, cached once per process
+
     def __init__(self, cache_dir: Path = None, batch_size: int = 100,
                  workers: int = 8):
         # Reuse existing MarketCache from infrastructure
@@ -95,18 +97,56 @@ class CompositeStockRepository(IStockRepository):
             return None
 
     def get_all_tickers(self, exchange: Exchange) -> List[Ticker]:
-        """Return all NSE/BSE/NASDAQ/NYSE tickers."""
+        """Return all tickers for the given exchange (NSE/BSE/NASDAQ/NYSE).
+
+        NSE tries the live nsepython feed first (most current source).
+        Every exchange — including NSE as a fallback — reads from
+        symbol_master.parquet, the already-materialized cross-market
+        registry (NSE/BSE/NASDAQ/NYSE + others). Previously any exchange
+        other than NSE silently fell through to a hardcoded 12-symbol
+        Nifty 50 list mislabeled as the requested exchange (e.g. a NASDAQ
+        request would come back as 12 NSE symbols) — that fallback is now
+        NSE-only and used only if neither the live feed nor symbol_master
+        is available.
+        """
         if exchange == Exchange.NSE and _NSE_OK:
             try:
                 syms = nse_eq_symbols()
-                return [Ticker(s, Exchange.NSE) for s in syms]
+                if syms:
+                    return [Ticker(s, Exchange.NSE) for s in syms]
             except Exception:
                 pass
-        # Fallback: Nifty 50
-        return [Ticker(s, Exchange.NSE) for s in [
-            "RELIANCE","TCS","HDFCBANK","ICICIBANK","INFY","AXISBANK",
-            "KOTAKBANK","WIPRO","LT","BAJFINANCE","MARUTI","BHARTIARTL",
-        ]]
+
+        master = self._load_symbol_master()
+        if master is not None:
+            rows = master[master["exchange"] == exchange.value]
+            if not rows.empty:
+                return [Ticker(s, exchange) for s in rows["symbol"].tolist()]
+
+        if exchange == Exchange.NSE:
+            # Last-resort fallback: neither the live feed nor symbol_master
+            # was available.
+            return [Ticker(s, Exchange.NSE) for s in [
+                "RELIANCE","TCS","HDFCBANK","ICICIBANK","INFY","AXISBANK",
+                "KOTAKBANK","WIPRO","LT","BAJFINANCE","MARUTI","BHARTIARTL",
+            ]]
+        return []
+
+    @staticmethod
+    def _load_symbol_master():
+        """Read the cross-market symbol registry (NSE/BSE/NASDAQ/NYSE/JP/KR/EU/...)
+        built by symbol_master.py. Cached at class level — the file only
+        refreshes daily, so re-reading it per call would be wasted I/O."""
+        if CompositeStockRepository._symbol_master_cache is not None:
+            return CompositeStockRepository._symbol_master_cache
+        try:
+            import data_registry
+            path = data_registry.MARKET_CACHE / "symbol_master.parquet"
+            if path.exists():
+                CompositeStockRepository._symbol_master_cache = pd.read_parquet(path)
+        except Exception:
+            pass
+        return CompositeStockRepository._symbol_master_cache
 
     def save(self, stock: Stock) -> None:
         """Persist stock to Parquet cache via MarketCache."""
