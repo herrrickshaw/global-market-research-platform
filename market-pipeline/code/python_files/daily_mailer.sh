@@ -141,6 +141,16 @@ FAILURES=()
   $PY playbook_screener.py     || FAILURES+=("screen: playbook")
   $PY smallcap_screener.py --screen || FAILURES+=("screen: small-cap")
 
+  # 🔴 RE-GATE AFTER THE SCREENS, NOT JUST BEFORE THEM. The coverage gate at
+  # [9/13] runs before these screens can add rows, so a screen matching a stale
+  # JP/KR/EU scan file (left on disk by daily_research.sh) re-introduces parked
+  # rows into watchlist.csv within the same run — 31 of them reappeared this way
+  # between one morning's cleanup and the next. send_mailer's point-of-send
+  # filter already keeps them out of the actual email, so this was never a brief
+  # correctness bug, but the FILE re-accumulated daily and fed straight into
+  # watchlist_tiers' SYNC below. Cheap (idempotent, ~seconds) to just run again.
+  $PY watchlist_repair.py || FAILURES+=("watchlist: re-gate after screens")
+
   step "[11/13] prediction filter -> tiers -> re-entry ranking"
   $PY prediction_filter.py || FAILURES+=("prediction filter")
   $PY watchlist_tiers.py   || FAILURES+=("watchlist tiers")
@@ -230,7 +240,16 @@ FAILURES=()
 # research work. Checked across ALL args, not just $1: --draft can appear
 # anywhere in "$@".
 if [ "$RUN_SEND" = "1" ] && [ "$IS_DRAFT" = "0" ]; then
-  nohup ./daily_research.sh > /dev/null 2>&1 &
+  # 🔴 NOT /dev/null. On 2026-07-30 the chain fired (confirmed in
+  # launchd_mailer_send.log) but the child was killed before writing a single
+  # byte — launchd tears down a job's whole PROCESS GROUP when the parent exits
+  # unless the plist sets AbandonProcessGroup; `disown` only stops bash sending
+  # SIGHUP, it does not protect against that. The plists now set it. Redirecting
+  # this launch's own output to /dev/null was what turned a real failure into a
+  # silent one — there was no daily_research_*.log AT ALL to diagnose from, only
+  # the one line here saying it had "started". Routed to its own file now so a
+  # future launch failure (wrong cwd, missing venv, whatever) leaves evidence.
+  nohup ./daily_research.sh > "daily_research_chain_$(date +%Y%m%d_%H%M%S).log" 2>&1 &
   disown
   echo "  chained: daily_research.sh started in the background (pid $!)"
 fi

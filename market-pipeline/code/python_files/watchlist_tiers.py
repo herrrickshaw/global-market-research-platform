@@ -100,7 +100,31 @@ def main() -> int:
 
     # 1 — SYNC: enroll purged names not yet in tier 2/3
     if PURGED.exists():
+        import watchlist_markets as WM
         pg = pd.read_csv(PURGED)
+        # 🔴 TWO BUGS FIXED HERE (2026-07-29), both silent since this system
+        # never restricted or validated what it enrolled.
+        #
+        # (1) EVERY row of watchlist_purged.csv was enrolled, including the 238
+        # rows watchlist_repair's coverage gate archives with reason "market not
+        # covered: ...". That is a SCOPE decision (JP/KR/EU lack fundamentals
+        # that can support a per-name claim), not a prediction-model eviction
+        # call — there is no thesis to validate, so there is nothing for tier 2
+        # to be testing. It polluted tier 2 to 289 of 376 rows (77%) outside
+        # IN/US. Both a market restriction and an explicit reason exclusion are
+        # applied: the market filter is what cleans today's pollution, the
+        # reason filter documents WHY these specifically don't belong even if a
+        # future narrowing ever made a covered market emit that reason.
+        #
+        # (2) purge_note read a column named `note`, which does not exist —
+        # watchlist_repair.py writes every reason to a column called `reason`.
+        # getattr(..., "note", "") silently returned "" for 100% of prior
+        # enrollments, so tier 2's "why was this evicted" field has been BLANK
+        # since this system's creation on 2026-07-27. Falls back to `note` only
+        # for compatibility with any other purge source that might use it.
+        pg = WM.restrict(pg)
+        if "reason" in pg.columns:
+            pg = pg[~pg["reason"].astype(str).str.startswith("market not covered")]
         seen = set(zip(w2.get("symbol", []), w2.get("market", []))) | \
                set(zip(w3.get("symbol", []), w3.get("market", [])))
         new = pg[~pg.apply(lambda r: (r["symbol"], r["market"]) in seen, axis=1)]
@@ -110,9 +134,10 @@ def main() -> int:
             px, _ = last_close(r.symbol, r.market)
             if px is None:
                 continue
+            note = getattr(r, "reason", None) or getattr(r, "note", "")
             w2 = pd.concat([w2, pd.DataFrame([{
                 "symbol": r.symbol, "market": r.market,
-                "purge_note": str(getattr(r, "note", ""))[:120],
+                "purge_note": str(note)[:120],
                 "enrolled": str(date.today()), "baseline_price": px,
                 "last_price": px, "ret_pct": 0.0, "rsi": None,
                 "rsi_zone": "?", "last_checked": str(date.today()),

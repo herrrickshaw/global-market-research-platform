@@ -7,7 +7,7 @@ ABREL,IN,watch,nan | renamed from CENTURYTEX (2026-07-23),2026-07-23,1398.1
 ACCELYA,IN,value-hold,value-cluster PE13.3 ROE46% (validated reversion) 2026-07-24,2026-07-24,1158.9
 ADANIGREEN,IN,watch,,,
 ADANIPORTS,IN,sold,,,
-ADANIPOWER,IN,watch,,,
+ADANIPOWER,IN,evicted,evicted 2026-07-29 after 6 sessions in sell zone,,
 AGARIND,IN,watch,,,
 AGI,IN,signal,piotroski+debt 2026-07-21,2026-07-21,686.4
 AJANTPHARM,IN,signal,piotroski+debt 2026-07-21,2026-07-21,3575.3
@@ -23,7 +23,6 @@ APTUS,IN,signal,golden_cross 2026-07-17 (backfilled),2026-07-17,306.85
 ARE&M,IN,watch,nan | renamed from AMARAJABAT (2026-07-23),2026-07-23,876.4
 ARIHANTSUP,IN,watch,,,
 ASAHIINDIA,IN,watch,,,
-ASALCBR,IN,evicted,tuned-model 2026-07-24 | evicted 2026-07-24 after 12 sessions in sell zone,2026-07-24,
 ASHAPURMIN,IN,playbook,trend+value/quality (LONG),2026-07-25,676.7
 ASIANHOTNR,IN,signal,piotroski+debt 2026-07-21,2026-07-21,294.55
 ASMTEC,IN,sold,,,
@@ -63,7 +62,7 @@ CHOLAFIN,IN,signal,golden_cross 2026-07-17 (backfilled),2026-07-17,1804.9
 CIEINDIA,IN,watch,nan | renamed from MAHINDCIE (2026-07-23),2026-07-23,419.0
 CIPLA,IN,watch,,,
 COALINDIA,IN,value-hold,value-cluster PE8.5 ROE26% (validated reversion) 2026-07-24,2026-07-24,427.4
-COASTCORP,IN,watch,,,
+COASTCORP,IN,evicted,evicted 2026-07-29 after 6 sessions in sell zone,,
 COCHINSHIP,IN,sold,,,
 COFFEEDAY,IN,evicted,evicted 2026-07-27 after 6 sessions in sell zone,,
 COLPAL,IN,watch,,,
@@ -81,12 +80,12 @@ DEEDEV,IN,justified,209.9% 6m mom @ 2026-07-22,2026-07-22,661.25
 DEEPAKFERT,IN,watch,,,
 DEEPAKNTR,IN,watch,,,
 DEEPINDS,IN,watch,,,
-DELHIVERY,IN,watch,,,
+DELHIVERY,IN,evicted,evicted 2026-07-29 after 6 sessions in sell zone,,
 DHAMPURSUG,IN,sold,,,
 DLF,IN,sold,,,
 DLINKINDIA,IN,sold,,,
 EASEMYTRIP,IN,sold,,,
-EDELWEISS,IN,watch,,,
+EDELWEISS,IN,evicted,evicted 2026-07-29 after 6 sessions in sell zone,,
 EICHERMOT,IN,watch,,,
 EIMCOELECO,IN,signal,golden_cross 2026-07-20 (backfilled),2026-07-20,1822.3
 ELECTHERM,IN,signal,value_rerating 2026-07-23,2026-07-23,1030.0
@@ -115,7 +114,6 @@ GMRAIRPORT,IN,watch,nan | renamed from GMRINFRA (2026-07-23),2026-07-23,107.37
 GODAVARIB,IN,sold,,,
 GODREJAGRO,IN,watch,,,
 GOLDBEES,IN,sold,,,
-GOLDIAM,IN,evicted,evicted 2026-07-23 after 11 sessions in sell zone,,
 GREAVESCOT,IN,watch,,,
 GREENLAM,IN,signal,golden_cross 2026-07-15 (backfilled),2026-07-15,252.45
 GRWRHITECH,IN,justified,97.2% of 52w-hi @ 2026-07-24,2026-07-24,6903.0
@@ -127,7 +125,7 @@ HAL,IN,watch,,,
 HARIOMPIPE,IN,signal,golden_cross 2026-07-17 (backfilled),2026-07-17,403.55
 HARRMALAYA,IN,watch,,,
 HATHWAY,IN,evicted,evicted 2026-07-28 after 6 sessions in sell zone,,
-HATSUN,IN,watch,,,
+HATSUN,IN,evicted,evicted 2026-07-29 after 6 sessions in sell zone,,
 HAVELLS,IN,watch,,,
 HCLTECH,IN,sold,,,
 HDFCBANK,IN,evicted,evicted 2026-07-27 after 6 sessions in sell zone,,
@@ -175,7 +173,6 @@ JNKINDIA,IN,signal,value_rerating 2026-07-23,2026-07-23,473.75
 JSWENERGY,IN,watch,,,
 JUBLFOOD,IN,sold,,,
 KECL,IN,watch,,,
-KHADIM,IN,evicted,evicted 2026-07-23 after 11 sessions in sell zone,,
 KLRFM,IN,sold,,,
 KMEW,IN,signal,golden_cross 2026-07-20 (backfilled),2026-07-20,2445.3
 KOTAKBANK,IN,sold,,,
@@ -199,7 +196,6 @@ MARUTI,IN,watch,,,
 MASTEK,IN,sold,,,
 MATRIMONY,IN,watch,,,
 MAYURUNIQ,IN,playbook,trend+value/quality (LONG),2026-07-25,798.15
-MAZDOCK,IN,evicted,evicted 2026-07-23 after 11 sessions in sell zone,,
 MGL,IN,evicted,evicted 2026-07-23 after 6 sessions in sell zone,,
 MOTHERSON,IN,watch,,,
 MPSLTD,IN,watch,,,
@@ -233,11 +229,11 @@ PICCADIL,IN,signal,golden_cross 2026-07-17 (backfilled),2026-07-17,729.55
 PIDILITIND,IN,watch,,,
 PNB,IN,sold,,,
 PNBHOUSING,IN,watch,,,
-POKARNA,IN,watch,,,
+POKARNA,IN,evicted,evicted 2026-07-29 after 6 sessions in sell zone,,
 PPL,IN,signal,golden_cross 2026-07-17 (backfilled),2026-07-17,257.0
 PPLPHARMA,IN,signal,golden_cross 2026-07-20 (backfilled),2026-07-20,178.87
 PRAJIND,IN,evicted,evicted 2026-07-27 after 6 sessions in sell zone,,
-PREMIERENE,IN,watch,,,
+PREMIERENE,IN,evicted,evicted 2026-07-29 after 6 sessions in sell zone,,
 PREMIERPOL,IN,signal,value_rerating 2026-07-23,2026-07-23,79.48
 PRICOLLTD,IN,signal,golden_cross 2026-07-17 (backfilled),2026-07-17,615.3
 PRINCEPIPE,IN,evicted,golden_cross 2026-07-20 (backfilled) | evicted 2026-07-24 after 6 sessions in sell zone,2026-07-20,267.5
@@ -264,7 +260,7 @@ SANGHVIMOV,IN,playbook,trend+value/quality (LONG),2026-07-25,429.75
 SAPPHIRE,IN,watch,,,
 SATIN,IN,signal,value_rerating 2026-07-23,2026-07-23,251.85
 SBILIFE,IN,watch,,,
-SBIN,IN,watch,,,
+SBIN,IN,evicted,evicted 2026-07-29 after 6 sessions in sell zone,,
 SCHNEIDER,IN,watch,,,
 SEAMECLTD,IN,playbook,trend+value/quality (LONG),2026-07-25,1370.7
 SENORES,IN,held,Senores Pharmaceuticals,,
@@ -290,7 +286,6 @@ SYNGENE,IN,sold,,,
 SYRMA,IN,sold,,,
 TARIL,IN,evicted,golden_cross 2026-07-20 (backfilled) | evicted 2026-07-28 after 6 sessions in sell zone,2026-07-20,333.6
 TATAELXSI,IN,sold,,,
-TCI,IN,evicted,evicted 2026-07-23 after 11 sessions in sell zone,,
 TCPLPACK,IN,watch,,,
 TEJASNET,IN,evicted,evicted 2026-07-28 after 6 sessions in sell zone,,
 TFCILTD,IN,signal,value_rerating 2026-07-23,2026-07-23,81.81
@@ -302,7 +297,7 @@ TNPETRO,IN,held,Tamilnadu Petroproducts,,
 TNPL,IN,held,TN Newsprint & Papers,,
 TRACXN,IN,sold,,,
 TRITURBINE,IN,sold,,,
-TRIVENI,IN,watch,,,
+TRIVENI,IN,evicted,evicted 2026-07-29 after 6 sessions in sell zone,,
 TVSMOTOR,IN,watch,,,
 UCOBANK,IN,watch,,,
 UDS,IN,signal,golden_cross 2026-07-20 (backfilled),2026-07-20,193.52
@@ -611,5 +606,6 @@ GSHD,US,signal,recurring x2 +20.3% since 2026-07-21,2026-07-21,57.23
 AVTR,US,signal,recurring x2 +16.5% since 2026-07-21,2026-07-21,10.66
 GEF-B,US,signal,recurring x2 +15.1% since 2026-07-21,2026-07-21,92.09
 PAY,US,signal,recurring x2 +15.1% since 2026-07-21,2026-07-21,29.67
-DIACABS,IN,justified,100.0% of 52w-hi @ 2026-07-29,2026-07-29,
-AEROFLEX,IN,justified,164.2% 6m mom @ 2026-07-29,2026-07-29,
+DIACABS,IN,justified,100.0% of 52w-hi @ 2026-07-29,2026-07-29,337.45
+AEROFLEX,IN,justified,164.2% 6m mom @ 2026-07-29,2026-07-29,450.6
+AIIL,IN,signal,value_rerating 2026-07-29,2026-07-29,557.7
