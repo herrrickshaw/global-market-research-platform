@@ -28,9 +28,10 @@ from datetime import datetime
 import duckdb
 import pandas as pd
 
+import repo_registry as _RR
+
 BASE = os.path.dirname(os.path.abspath(__file__))
-ADJ = os.path.expanduser(
-    "~/repos/global-market-data/warehouse/ohlcv_adj/IN/*.parquet")
+ADJ = str(_RR.OHLCV_ADJ_IN / "*.parquet")
 EVENTS = os.path.join(BASE, "reports", "pit_event_studies.parquet")
 OUT_MD = os.path.join(BASE, "reports", "COST_INTIMATION_DRIFT.md")
 

@@ -36,9 +36,11 @@ import duckdb
 import numpy as np
 import pandas as pd
 
+import repo_registry as _RR
+
 BASE = os.path.dirname(os.path.abspath(__file__))
 MC = os.path.expanduser("~/market-pipeline/market_cache")
-ADJ = os.path.expanduser("~/repos/global-market-data/warehouse/ohlcv_adj/IN/*.parquet")
+ADJ = str(_RR.OHLCV_ADJ_IN / "*.parquet")
 OUT_PQ = os.path.join(BASE, "reports", "pit_event_studies.parquet")
 OUT_MD = os.path.join(BASE, "reports", "PIT_EVENT_STUDIES.md")
 

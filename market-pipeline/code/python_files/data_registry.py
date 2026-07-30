@@ -37,6 +37,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import List, Optional
 
+import repo_registry as _RR
+
 # ── roots ─────────────────────────────────────────────────────────────────────
 # Defaults resolve from the REPO, not from ~/Downloads.
 #
@@ -169,7 +171,7 @@ DATASETS: List[Dataset] = [
             "(visible_from = filingDate, not a +90d proxy); 110,942 filings "
             "indexed back to 2015; fills over ~8 weeks of off-hours sessions",
             ["build_india_factor_panel.py"]),
-    Dataset("warehouse.ohlcv_adj_in", Path("/Users/umashankar/repos/global-market-data/warehouse/ohlcv_adj/IN"),
+    Dataset("warehouse.ohlcv_adj_in", _RR.OHLCV_ADJ_IN,
             "price_adjuster.py", "ingest", DAILY, 3.0,
             "split/bonus-ADJUSTED India prices — use for ANY multi-month return; "
             "raw closes fake -90% crashes through splits (789 events applied, "
