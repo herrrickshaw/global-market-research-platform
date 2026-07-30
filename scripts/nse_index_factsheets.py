@@ -37,6 +37,7 @@ Usage:
 from __future__ import annotations
 
 import argparse
+import datetime as dt
 import json
 import re
 import sys
@@ -45,8 +46,10 @@ import urllib.request
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 
-import duckdb
 import pandas as pd
+
+sys.path.insert(0, "/Users/umashankar/market-pipeline/code/python_files")
+import pg_client
 
 DSN = "dbname=market_data host=/tmp user=umashankar"
 SCHEMA = "indices"
@@ -57,17 +60,20 @@ CACHE = Path.home() / ".local" / "state" / "nse_factsheet_names.json"
 PDFDIR = Path.home() / "market-pipeline" / "data" / "nse_factsheets"
 WORKERS = 6
 
+# Native Postgres DDL for pg_client.ensure_schema() — no `pg.` ATTACH-alias
+# prefix, Postgres type names (DOUBLE PRECISION not DuckDB's bare DOUBLE).
 DDL = f"""
-CREATE SCHEMA IF NOT EXISTS pg."{SCHEMA}";
-CREATE TABLE IF NOT EXISTS pg."{SCHEMA}".factsheet_meta (
+CREATE SCHEMA IF NOT EXISTS "{SCHEMA}";
+CREATE TABLE IF NOT EXISTS "{SCHEMA}".factsheet_meta (
   index_name VARCHAR, as_of DATE, filename VARCHAR, n_constituents INTEGER,
-  pe DOUBLE, pb DOUBLE, div_yield DOUBLE, fetched_at TIMESTAMP  -- pb/div_yield ALWAYS NULL: see parse()
+  pe DOUBLE PRECISION, pb DOUBLE PRECISION, div_yield DOUBLE PRECISION,
+  fetched_at TIMESTAMP  -- pb/div_yield ALWAYS NULL: see parse()
 );
-CREATE TABLE IF NOT EXISTS pg."{SCHEMA}".factsheet_sector (
-  index_name VARCHAR, as_of DATE, sector VARCHAR, weight_pct DOUBLE
+CREATE TABLE IF NOT EXISTS "{SCHEMA}".factsheet_sector (
+  index_name VARCHAR, as_of DATE, sector VARCHAR, weight_pct DOUBLE PRECISION
 );
-CREATE TABLE IF NOT EXISTS pg."{SCHEMA}".factsheet_holding (
-  index_name VARCHAR, as_of DATE, company VARCHAR, weight_pct DOUBLE
+CREATE TABLE IF NOT EXISTS "{SCHEMA}".factsheet_holding (
+  index_name VARCHAR, as_of DATE, company VARCHAR, weight_pct DOUBLE PRECISION
 );
 """
 
@@ -113,19 +119,15 @@ def get_pdf(fn: str) -> bytes | None:
 
 
 def connect():
-    con = duckdb.connect()
-    con.execute("INSTALL postgres"); con.execute("LOAD postgres")
-    con.execute(f"ATTACH '{DSN}' AS pg (TYPE postgres)")
-    for s in filter(None, (x.strip() for x in DDL.split(";"))):
-        con.execute(s)
-    con.execute("CALL pg_clear_cache()")
-    return con
+    pg_client.connect()
+    pg_client.ensure_schema([s.strip() for s in DDL.split(";") if s.strip()])
+    return pg_client.get_connection()
 
 
 def index_names(con):
-    return [r[0] for r in con.execute(
-        f'SELECT DISTINCT index_name FROM pg."{SCHEMA}".nse_daily ORDER BY 1'
-    ).fetchall()]
+    with con.cursor() as cur:
+        cur.execute(f'SELECT DISTINCT index_name FROM "{SCHEMA}".nse_daily ORDER BY 1')
+        return [r[0] for r in cur.fetchall()]
 
 
 LISTING = "https://www.niftyindices.com/reports/index-factsheet"
@@ -273,22 +275,27 @@ def fetch(con) -> int:
         time.sleep(0.3)
     if not meta:
         print("nothing parsed"); return 1
-    for tbl, rows in (("factsheet_meta", meta), ("factsheet_sector", secs),
-                      ("factsheet_holding", holds)):
+    fetched_at = dt.datetime.now()
+    for tbl, rows, cols in (
+        ("factsheet_meta", meta, ["index_name", "as_of", "filename", "n_constituents",
+                                  "pe", "pb", "div_yield", "fetched_at"]),
+        ("factsheet_sector", secs, ["index_name", "as_of", "sector", "weight_pct"]),
+        ("factsheet_holding", holds, ["index_name", "as_of", "company", "weight_pct"]),
+    ):
         if not rows:
             continue
         df = pd.DataFrame(rows)
-        con.register("inc", df)
+        if tbl == "factsheet_meta":
+            df["fetched_at"] = fetched_at
         # Dedupe on index_name alone. (index_name, as_of) was the key and it
         # silently failed: as_of is NULL for factsheets whose header does not
         # parse, and `IN` never matches NULL, so nothing was deleted and every
         # re-run appended duplicates — 326 rows for 253 files.
-        con.execute(f'DELETE FROM pg."{SCHEMA}".{tbl} WHERE index_name IN '
-                    f"(SELECT DISTINCT index_name FROM inc)")
-        cols = ", ".join(df.columns)
-        extra = ", now()" if tbl == "factsheet_meta" else ""
-        con.execute(f'INSERT INTO pg."{SCHEMA}".{tbl} SELECT {cols}{extra} FROM inc')
-        con.unregister("inc")
+        names = sorted(df.index_name.unique().tolist())
+        out_rows = [tuple(None if v != v else v for v in r)   # NaN -> NULL
+                    for r in df[cols].itertuples(index=False, name=None)]
+        pg_client.delete_and_insert(SCHEMA, tbl, "index_name = ANY(%s)",
+                                    (names,), out_rows, cols)
         print(f"  {tbl}: {len(df):,} rows")
     print(f"\nPDFs cached in {PDFDIR}")
     return 0
@@ -297,9 +304,12 @@ def fetch(con) -> int:
 def status(con) -> int:
     for t in ("factsheet_meta", "factsheet_sector", "factsheet_holding"):
         try:
-            n, d = con.execute(f'SELECT count(*), max(as_of) FROM pg."{SCHEMA}".{t}').fetchone()
+            with con.cursor() as cur:
+                cur.execute(f'SELECT count(*), max(as_of) FROM "{SCHEMA}".{t}')
+                n, d = cur.fetchone()
             print(f"  {t:20s} {n:>6,} rows   latest {d}")
         except Exception:                                 # noqa: BLE001
+            con.rollback()
             print(f"  {t:20s} absent")
     return 0
 
