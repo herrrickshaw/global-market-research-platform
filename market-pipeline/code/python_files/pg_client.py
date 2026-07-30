@@ -209,3 +209,27 @@ def delete_and_insert(
     except Exception:
         _conn.rollback()
         raise
+
+
+def append_rows(schema: str, table: str, columns: Sequence[str], rows: Sequence[tuple]) -> int:
+    """
+    Pure append — bulk INSERT only, no delete/truncate. For append-only
+    tables (an ingest log, a snapshots history) where delete_and_insert's
+    DELETE/TRUNCATE step would be actively wrong (it would erase history
+    this table exists to keep). Same execute_values idiom as the other two
+    primitives. Returns the number of rows inserted (0 if `rows` is empty).
+    """
+    if _conn is None or not rows:
+        return 0
+    try:
+        with _conn.cursor() as cur:
+            psycopg2.extras.execute_values(
+                cur,
+                f'INSERT INTO "{schema}"."{table}" ({", ".join(columns)}) VALUES %s',
+                rows,
+            )
+        _conn.commit()
+        return len(rows)
+    except Exception:
+        _conn.rollback()
+        raise
