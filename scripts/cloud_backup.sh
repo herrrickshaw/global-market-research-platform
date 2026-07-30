@@ -98,26 +98,33 @@ TREES=(
   "backup_archives|$HOME/.backup-archives"
 )
 
-# 🔴 THE 98,289-FILE PROBLEM. market_cache/nse_xbrl/xml holds 98,289 XML files
-# (5.1 GB) — 73% of every file in market_cache. Dropbox rate-limits WRITE
-# OPERATIONS per account, not bytes, so syncing them individually throttles no
-# matter how fast the link is. On 2026-07-28 this step ran 9h20m and then died:
+# 🔴 THE MANY-SMALL-FILES PROBLEM, TWICE NOW. market_cache/nse_xbrl/xml (98,289
+# XML files, 5.1 GB, static/append-only) was the first case: Dropbox rate-limits
+# WRITE OPERATIONS per account, not bytes, so syncing files individually
+# throttles no matter how fast the link is. On 2026-07-28 this step ran 9h20m
+# and then died:
 #
 #   ERROR : ...: upload failed: too_many_write_operations
 #   ERROR : Cancelling sync due to fatal error: upload failed: batcher is shutting down
 #     ! market_cache: sync FAILED
 #
-# and the peer script was STILL being throttled at 08:29 the next morning with
-# nothing competing, which is what showed the account lock added earlier had
-# treated a symptom rather than the cause.
+# market_cache/ohlc (7,682 parquets, 334 MB) is the second case, found
+# 2026-07-30 — same throttling shape (2,705 too_many_write_operations errors,
+# 4h for a sync that should take minutes) despite being the OPPOSITE of static:
+# 98.6% of its files are rewritten daily (fresh price bar per ticker). Dropbox's
+# per-request throttling does not care whether the file set is static or
+# live-updated, only how many of them there are.
 #
-# repo-data-dedup/scripts/cloud_backup.sh already solved this — its
-# "static-subdir archive pattern (standard 2026-07-23)" tar.zst's such subdirs
-# into ~/.backup-archives, rebuilt only when their file-count:size fingerprint
-# changes, and excludes them from the raw sync. The same 5.1 GB becomes ONE
-# ~300 MB file. That script builds the archive; this one consumes it, so the
-# exclusion below is safe only because backup_archives is in TREES above.
-EXTRA_EXCLUDES=(--exclude "nse_xbrl/xml/**")
+# repo-data-dedup/scripts/cloud_backup.sh's "static-subdir archive pattern
+# (standard 2026-07-23)" tar.zst's such subdirs into ~/.backup-archives and
+# excludes them from the raw sync. Its rebuild gate was originally
+# file-count:size-KB, which is fine for genuinely-static XBRL filings but was
+# widened to also track max-mtime before ohlc was added — a daily rewrite that
+# keeps roughly the same file count and a du-rounded size could otherwise leave
+# a live-updated directory's archive frozen on day one. That script builds the
+# archive; this one consumes it, so the exclusion below is safe only because
+# backup_archives is in TREES above.
+EXTRA_EXCLUDES=(--exclude "nse_xbrl/xml/**" --exclude "ohlc/**")
 
 {
   echo "=== cloud backup $(date '+%Y-%m-%d %H:%M:%S %Z') -> $REMOTE ==="
