@@ -515,7 +515,7 @@ def build(a) -> int:
         pg_client.ensure_schema([s.strip() for s in DDL.split(";") if s.strip()])
         codes = sorted(df.index_code.unique().tolist())
         cols = ["index_code", "index_name", "index_date", "level", "n_members"]
-        tuples = list(df[cols].itertuples(index=False, name=None))
+        tuples = pg_client.to_rows(df, cols)
         pg_client.delete_and_insert(
             SCHEMA, "custom_daily", "index_code = ANY(%s)", (codes,), tuples, cols,
         )

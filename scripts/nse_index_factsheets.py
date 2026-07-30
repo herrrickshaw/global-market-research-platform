@@ -292,8 +292,7 @@ def fetch(con) -> int:
         # parse, and `IN` never matches NULL, so nothing was deleted and every
         # re-run appended duplicates — 326 rows for 253 files.
         names = sorted(df.index_name.unique().tolist())
-        out_rows = [tuple(None if v != v else v for v in r)   # NaN -> NULL
-                    for r in df[cols].itertuples(index=False, name=None)]
+        out_rows = pg_client.to_rows(df, cols)
         pg_client.delete_and_insert(SCHEMA, tbl, "index_name = ANY(%s)",
                                     (names,), out_rows, cols)
         print(f"  {tbl}: {len(df):,} rows")

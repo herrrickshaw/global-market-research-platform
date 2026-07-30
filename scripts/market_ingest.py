@@ -137,7 +137,7 @@ def refresh_symbol_names(con) -> None:
     rank = {"NSE": 0, "BSE": 1}
     df["_rn"] = df["exchange"].map(lambda e: rank.get(e, 2))
     df = df.sort_values("_rn").drop_duplicates("symbol", keep="first")
-    rows = list(df[["symbol", "name", "exchange"]].itertuples(index=False, name=None))
+    rows = pg_client.to_rows(df, ["symbol", "name", "exchange"])
     pg_client.delete_and_insert(SCHEMA, "symbol_names", "", (), rows,
                                 ["symbol", "name", "exchange"], truncate=True)
 
@@ -222,8 +222,7 @@ def _load_snapshot_file(con, market: str, geo: str, f: Path, as_of: dt.date) -> 
     })
     cols = ["market", "as_of_date", "symbol", "ltp", "prev_close",
             "change_pct", "darvas_signal", "source_file", "name"]
-    rows = [tuple(None if v != v else v for v in r)   # NaN -> NULL
-            for r in out[cols].itertuples(index=False, name=None)]
+    rows = pg_client.to_rows(out, cols)
     pg_client.append_rows(SCHEMA, "snapshots", cols, rows)
     return len(out)
 

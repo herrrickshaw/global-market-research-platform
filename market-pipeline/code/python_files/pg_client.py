@@ -56,6 +56,8 @@ import threading
 from pathlib import Path
 from typing import Optional, Sequence
 
+import numpy as np
+import pandas as pd
 import psycopg2
 import psycopg2.extras
 
@@ -114,6 +116,40 @@ def close() -> None:
         _available = False
 
 
+def to_rows(df, columns: Sequence[str]) -> list:
+    """
+    Convert a DataFrame's selected columns into row-tuples safe for
+    psycopg2 (execute_values / cursor.execute).
+
+    Two things psycopg2 cannot adapt on its own, both found live while
+    migrating scripts onto this module:
+      - numpy scalar types (numpy.int64, numpy.float64, numpy.bool_) —
+        `execute_values` raises "can't adapt type 'numpy.int64'" even
+        though the same value as a native Python int works fine. Any
+        DataFrame column backed by a numpy integer/float dtype yields
+        these via itertuples(), not just explicitly-numpy-typed data.
+      - missing-value sentinels other than plain float NaN — pandas'
+        nullable dtypes (Int64, string[python], ...) use `pd.NA`, and the
+        common `v != v` NaN-detection trick throws `TypeError: boolean
+        value of NA is ambiguous` when v is pd.NA instead of a float.
+    `pd.isna(v)` handles NaN/None/pd.NA/NaT uniformly; the isinstance
+    checks convert numpy's boxed scalars to native types Postgres/psycopg2
+    already know how to bind.
+    """
+    def conv(v):
+        if pd.isna(v):
+            return None
+        if isinstance(v, np.integer):
+            return int(v)
+        if isinstance(v, np.floating):
+            return float(v)
+        if isinstance(v, np.bool_):
+            return bool(v)
+        return v
+    return [tuple(conv(v) for v in r)
+            for r in df[list(columns)].itertuples(index=False, name=None)]
+
+
 def ensure_schema(statements: Sequence[str]) -> None:
     """Run each DDL statement in its own try/except, swallowing 'already
     exists'-type errors — same idempotent-bootstrap idiom as
@@ -152,10 +188,7 @@ def replace_table_atomic(schema: str, table: str, df, column_types: dict) -> int
             cur.execute(f'DROP TABLE IF EXISTS "{schema}"."{new_table}"')
             cur.execute(f'CREATE TABLE "{schema}"."{new_table}" ({cols_ddl})')
         with _conn.cursor() as cur:
-            rows = [
-                tuple(None if v != v else v for v in r)  # NaN -> NULL (v != v is the NaN test)
-                for r in df[cols].itertuples(index=False, name=None)
-            ]
+            rows = to_rows(df, cols)
             psycopg2.extras.execute_values(
                 cur,
                 f'INSERT INTO "{schema}"."{new_table}" ({", ".join(cols)}) VALUES %s',
