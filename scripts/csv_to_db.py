@@ -23,21 +23,6 @@ import duckdb
 sys.path.insert(0, "/Users/umashankar/market-pipeline/code/python_files")
 import pg_client
 
-# DuckDB type names that aren't already valid Postgres syntax. Anything not
-# listed here (VARCHAR, BIGINT, DATE, BOOLEAN, TIMESTAMP, DECIMAL(p,s), ...)
-# passes through unchanged — both engines accept the same spelling.
-_DUCKDB_TO_PG_TYPE = {
-    "DOUBLE": "double precision",
-    "FLOAT": "real",
-    "HUGEINT": "numeric",
-    "BLOB": "bytea",
-}
-
-
-def _pg_type(duckdb_type: str) -> str:
-    return _DUCKDB_TO_PG_TYPE.get(duckdb_type.upper(), duckdb_type)
-
-
 ROOT = Path(__file__).resolve().parent.parent
 DATA = ROOT / 'data'
 DUCKDB_PATH = DATA / 'market_data.duckdb'
@@ -106,7 +91,7 @@ def to_postgres(con: duckdb.DuckDBPyConnection, csvs: list[Path], dsn: str) -> N
         table = _table_name(csv_path)
         print(f"  duckdb.{table} -> postgres.{table}")
         df = con.execute(f"SELECT * FROM {table}").df()
-        col_types = {c[0]: _pg_type(c[1]) for c in con.execute(f"DESCRIBE {table}").fetchall()}
+        col_types = {c[0]: pg_client.pg_type(c[1]) for c in con.execute(f"DESCRIBE {table}").fetchall()}
         pg_client.replace_table_atomic("public", table, df, col_types)
 
 
