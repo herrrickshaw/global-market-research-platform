@@ -59,6 +59,20 @@ SCRIPTS = HOME / "scripts"
 BACKEND = HOME / "backend"
 GLOBAL_MARKET_DATA = HOME / "repos" / "global-market-data"
 GLOBAL_STOCK_SCREENER = HOME / "repos" / "global-stock-screener"
+GLOBAL_TICKER_UNIVERSE = HOME / "repos" / "global-ticker-universe"
+
+# global-ticker-universe: a THIRD sibling repo (found via graphify 2026-07-31,
+# absent from this registry until now) — 60,971 validated tickers across 33
+# countries in data/validated_universe_flat.csv (market_code, market_name,
+# exchange, yf_symbol). Covers several markets this platform has never
+# touched anywhere (Brazil, Taiwan, Canada, Australia, Argentina, Russia,
+# Saudi Arabia, New Zealand — HK is already in cache.symbol_master).
+# 🔴 DE (17,121) and AT (8,813) are implausible as real listed-company counts
+# for those exchanges (contrast CLAUDE.md's own curated 142-stock Frankfurt
+# list) — almost certainly include ETFs/ETNs/certificates, not filtered out
+# by whatever "validated" means for those two markets specifically. Don't
+# import DE/AT from here without a fresh look at what's actually in them.
+GLOBAL_TICKER_UNIVERSE_FLAT = GLOBAL_TICKER_UNIVERSE / "data" / "validated_universe_flat.csv"
 
 # ── global-market-data: OHLCV warehouse ─────────────────────────────────────
 _GMD_WAREHOUSE = GLOBAL_MARKET_DATA / "warehouse"
