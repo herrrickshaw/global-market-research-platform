@@ -116,6 +116,23 @@ def close() -> None:
         _available = False
 
 
+# DuckDB type names that aren't already valid Postgres syntax. Anything not
+# listed here (VARCHAR, BIGINT, DATE, BOOLEAN, TIMESTAMP, DECIMAL(p,s), ...)
+# passes through unchanged — both engines accept the same spelling. Shared by
+# any script that mirrors a local DuckDB table's schema into Postgres
+# (csv_to_db.py, bhavcopy_to_db.py).
+_DUCKDB_TO_PG_TYPE = {
+    "DOUBLE": "double precision",
+    "FLOAT": "real",
+    "HUGEINT": "numeric",
+    "BLOB": "bytea",
+}
+
+
+def pg_type(duckdb_type: str) -> str:
+    return _DUCKDB_TO_PG_TYPE.get(duckdb_type.upper(), duckdb_type)
+
+
 def to_rows(df, columns: Sequence[str]) -> list:
     """
     Convert a DataFrame's selected columns into row-tuples safe for
@@ -189,9 +206,10 @@ def replace_table_atomic(schema: str, table: str, df, column_types: dict) -> int
             cur.execute(f'CREATE TABLE "{schema}"."{new_table}" ({cols_ddl})')
         with _conn.cursor() as cur:
             rows = to_rows(df, cols)
+            quoted_cols = ", ".join(f'"{c}"' for c in cols)
             psycopg2.extras.execute_values(
                 cur,
-                f'INSERT INTO "{schema}"."{new_table}" ({", ".join(cols)}) VALUES %s',
+                f'INSERT INTO "{schema}"."{new_table}" ({quoted_cols}) VALUES %s',
                 rows,
             )
         with _conn.cursor() as cur:
@@ -232,9 +250,10 @@ def delete_and_insert(
                 cur.execute(f'DELETE FROM "{schema}"."{table}" WHERE {delete_sql}', delete_params)
         if rows:
             with _conn.cursor() as cur:
+                quoted_cols = ", ".join(f'"{c}"' for c in columns)
                 psycopg2.extras.execute_values(
                     cur,
-                    f'INSERT INTO "{schema}"."{table}" ({", ".join(columns)}) VALUES %s',
+                    f'INSERT INTO "{schema}"."{table}" ({quoted_cols}) VALUES %s',
                     rows,
                 )
         _conn.commit()
@@ -256,9 +275,10 @@ def append_rows(schema: str, table: str, columns: Sequence[str], rows: Sequence[
         return 0
     try:
         with _conn.cursor() as cur:
+            quoted_cols = ", ".join(f'"{c}"' for c in columns)
             psycopg2.extras.execute_values(
                 cur,
-                f'INSERT INTO "{schema}"."{table}" ({", ".join(columns)}) VALUES %s',
+                f'INSERT INTO "{schema}"."{table}" ({quoted_cols}) VALUES %s',
                 rows,
             )
         _conn.commit()
