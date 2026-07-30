@@ -85,25 +85,64 @@ NOTES=()
   echo "=== daily research $(date) ==="
 
   # ── parked-market scans: kept current so a market can be re-admitted ───────
-  step "[R1] Europe full market scan (17 exchanges)"
-  $PY full_european_market_scan.py --universe data/europe_broad_list.csv --label broad \
-    || NOTES+=("Europe: full market scan")
-  step "[R2] Japan full market scan (TSE)"
-  $PY full_japan_market_scan.py --workers 10 || NOTES+=("Japan: full market scan")
-  step "[R3] Korea full market scan (KOSPI+KOSDAQ)"
-  $PY full_korea_market_scan.py --workers 10 || NOTES+=("Korea: full market scan")
+  # 🔴 PARALLELIZED 2026-07-30, WITH THE WORKER COUNTS DELIBERATELY SPLIT DOWN.
+  # These three ran serially, one after another, each internally threaded
+  # (Europe/Japan 10 workers, Korea 10 — daily_research.sh's own invocation
+  # overrode Korea's 8 default). Serial execution meant only ONE market's
+  # threads ever hit yfinance at once, so peak concurrent connections were ~10
+  # regardless of how many markets there were.
+  #
+  # Running all three markets at once is safe (each writes its own
+  # timestamped .xlsx, and ohlcv_cache keys by market — ohlcv_EUROPE.parquet,
+  # ohlcv_JAPAN.parquet, ohlcv_KOREA.parquet never touch each other), but
+  # simply backgrounding them at their EXISTING worker counts would raise peak
+  # concurrent yfinance connections to 10+10+10=30 — three times today's peak,
+  # against a data source this repo has already hit real rate-limit failures
+  # on (see india_split_adjust.py's fetch_splits retry logic, and the
+  # yfinance-collector work earlier today). More parallel HTTP connections to
+  # the same throttled endpoint does not reliably mean more throughput.
+  #
+  # So each market's own thread count is cut roughly in proportion to how many
+  # markets now run at once (10/3 ≈ 3-4), holding TOTAL concurrent connections
+  # near the old serial peak while trading THREAD parallelism for MARKET
+  # parallelism — the actual wall-clock win, without more simultaneous load on
+  # yfinance than before. europe's --workers is new this same day (see
+  # full_european_market_scan.py): it had no CLI override, the only one of the
+  # three that could not be dialed down for this.
+  step "[R1-R3] parallel market scans (Europe · Japan · Korea)"
+  $PY full_european_market_scan.py --universe data/europe_broad_list.csv \
+    --label broad --workers 4 &
+  PID_EU=$!
+  $PY full_japan_market_scan.py --workers 3 &
+  PID_JP=$!
+  $PY full_korea_market_scan.py --workers 3 &
+  PID_KR=$!
+  wait $PID_EU || NOTES+=("Europe: full market scan")
+  wait $PID_JP || NOTES+=("Japan: full market scan")
+  wait $PID_KR || NOTES+=("Korea: full market scan")
 
   # ── correlation scans ─────────────────────────────────────────────────────
   # US is weekly by design: its matrix is the largest and changes slowly.
-  step "[R4] correlation scans (NSE · Europe · Japan · Korea)"
+  #
   # 🔴 UPPERCASE, and --output-dir is required. The first version passed lowercase
   # codes and omitted the output dir; argparse rejected all four with a usage
   # message and the run recorded them as failures. The choices are
   # {NSE,US,BSE,JAPAN,KOREA,CHINA,HK,EUROPE} — copied from daily_pipeline.sh
   # rather than guessed, which is what I should have done first.
+  #
+  # Parallelized alongside the fix, not just after it: market_correlation_scan
+  # has no internal worker-thread pool of its own (no --workers flag exists),
+  # and by this point in the run each market's ohlcv_cache is warm from the
+  # scans above, so this step is mostly local cache reads plus a small re-seed
+  # for symbols still lagging — not four markets' worth of fresh yfinance load.
+  step "[R4] correlation scans (NSE · Europe · Japan · Korea, parallel)"
   for M in NSE EUROPE JAPAN KOREA; do
-    $PY market_correlation_scan.py --market "$M" --output-dir correlation_scan \
-      || NOTES+=("correlation: $M")
+    $PY market_correlation_scan.py --market "$M" --output-dir correlation_scan &
+    eval "PID_CORR_$M=\$!"
+  done
+  for M in NSE EUROPE JAPAN KOREA; do
+    eval "_pid=\$PID_CORR_$M"
+    wait "$_pid" || NOTES+=("correlation: $M")
   done
   if [ "$DOW" = "1" ] || [ "$FORCE_WEEKLY" = "1" ]; then
     step "[R5] correlation scan — US (weekly, Mondays)"
