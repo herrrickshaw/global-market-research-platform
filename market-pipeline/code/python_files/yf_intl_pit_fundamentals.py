@@ -95,10 +95,13 @@ from __future__ import annotations
 
 import argparse
 import sys
-import time
+from functools import partial
 from pathlib import Path
+from typing import Callable
 
 import pandas as pd
+
+from iter_utils import for_each_fail_soft, with_circuit_breaker
 
 try:
     import data_registry as _R
@@ -141,6 +144,31 @@ def _local_fundamentals(market: str) -> pd.DataFrame:
     return pd.read_parquet(path) if path.exists() else pd.DataFrame()
 
 
+def _universe_from_symbol_master(market: str) -> list:
+    df = _symbol_master()
+    return df[df["exchange"].isin(MARKET_EXCHANGES[market])]["yf_symbol"].dropna().unique().tolist()
+
+
+def _universe_from_local_file(market: str) -> list:
+    return _local_fundamentals(market)["ticker"].dropna().unique().tolist()
+
+
+def _universe_from_screener_kit(market: str) -> list:
+    import screener_kit as kit
+    return list(kit.load(market).keys())
+
+
+# market -> its universe-source function. A dispatch TABLE, not an
+# if/elif/elif chain — adding a fourth universe source later (a new
+# LOCAL_* or PURE_* group) is a one-line dict update here instead of
+# another branch, and the mapping itself doubles as documentation of
+# which markets use which source.
+UNIVERSE_SOURCE: dict = {}
+UNIVERSE_SOURCE.update({m: _universe_from_symbol_master for m in MARKET_EXCHANGES})
+UNIVERSE_SOURCE.update({m: _universe_from_local_file for m in LOCAL_ENRICHED_MARKETS})
+UNIVERSE_SOURCE.update({m: _universe_from_screener_kit for m in PURE_YF_MARKETS})
+
+
 def universe(market: str) -> list:
     """Symbol list in stable HASH order, not alphabetical — a plain sort
     clusters low-numbered/older tickers first (confirmed live: the initial
@@ -150,18 +178,10 @@ def universe(market: str) -> list:
     across runs (so --limit resumes make steady, reproducible progress)
     without favoring any lexical region of the universe."""
     import hashlib
-    if market in MARKET_EXCHANGES:
-        df = _symbol_master()
-        exchanges = MARKET_EXCHANGES[market]
-        syms = df[df["exchange"].isin(exchanges)]["yf_symbol"].dropna().unique().tolist()
-    elif market in LOCAL_ENRICHED_MARKETS:
-        syms = _local_fundamentals(market)["ticker"].dropna().unique().tolist()
-    elif market in PURE_YF_MARKETS:
-        import screener_kit as kit
-        syms = list(kit.load(market).keys())
-    else:
+    source = UNIVERSE_SOURCE.get(market)
+    if source is None:
         raise ValueError(f"unknown market '{market}'")
-    return sorted(syms, key=lambda s: hashlib.md5(s.encode()).hexdigest())
+    return sorted(source(market), key=lambda s: hashlib.md5(s.encode()).hexdigest())
 
 
 def cache_dir(market: str) -> Path:
@@ -324,30 +344,41 @@ def collect(market: str, limit: int, refresh: bool = False) -> None:
     next_map = (pd.read_parquet(ne_path).set_index("symbol").to_dict("index")
                 if ne_path.exists() else {})
 
-    done = 0
-    consecutive_failures = 0
-    for symbol in pending[:limit]:
-        try:
-            if local_df is not None:
-                df, next_row = _fetch_one_local(market, symbol, local_df)
-            else:
-                df, next_row = _fetch_one(market, symbol)
-            df.to_parquet(cache_path(market, symbol), index=False)
-            if next_row:
-                next_map[symbol] = {"next_earnings_date": next_row["next_earnings_date"],
-                                     "eps_estimate": next_row["eps_estimate"]}
-            elif symbol in next_map:
-                del next_map[symbol]  # no longer has an upcoming report on file
-            consecutive_failures = 0
-            done += 1
-        except Exception as e:
-            consecutive_failures += 1
-            print(f"  ERROR {symbol}: {e}", file=sys.stderr)
-            if consecutive_failures >= CONSECUTIVE_FAILURE_LIMIT:
-                print(f"  {consecutive_failures} consecutive failures — stopping "
-                      f"(possible rate limit/block, not assumed without this check)", file=sys.stderr)
-                break
-        time.sleep(0.35)
+    # Curry the market-specific fetcher down to a single-argument
+    # Callable[[str], tuple] ONCE, outside the per-symbol loop — a
+    # functools.partial of whichever multi-arg fetch function this
+    # market needs, rather than re-branching on local_df for every
+    # symbol. Haskell-style: prefer a function of one argument built by
+    # partial application over a function that re-decides its own shape
+    # on every call.
+    fetch: Callable[[str], tuple] = (
+        partial(_fetch_one_local, market, local_df=local_df) if local_df is not None
+        else partial(_fetch_one, market)
+    )
+
+    def _collect_one(symbol: str) -> bool:
+        """One symbol's fetch+cache+next-earnings-bookkeeping — the unit
+        with_circuit_breaker below drives. Returning through the normal
+        fail-soft/circuit-breaker abstraction (rather than a bespoke
+        try/except here) is the same wiring collect() used to hand-roll
+        itself; see iter_utils.py."""
+        df, next_row = fetch(symbol)
+        df.to_parquet(cache_path(market, symbol), index=False)
+        if next_row:
+            next_map[symbol] = {"next_earnings_date": next_row["next_earnings_date"],
+                                 "eps_estimate": next_row["eps_estimate"]}
+        elif symbol in next_map:
+            del next_map[symbol]  # no longer has an upcoming report on file
+        return True
+
+    # Sequential + paced, not parallel_map: yfinance's rate limiter is
+    # time-windowed, not per-connection — concurrency here was tested
+    # live (2026-07-31) to trip it SOONER, not finish the job faster. See
+    # iter_utils.parallel_map's own docstring for the evidence.
+    attempted = with_circuit_breaker(
+        pending[:limit], _collect_one, limit=CONSECUTIVE_FAILURE_LIMIT,
+        sleep_s=0.35, label=lambda s: s)
+    done = len(attempted)  # with_circuit_breaker only records successes
 
     if next_map:
         ne_df = pd.DataFrame([{"symbol": s, **v} for s, v in next_map.items()])
@@ -400,8 +431,9 @@ def load(markets: list) -> int:
                 "eps_estimate", "surprise_pct", "revenue", "net_income"]
                + LOCAL_EXTRA_COLS + ["src"])
     ne_columns = ["market", "symbol", "next_earnings_date", "eps_estimate", "src"]
-    total = 0
-    for market in markets:
+
+    def _load_one_market(market: str) -> int:
+        n_total = 0
         frames = []
         for p in cache_dir(market).glob("*.parquet"):
             df = pd.read_parquet(p)
@@ -417,7 +449,7 @@ def load(markets: list) -> int:
             rows = pg_client.to_rows(panel, columns)
             n = pg_client.upsert_rows(SCHEMA, TABLE, columns, rows, conflict_cols=["market", "symbol", "period_end"])
             print(f"[{market}] upserted {n} history rows ({panel['symbol'].nunique()} symbols)")
-            total += n
+            n_total += n
         else:
             print(f"[{market}] no history cached yet")
 
@@ -431,8 +463,13 @@ def load(markets: list) -> int:
                 n2 = pg_client.upsert_rows(SCHEMA, "next_earnings", ne_columns, ne_rows,
                                             conflict_cols=["market", "symbol"])
                 print(f"[{market}] upserted {n2} next-earnings rows")
-                total += n2
-    return total
+                n_total += n2
+        return n_total
+
+    # Fail-soft per market — a Postgres hiccup on one market's upsert must
+    # not abort the remaining markets' already-fetched data from loading.
+    results = for_each_fail_soft(markets, _load_one_market, label=lambda m: m)
+    return sum(n for n in results.values() if n)
 
 
 def status() -> None:
@@ -457,8 +494,12 @@ def main() -> int:
     markets = ALL_MARKETS if args.market == "ALL" else [args.market]
 
     if args.collect:
-        for m in markets:
-            collect(m, args.limit, refresh=args.refresh)
+        # Curried to Callable[[str], None] and driven through the shared
+        # fail-soft runner — collect() itself never previously caught its
+        # own exceptions here, so one market's unexpected error used to
+        # silently abort every market after it in a `--market ALL` run.
+        for_each_fail_soft(markets, partial(collect, limit=args.limit, refresh=args.refresh),
+                            label=lambda m: m)
     elif args.load:
         load(markets)
     elif args.status:

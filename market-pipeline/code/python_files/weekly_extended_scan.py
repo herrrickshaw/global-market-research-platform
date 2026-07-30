@@ -37,11 +37,13 @@ from __future__ import annotations
 import argparse
 import datetime as dt
 import sys
+from functools import partial
 
 import pandas as pd
 
 import market_tiers
 import pg_client
+from iter_utils import for_each_fail_soft
 
 SCHEMA = "market_daily"
 
@@ -126,12 +128,14 @@ def main() -> int:
     markets = [args.market.upper()] if args.market else market_tiers.TIER3
     print(f"=== weekly extended scan {dt.datetime.now():%Y-%m-%d %H:%M:%S} — "
           f"{len(markets)} Tier 3 markets ===")
-    total = 0
-    for m in markets:
-        try:
-            total += run_market(m, do_update=not args.skip_update)
-        except Exception as e:
-            print(f"[{m}] FAILED entirely: {e}", file=sys.stderr)
+    # run_market curried to Callable[[str], int] and driven through the
+    # shared fail-soft runner (iter_utils.py) instead of a bespoke
+    # try/except — one market's unexpected failure still can't take the
+    # rest of the run down with it, now via the same wiring
+    # yf_intl_pit_fundamentals.py uses for the identical shape.
+    results = for_each_fail_soft(
+        markets, partial(run_market, do_update=not args.skip_update), label=lambda m: m)
+    total = sum(n for n in results.values() if n)
     print(f"=== done — {total} total snapshot rows across {len(markets)} markets ===")
 
     try:
