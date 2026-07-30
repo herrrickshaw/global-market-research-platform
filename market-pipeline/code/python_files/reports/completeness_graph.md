@@ -91,19 +91,18 @@ Generated 2026-07-30 by `completeness_graph.py` (LangGraph, 4 nodes, determinist
 
 | market | rows | price fields | fundamentals | measured | verdict |
 |---|--:|--:|--:|--:|---|
-| us | 9,428 | 6,435 | 9,428 (100.0%) | 0 (0.0%) | 🔴 ALMOST ALL IMPUTED — populated, not measured |
+| us | 9,458 | 6,435 | 9,451 (99.9%) | 3,137 (33.2%) | fundamentals present |
 | china | 5,207 | 5,196 | 5,188 (99.6%) | 19 (0.4%) | 🔴 ALMOST ALL IMPUTED — populated, not measured |
 | japan | 3,664 | 3,643 | 3,664 (100.0%) | 0 (0.0%) | 🔴 ALMOST ALL IMPUTED — populated, not measured |
 | india | 3,484 | 2,367 | 3,484 (100.0%) | 5 (0.1%) | 🔴 ALMOST ALL IMPUTED — populated, not measured |
 | korea | 2,766 | 2,757 | 2,766 (100.0%) | 0 (0.0%) | 🔴 ALMOST ALL IMPUTED — populated, not measured |
 | hong_kong | 2,765 | 2,765 | 0 (0.0%) | n/a | 🔴 HOLLOW — counts as coverage, is not coverage |
-| europe | 1,826 | 990 | 1,826 (100.0%) | 424 (23.2%) | fundamentals present |
+| europe | 1,826 | 990 | 1,826 (100.0%) | 416 (22.8%) | fundamentals present |
 
 > `fundamentals` is COUNTED as the BEST-populated column in each group, so it is an upper bound — the true per-field coverage is lower. `measured` is rows whose `fundamentals_source` is NOT `median_imputed` — found 2026-07-30 while investigating a repeated-decimal (pe,pb,roe) triple across unrelated symbols (a contamination shape the whole-number score check above does not catch). Every market sampled at 99-100% imputed; a median-imputed ROE ranks identically to a measured one in anything that sorts on the column, so `fundamentals present` alone was reporting placeholder coverage as if it were per-symbol data. A row that exists with null fundamentals is still worse than a missing table — the missing table raises an error where it is used, the null column silently narrows every downstream sample and still reports full coverage to a `COUNT(*)`.
 
 ## Notes
 
-- 🔴 cassandra[us]: fund_pct reports 100% populated, but only 0.0% of that is measured — the rest is fundamentals_source='median_imputed' reporting as if it were real per-symbol data
 - 🔴 cassandra[india]: fund_pct reports 100% populated, but only 0.1% of that is measured — the rest is fundamentals_source='median_imputed' reporting as if it were real per-symbol data
 - 🔴 cassandra[japan]: fund_pct reports 100% populated, but only 0.0% of that is measured — the rest is fundamentals_source='median_imputed' reporting as if it were real per-symbol data
 - 🔴 cassandra[korea]: fund_pct reports 100% populated, but only 0.0% of that is measured — the rest is fundamentals_source='median_imputed' reporting as if it were real per-symbol data
