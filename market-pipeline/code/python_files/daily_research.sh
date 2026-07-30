@@ -201,6 +201,18 @@ NOTES=()
   step "[R14] cloud backup (rclone -> Dropbox)"
   /Users/umashankar/scripts/cloud_backup.sh || NOTES+=("cloud: rclone backup")
 
+  # ── daily state snapshot (system_state.py, 2026-07-31) ───────────────────
+  # Runs LAST so it captures the complete end-of-day picture — after ingest
+  # and backup, not before. This is what gives "last known state" (the
+  # persistence layer's whole purpose) a real daily cadence instead of only
+  # existing when someone happens to run data_index.py/system_state.py by
+  # hand. --persist and --check-connections are both best-effort/non-
+  # blocking by design (same as every other step here) — a snapshot that
+  # fails to write is a NOTE, never a reason to fail the day's research run.
+  step "[R15] system state snapshot (data freshness + connection health)"
+  $PY data_index.py --persist > /dev/null 2>&1 || NOTES+=("system_state: data snapshot")
+  $PY system_state.py --check-connections > /dev/null 2>&1 || NOTES+=("system_state: connection check")
+
   if [ ${#NOTES[@]} -gt 0 ]; then
     # A NOTE, not an alert. Nothing here gates an email, and mixing these into
     # the brief's alert is what made "the daily brief failed" mean a rainfall
