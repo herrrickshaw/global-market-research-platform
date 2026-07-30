@@ -222,8 +222,7 @@ def upsert(con, df: pd.DataFrame) -> int:
     novel = df[[k not in have for k in key]]
     appended = len(novel)
     if appended:
-        rows = list(novel[["scheme_code", "nav_date", "nav"]]
-                    .itertuples(index=False, name=None))
+        rows = pg_client.to_rows(novel, ["scheme_code", "nav_date", "nav"])
         pg_client.append_rows(SCHEMA, "nav", ["scheme_code", "nav_date", "nav"], rows)
 
     # Scheme master — widen first_seen / last_seen, never narrow (this IS the
@@ -249,8 +248,7 @@ def upsert(con, df: pd.DataFrame) -> int:
     ).reset_index()
     cols = ["scheme_code", "scheme_name", "isin_growth", "isin_reinvest", "amc",
             "category", "plan", "option", "first_seen", "last_seen"]
-    scheme_rows = [tuple(None if v != v else v for v in r)   # NaN -> NULL
-                   for r in agg[cols].itertuples(index=False, name=None)]
+    scheme_rows = pg_client.to_rows(agg, cols)
     if scheme_rows:
         try:
             with con.cursor() as cur:

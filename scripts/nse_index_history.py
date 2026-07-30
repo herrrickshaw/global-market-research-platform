@@ -157,8 +157,7 @@ def upsert(con, df: pd.DataFrame) -> int:
     n = len(novel)
     if n:
         cols = list(df.columns)
-        rows = [tuple(None if v != v else v for v in r)   # NaN -> NULL
-                for r in novel[cols].itertuples(index=False, name=None)]
+        rows = pg_client.to_rows(novel, cols)
         pg_client.append_rows(SCHEMA, "nse_daily", cols, rows)
     return n
 

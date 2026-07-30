@@ -242,8 +242,7 @@ def parse_local(a) -> int:
     cols = ["symbol", "period_start", "period_end", "consolidated", "eps",
             "pat", "revenue", "filing_date", "src"]
     srcs = sorted(df.src.unique().tolist())
-    out_rows = [tuple(None if v != v else v for v in r)   # NaN -> NULL
-                for r in df[cols].itertuples(index=False, name=None)]
+    out_rows = pg_client.to_rows(df, cols)
     pg_client.delete_and_insert(SCHEMA, "india_quarterly", "src = ANY(%s)",
                                 (srcs,), out_rows, cols)
     print(f"\nparsed {len(df):,} quarters · {df.symbol.nunique():,} symbols · "

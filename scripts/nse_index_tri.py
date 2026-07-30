@@ -144,8 +144,7 @@ def main() -> int:
         novel = d[[k not in have for k in key]]
         n = len(novel)
         if n:
-            rows = list(novel[["index_name", "index_date", "tri"]]
-                        .itertuples(index=False, name=None))
+            rows = pg_client.to_rows(novel, ["index_name", "index_date", "tri"])
             pg_client.append_rows(SCHEMA, "nse_tri",
                                   ["index_name", "index_date", "tri"], rows)
         total_new += n
