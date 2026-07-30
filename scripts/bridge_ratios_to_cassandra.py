@@ -116,6 +116,18 @@ MAX_PLAUSIBLE_PB = 50
 # data already ends, in the one market checked before US surfaced the problem.
 MAX_FISCAL_AGE_YEARS = 2.0
 
+# 🔴 INDIA REPORTS net_income/equity IN ₹ CRORE, shares IN ABSOLUTE UNITS.
+# Confirmed on RELIANCE, not guessed: net_income=43851, equity=566235 (both
+# ~crore-scale numbers) against shares=1.35e10 (a real absolute share count —
+# Reliance's actual FY24 bonus roughly doubled it from ~6.77e9). Unscaled,
+# eps = 43851/1.35e10 ≈ 0.0000032 — every India candidate's P/E blows up
+# through the >200 ceiling, which is why the first dry run returned ZERO
+# symbols out of 1,417 candidates. Scaled by 1e7 (1 crore = 10,000,000): eps
+# = 32.4, matching Reliance's real known EPS — the exact ₹crore convention
+# already solved once this session for a DIFFERENT source (screener.in), same
+# fix, same number, independently re-derived here rather than assumed.
+FUND_SCALE = {"INDIA": 1e7}
+
 
 def load_fundamentals(fund_code: str) -> pd.DataFrame:
     c = duckdb.connect()
@@ -158,6 +170,11 @@ def build_ratios(market: str) -> pd.DataFrame:
     px = load_latest_price(panel_dir, panel_glob)
     f["close"] = f.ticker.map(px)
     f = f.dropna(subset=["close"])
+
+    scale = FUND_SCALE.get(market)
+    if scale:
+        f["net_income"] = f.net_income * scale
+        f["equity"] = f.equity * scale
 
     for predicate, divisor in KNOWN_QUIRKS.get(market, []):
         mask = predicate(f.ticker)
