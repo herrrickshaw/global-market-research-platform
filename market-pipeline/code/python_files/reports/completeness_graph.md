@@ -94,7 +94,7 @@ Generated 2026-07-30 by `completeness_graph.py` (LangGraph, 4 nodes, determinist
 | us | 9,458 | 6,435 | 9,451 (99.9%) | 3,137 (33.2%) | fundamentals present |
 | china | 5,207 | 5,196 | 5,188 (99.6%) | 19 (0.4%) | 🔴 ALMOST ALL IMPUTED — populated, not measured |
 | japan | 3,664 | 3,643 | 3,664 (100.0%) | 0 (0.0%) | 🔴 ALMOST ALL IMPUTED — populated, not measured |
-| india | 3,484 | 2,367 | 3,484 (100.0%) | 5 (0.1%) | 🔴 ALMOST ALL IMPUTED — populated, not measured |
+| india | 3,484 | 2,367 | 3,484 (100.0%) | 1,328 (38.1%) | fundamentals present |
 | korea | 2,766 | 2,757 | 2,766 (100.0%) | 0 (0.0%) | 🔴 ALMOST ALL IMPUTED — populated, not measured |
 | hong_kong | 2,765 | 2,765 | 0 (0.0%) | n/a | 🔴 HOLLOW — counts as coverage, is not coverage |
 | europe | 1,826 | 990 | 1,826 (100.0%) | 416 (22.8%) | fundamentals present |
@@ -103,7 +103,6 @@ Generated 2026-07-30 by `completeness_graph.py` (LangGraph, 4 nodes, determinist
 
 ## Notes
 
-- 🔴 cassandra[india]: fund_pct reports 100% populated, but only 0.1% of that is measured — the rest is fundamentals_source='median_imputed' reporting as if it were real per-symbol data
 - 🔴 cassandra[japan]: fund_pct reports 100% populated, but only 0.0% of that is measured — the rest is fundamentals_source='median_imputed' reporting as if it were real per-symbol data
 - 🔴 cassandra[korea]: fund_pct reports 100% populated, but only 0.0% of that is measured — the rest is fundamentals_source='median_imputed' reporting as if it were real per-symbol data
 - 🔴 cassandra[china]: fund_pct reports 100% populated, but only 0.4% of that is measured — the rest is fundamentals_source='median_imputed' reporting as if it were real per-symbol data
