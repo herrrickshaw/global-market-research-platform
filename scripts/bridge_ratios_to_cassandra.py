@@ -76,6 +76,9 @@ import sys
 import duckdb
 import pandas as pd
 
+sys.path.insert(0, "/Users/umashankar/market-pipeline/code/python_files")
+import pg_client
+
 DSN = "dbname=market_data host=/tmp user=umashankar"
 WAREHOUSE = "/Users/umashankar/repos/global-market-data/warehouse/ohlcv"
 
@@ -130,19 +133,16 @@ FUND_SCALE = {"INDIA": 1e7}
 
 
 def load_fundamentals(fund_code: str) -> pd.DataFrame:
-    c = duckdb.connect()
-    c.execute("INSTALL postgres")
-    c.execute("LOAD postgres")
-    c.execute(f"ATTACH '{DSN}' AS pg (TYPE postgres, READ_ONLY)")
-    d = c.execute("""
+    pg_client.connect()
+    d = pd.read_sql("""
         SELECT ticker, fy_end, net_income, equity, shares
-        FROM pg.public.global_fundamentals
-        WHERE market = ?
+        FROM public.global_fundamentals
+        WHERE market = %s
           AND net_income IS NOT NULL
           AND equity IS NOT NULL
           AND shares IS NOT NULL
           AND shares > 0
-    """, [fund_code]).df()
+    """, pg_client.get_connection(), params=[fund_code])
     d["fy_end"] = pd.to_datetime(d.fy_end)
     return d.sort_values("fy_end").drop_duplicates("ticker", keep="last")
 
@@ -212,6 +212,16 @@ def write_cassandra(d: pd.DataFrame, cass_market: str) -> tuple[int, int]:
     from cassandra.cluster import Cluster
     from cassandra.query import UNSET_VALUE
 
+    # Same cluster/keyspace as backend/db/cassandra_client.py:17
+    # (KEYSPACE = 'herrrickshaw') — intentionally NOT imported from there:
+    # this is a short-lived manual CLI run (--market X --apply), not the
+    # long-lived FastAPI server process cassandra_client.py's singleton
+    # lifecycle is designed for, and backend/ has no existing import
+    # relationship with market-pipeline/scripts/ (verified by grep — the
+    # Postgres side above uses pg_client.py precisely because that mirrors
+    # an established pattern; this would be new coupling instead). If
+    # host/keyspace ever need to be genuinely shared, the right unit to
+    # extract is a small constants module, not this session-lifecycle import.
     s = Cluster(["127.0.0.1"]).connect("herrrickshaw")
     stmt = s.prepare(
         "UPDATE stock_quotes SET pe = ?, pb = ?, roe = ?, "
