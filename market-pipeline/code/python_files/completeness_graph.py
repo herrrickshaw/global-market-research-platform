@@ -388,6 +388,40 @@ def audit_cassandra(state: AuditState) -> dict:
         rec["hollow"] = (rec.get("price", 0) > 0.5 * total
                          and rec.get("fund_pct", 0) < 0.05)
 
+        # 🔴 POPULATED IS NOT MEASURED, EITHER — the gap this "hollow" check and
+        # the plausibility check below still both missed. Found 2026-07-30
+        # while investigating a DIFFERENT contamination shape (a repeated
+        # decimal (pe,pb,roe) triple across unrelated symbols — the low-
+        # cardinality-WHOLE-NUMBER check above only catches quality scores like
+        # 25/40/50/65, not a repeated decimal constant). The table has its own
+        # answer sitting right there: `fundamentals_source`, which exists and is
+        # already populated. Sampling it directly: 99-100% of every market's
+        # rows are 'median_imputed'. That is not a bug on its own — the
+        # 2026-07-29 commit that introduced it says exactly what it does — but
+        # this audit was reporting every one of those rows as "fundamentals
+        # present" alongside real ones, with no way to tell them apart. A
+        # median-imputed ROE ranks identically to a measured one in any
+        # screen that sorts on the column.
+        try:
+            # CQL has no `!=` operator ("Unsupported relation"), so measured is
+            # derived as total minus the one equality query CQL DOES support —
+            # not queried directly.
+            imputed = s.execute(
+                "SELECT COUNT(*) FROM stock_quotes WHERE market=%s "
+                "AND fundamentals_source = 'median_imputed' ALLOW FILTERING",
+                (mkt,)).one()[0]
+            rec["imputed"] = imputed
+            rec["measured"] = total - imputed
+            rec["measured_pct"] = rec["measured"] / total if total else 0.0
+        except Exception:                                       # noqa: BLE001
+            pass
+        if rec.get("measured_pct", 1.0) < 0.10 and rec.get("fund_pct", 0) > 0.5:
+            notes.append(
+                f"cassandra[{mkt}]: fund_pct reports {rec['fund_pct']:.0%} "
+                f"populated, but only {rec.get('measured_pct', 0):.1%} of that "
+                f"is measured — the rest is fundamentals_source='median_imputed' "
+                f"reporting as if it were real per-symbol data")
+
         # 🔴 POPULATED IS NOT PLAUSIBLE. On 2026-07-29 this node reported Japan,
         # China, Korea and Europe as "fundamentals present 100%" the moment a
         # rebuild filled their columns. The values were quality SCORES written
@@ -602,25 +636,42 @@ def render(s: AuditState) -> str:
     o()
 
     if s.get("cassandra"):
-        o("## 5. Cassandra — rows present vs fields POPULATED")
+        o("## 5. Cassandra — rows present vs fields POPULATED vs MEASURED")
         o()
-        o("| market | rows | price fields | fundamentals | verdict |")
-        o("|---|--:|--:|--:|---|")
+        o("| market | rows | price fields | fundamentals | measured | verdict |")
+        o("|---|--:|--:|--:|--:|---|")
         for x in sorted(s["cassandra"], key=lambda z: -z["rows"]):
             v = ("🔴 HOLLOW — counts as coverage, is not coverage"
                  if x.get("hollow") else
                  "🔴 SCORE IN A RATIO COLUMN — populated, and wrong"
                  if x.get("suspect_scale") else
+                 "🔴 ALMOST ALL IMPUTED — populated, not measured"
+                 if x.get("measured_pct", 1.0) < 0.10 and x.get("fund_pct", 0) > 0.5 else
                  "fundamentals present" if x.get("fund_pct", 0) >= 0.05 else "—")
+            # "measured" is meaningless where fund_pct is ~0: hong_kong has 0
+            # imputed rows (nothing has ever written to it) and would otherwise
+            # show "100% measured" — total-minus-zero-imputed — for a market
+            # that has NO fundamentals at all. The metric only means something
+            # once there is fundamentals data to be measured-vs-imputed WITHIN.
+            meas = (f"{x['measured']:,} ({x['measured_pct']:.1%})"
+                    if "measured" in x and x.get("fund_pct", 0) > 0.05 else "n/a")
             o(f"| {x['market']} | {x['rows']:,} | {x.get('price', 0):,} "
-              f"| {x.get('fund', 0):,} ({x.get('fund_pct', 0):.1%}) | {v} |")
+              f"| {x.get('fund', 0):,} ({x.get('fund_pct', 0):.1%}) | {meas} | {v} |")
         o()
-        o("> Counted as the BEST-populated column in each group, so these are "
-          "upper bounds — the true per-field coverage is lower. A row that "
-          "exists with null fundamentals is worse than a missing table: the "
-          "missing table raises an error where it is used, while the null "
-          "column silently narrows every downstream sample and still reports "
-          "full coverage to a `COUNT(*)`.")
+        o("> `fundamentals` is COUNTED as the BEST-populated column in each "
+          "group, so it is an upper bound — the true per-field coverage is "
+          "lower. `measured` is rows whose `fundamentals_source` is NOT "
+          "`median_imputed` — found 2026-07-30 while investigating a repeated-"
+          "decimal (pe,pb,roe) triple across unrelated symbols (a contamination"
+          " shape the whole-number score check above does not catch). Every "
+          "market sampled at 99-100% imputed; a median-imputed ROE ranks "
+          "identically to a measured one in anything that sorts on the column, "
+          "so `fundamentals present` alone was reporting placeholder coverage "
+          "as if it were per-symbol data. A row that exists with null "
+          "fundamentals is still worse than a missing table — the missing "
+          "table raises an error where it is used, the null column silently "
+          "narrows every downstream sample and still reports full coverage to "
+          "a `COUNT(*)`.")
         o()
 
     if s.get("notes"):
