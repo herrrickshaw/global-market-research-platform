@@ -49,6 +49,7 @@ from routers.files import router as files_router
 from routers.news import router as news_router
 from routers.alerts import router as alerts_router
 from routers.options_strategies import router as options_strategies_router
+from routers.validation_router import router as validation_router
 
 app = FastAPI(title='Stock Screener API', version='1.0.0', lifespan=lifespan)
 
@@ -71,6 +72,7 @@ app.include_router(files_router)
 app.include_router(news_router)
 app.include_router(alerts_router)
 app.include_router(options_strategies_router)
+app.include_router(validation_router)
 
 
 @app.get('/')
