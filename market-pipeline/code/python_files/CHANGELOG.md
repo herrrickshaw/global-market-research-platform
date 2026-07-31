@@ -150,6 +150,43 @@ store — its docstring said exactly that — and folded whatever it found into 
 - The LMDB fallback (seed missing/unusable) is retained but now passes through the same exchange
   allowlist, and refuses outright on a global store (75% foreign ≫ 20%) rather than corrupting.
 
+### Consumer audit: one more consumer was due to break on 2026-08-01
+
+Every reader of the shared store was then audited for the same assumption. Five call sites:
+
+| consumer | pattern | verdict |
+|---|---|---|
+| `warehouse_update._fresh_in` | `symbols()`+`get()` | was broken; fixed above |
+| `bhavcopy_history._lmdb_max_date` | `symbols()` sample → median | **broken from 2026-08-01** — fixed here |
+| `watchlist_pnl.py:164` | `symbols()`+`get()` | safe today; latent, see below |
+| `custom_screener.py:189` | `symbols()[:800]`, labels `"IN"` | demo block (`__main__`) only |
+| `screener_kit.get` | `get(symbol)` keyed | **safe by design** — screener_kit is the multi-market layer and *wants* the global store |
+
+`_lmdb_behind_cleaned()` is the guard added 2026-07-21, after the LMDB sat 5 days behind while
+watchlist_pnl marked India positions to stale closes. It medians ~200 sampled symbols against
+`cleaned_long.parquet`. On a global store that median spans 16 markets, and the foreign seeds are
+STATIC snapshots (written once when the weekly extended scan runs) while India advances daily.
+Measured: with both at 2026-07-31 the medians agree and the guard is correct — but from 08-01 the
+global median stays pinned at 07-31 and the guard returns **True forever**. That means a
+destructive 94MB rebuild per call, and worse, a guard that can no longer distinguish a genuinely
+stale India store from foreign seeds merely being old. An alarm that always fires is as useless as
+one that never does, and this one protects P&L from stale prices.
+
+- **Fix**: `_lmdb_max_date(only=…)` restricts the median to a symbol set, and
+  `_lmdb_behind_cleaned()` passes the symbols of `cleaned_long.parquet` itself — making the
+  comparison apples-to-apples ("is the store behind the file that feeds it") rather than scoring
+  India's dates against a median dragged by other calendars.
+- **Verified both directions.** On a simulated global store with India advancing and seeds frozen,
+  the old guard fires on 08-01/03/07 and the new one does not. Critically, it still fires when
+  India is genuinely stale by 3 and by 5 days — the 2026-07-21 scenario — so the false positive
+  was removed without introducing a false negative.
+- **Not fixed, recorded as risks.** `custom_screener.py:189` is a `__main__` demo, but would be
+  badly wrong if run: `symbols()[:800]` sorts lexicographically, so numeric Chinese codes lead, and
+  each is hard-labelled `StockData(s, "IN", …)`. `watchlist_pnl.py:164` is safe *today* only
+  because all 15 foreign seeds are fully exchange-qualified (verified: **zero** bare symbols, so no
+  key can collide with a bare Indian ticker) — a future `cleaned_long_US.parquet` would break that,
+  since US symbols are bare and names like `INFY` list on both NSE and NASDAQ.
+
 ## 2026-07-29 — Claims audited against their own evidence; three locks; a stale-price near-miss
 
 An end-to-end pipeline run at 22:36 (off the usual 00:30 schedule) exposed a class of failure the
