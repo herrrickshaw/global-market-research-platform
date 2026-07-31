@@ -454,6 +454,7 @@ def style_excel_sheet(ws):
 
 # ── Main Scanner ──────────────────────────────────────────────────────────────
 def main():
+    global MAX_WORKERS
     parser = argparse.ArgumentParser(description="Euro Stoxx 50 / broader-Europe Scanner")
     parser.add_argument("--top", type=int, default=0, help="Scan only first N tickers")
     parser.add_argument("--no-scans", action="store_true", default=False, help="Skip Stage 4 fundamental scans")
@@ -464,7 +465,14 @@ def main():
                         help="Suffix for the output filename, e.g. --label broad")
     parser.add_argument("--batch", type=int, default=150,
                         help="Batch size for bulk OHLC download with --universe (default 150)")
+    # Added 2026-07-30 so daily_research.sh can run Europe/Japan/Korea scans
+    # concurrently without tripling total yfinance connections — japan.py and
+    # korea.py already exposed this; europe's MAX_WORKERS was a hardcoded
+    # constant with no CLI override, the only one of the three that couldn't be
+    # dialed down for parallel use.
+    parser.add_argument("--workers", type=int, default=MAX_WORKERS, help="Parallel threads")
     args = parser.parse_args()
+    MAX_WORKERS = args.workers
 
     meta = load_universe(args.universe) if args.universe else EURO_STOXX_50_META
     symbols = list(meta.keys())

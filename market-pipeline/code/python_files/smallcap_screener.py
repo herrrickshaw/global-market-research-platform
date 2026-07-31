@@ -73,7 +73,54 @@ HOLD = 63                        # quarterly rebalance
 COST_BPS = 100.0                 # small caps: wider than the 50bp large-cap floor
 
 
-def flags(px: pd.DataFrame, tv: pd.DataFrame, i: int, cols) -> pd.DataFrame:
+_FUND = {"pe": None, "z": None, "eps": None}
+
+
+def load_fundamentals(index):
+    """Point-in-time P/E / TTM-EPS panels, aligned to the price calendar.
+
+    Unblocked 2026-07-28: these exclusions were impossible while
+    fundamentals.ratios held a single fiscal year. fundamentals.india_pe_daily
+    now carries 1,957,213 daily observations over 1,744 symbols from the NSE
+    XBRL parse, and its TTM EPS is stamped at each quarter's FILING date — so a
+    lookup at bar i uses only what the market could already see.
+    """
+    if _FUND["pe"] is not None:
+        return
+    import duckdb
+    con = duckdb.connect()
+    con.execute("INSTALL postgres"); con.execute("LOAD postgres")
+    con.execute("ATTACH 'dbname=market_data host=/tmp user=umashankar' AS pg (TYPE postgres)")
+    d = con.execute("""SELECT symbol, obs_date, pe, pe_z
+                       FROM pg.fundamentals.india_pe_daily""").df()
+    d["obs_date"] = pd.to_datetime(d.obs_date)
+    for key, col in (("pe", "pe"), ("z", "pe_z")):
+        _FUND[key] = (d.pivot_table(index="obs_date", columns="symbol", values=col)
+                       .reindex(index).ffill())
+    # 🔴 TTM EPS MUST NOT COME FROM india_pe_daily. That table only stores rows
+    # with pe > 0, so loss-makers are ABSENT rather than negative — the
+    # `lossmaking` rule silently never fired (0 flagged in a 250-name band).
+    # Source it from the quarterly table instead, where losses survive.
+    q = con.execute("""SELECT symbol, period_end, filing_date, eps
+                       FROM pg.fundamentals.india_quarterly
+                       WHERE eps IS NOT NULL""").df()
+    q["period_end"] = pd.to_datetime(q.period_end)
+    q["filing_date"] = pd.to_datetime(q.filing_date)
+    q = (q.sort_values(["symbol", "period_end"])
+           .drop_duplicates(["symbol", "period_end"], keep="last"))
+    q["ttm"] = np.nan
+    for _s, g in q.groupby("symbol"):
+        e = g.eps.rolling(4).sum()
+        span = (g.period_end - g.period_end.shift(3)).dt.days
+        q.loc[g.index, "ttm"] = e.where(span.between(255, 300)).values
+    q = q.dropna(subset=["ttm"])
+    _FUND["eps"] = (q.pivot_table(index="filing_date", columns="symbol",
+                                  values="ttm", aggfunc="last")
+                     .reindex(index, method="ffill"))
+
+
+def flags(px: pd.DataFrame, tv: pd.DataFrame, i: int, cols,
+          fundamentals: bool = False) -> pd.DataFrame:
     """Exclusion flags as of bar i, from bars strictly before it."""
     hist = px[cols].iloc[max(0, i - 756):i]
     last = hist.iloc[-1]
@@ -87,7 +134,21 @@ def flags(px: pd.DataFrame, tv: pd.DataFrame, i: int, cols) -> pd.DataFrame:
         "blowup": vol > vol.quantile(0.90),
         "untradeable": turn < MIN_TURNOVER,
     })
-    f["excluded"] = f.any(axis=1)
+    if fundamentals:
+        load_fundamentals(px.index)
+        # bar i-1: strictly before the decision bar, and the underlying TTM is
+        # already lagged to its filing date, so this is doubly point-in-time
+        eps = _FUND["eps"].iloc[i - 1].reindex(cols)
+        z = _FUND["z"].iloc[i - 1].reindex(cols)
+        eps_yr = (_FUND["eps"].iloc[max(0, i - 253)].reindex(cols)
+                  if i > 253 else pd.Series(np.nan, index=cols))
+        # NaN = no fundamental coverage. Do NOT exclude on absence — that would
+        # silently screen out every name the XBRL parse has not reached and
+        # dress a coverage gap up as a signal.
+        f["lossmaking"] = (eps <= 0).fillna(False)
+        f["overvalued"] = (z > 2.0).fillna(False)
+        f["earnings_fall"] = ((eps < eps_yr * 0.5) & (eps_yr > 0)).fillna(False)
+    f["excluded"] = f.drop(columns=["excluded"], errors="ignore").any(axis=1)
     return f
 
 
@@ -117,7 +178,7 @@ def validate(a) -> int:
         band = [c for c in turn.index[BAND_LO:BAND_HI] if c in px.columns]
         if len(band) < 100:
             continue
-        f = flags(px, tv, i, band)
+        f = flags(px, tv, i, band, fundamentals=a.fundamentals)
         fwd = (px[band].iloc[i + HOLD] / px[band].iloc[i] - 1).dropna()
         keep = fwd.index[~f.excluded.reindex(fwd.index).fillna(True)]
         drop = fwd.index[f.excluded.reindex(fwd.index).fillna(True)]
@@ -127,7 +188,7 @@ def validate(a) -> int:
                      "all": fwd.mean(), "keep": fwd[keep].mean(),
                      "dropped": fwd[drop].mean(),
                      **{k: fwd[fwd.index.intersection(f.index[f[k]])].mean()
-                        for k in ("downtrend", "distress", "blowup", "untradeable")}})
+                        for k in f.columns if k != "excluded"}})
     d = pd.DataFrame(rows)
     if d.empty:
         print("no periods"); return 1
@@ -153,7 +214,8 @@ def validate(a) -> int:
     print("| rule | mean fwd | vs band | verdict |")
     print("|---|--:|--:|---|")
     base = d["all"].mean()
-    for k in ("downtrend", "distress", "blowup", "untradeable"):
+    for k in [c for c in ("downtrend", "distress", "blowup", "untradeable",
+                          "lossmaking", "overvalued", "earnings_fall") if c in d]:
         v = d[k].dropna()
         if v.empty:
             continue
@@ -208,7 +270,7 @@ def screen(a) -> int:
     syms = [s.strip() for s in cons.Symbol.dropna()]
     px, tv = P.load_prices()
     have = [s for s in syms if s in px.columns]
-    f = flags(px, tv, len(px) - 1, have)
+    f = flags(px, tv, len(px) - 1, have, fundamentals=a.fundamentals)
     f = f.join(cons.set_index(cons.Symbol.str.strip())[["Company Name", "Industry"]])
     keep = f[~f.excluded]
     print(f"# Nifty Smallcap 250 — exclusion screen, {px.index[-1].date()}\n")
@@ -236,6 +298,8 @@ def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--validate", action="store_true")
+    ap.add_argument("--fundamentals", action="store_true",
+                    help="add loss-making / overvalued / earnings-collapse rules")
     ap.add_argument("--warmup", type=int, default=220,
                     help="bars before the first formation (200DMA + buffer)")
     ap.add_argument("--hold", type=int, default=63,
@@ -243,7 +307,38 @@ def main() -> int:
     ap.add_argument("--screen", action="store_true")
     a = ap.parse_args()
     if a.validate:
-        return validate(a)
+        # PERSIST THE VALIDATION, don't just print it. The headline this screen
+        # rests on — screened-minus-band +3.07%/126 bars, t 8.75 — was quoted in
+        # custom_indices.py while living nowhere on disk: --validate printed it
+        # to a terminal and --screen wrote only the picks CSV. A number a reader
+        # cannot check without re-running a multi-minute job is unsourced in
+        # practice, however true it is. Output is teed so the console behaviour
+        # is unchanged and the artefact exists.
+        import contextlib
+        import io
+        buf = io.StringIO()
+        with contextlib.redirect_stdout(buf):
+            rc = validate(a)
+        body = buf.getvalue()
+        print(body, end="")
+        # Hold period is IN THE FILENAME. The screen's headline changes with it
+        # — +1.76% (t 6.09) at the default 63 bars, +3.07% (t 8.75) at 126 —
+        # and custom_indices.py quoted the 126-bar figure while the default run
+        # would have overwritten it with the 63-bar one, so whichever ran last
+        # would silently define "the" result. Both are legitimate; they answer
+        # different questions (quarterly vs semi-annual rebalance) and both need
+        # to exist on disk for either to be checkable.
+        rp = HERE / "reports" / f"smallcap_validation_hold{a.hold}.md"
+        rp.parent.mkdir(exist_ok=True)
+        rp.write_text(
+            f"# Small-cap exclusion screen — validation\n\n"
+            f"Generated {dt.date.today()} by "
+            f"`smallcap_screener.py --validate"
+            f"{' --fundamentals' if a.fundamentals else ''} "
+            f"--hold {a.hold} --warmup {a.warmup}`. Survivorship-free: the band "
+            f"is reconstructed point-in-time at each formation.\n\n{body}")
+        print(f"\nwrote {rp}")
+        return rc
     if a.screen:
         return screen(a)
     ap.print_help()

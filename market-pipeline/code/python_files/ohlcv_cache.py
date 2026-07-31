@@ -88,6 +88,46 @@ def _download(yf_symbols: List[str], period: Optional[str], start) -> Optional[p
         return None
 
 
+# ── expected last session, per market ────────────────────────────────────────
+# Session CLOSE in IST, mirroring the windows in scan_price_reconcile
+# .market_open_now(). US wraps past midnight IST, so it never "closes today".
+_CLOSE_IST = {"india": 15.5, "in": 15.5, "nse": 15.5, "bse": 15.5,
+              "japan": 11.5, "jp": 11.5, "korea": 12.0, "kr": 12.0,
+              "china": 13.0, "cn": 13.0, "europe": 21.0, "eu": 21.0}
+
+
+def _last_expected_session(market: str) -> _dt.date:
+    """The most recent date this market should already have a closing bar for.
+
+    🔴 THIS WAS HARDCODED TO YESTERDAY, and that silently served day-old prices.
+    The rule was `exp = today - 1day`, so any symbol whose last bar was
+    yesterday's counted as fresh and was never re-fetched. That is right at
+    00:30 IST, when the pipeline normally runs and no Asian market has traded
+    "today" yet — and wrong at every other hour. A manual run at 22:43 IST on
+    2026-07-28 accepted 07-27 bars for Japan and Korea, whose sessions had ended
+    ELEVEN HOURS earlier, and both markets had fallen 10-15% that day:
+    005930.KS was carried at 254,000 when it had closed at 220,000. The scan
+    reported yesterday's market as today's. [13d] caught it and suppressed the
+    send, which is the gate working, but the cache should not have produced it.
+
+    So the expectation follows the market's own clock: once its session has
+    closed today, today's bar is expected and anything older is lagged.
+    """
+    now = _dt.datetime.now()
+    h = now.hour + now.minute / 60
+    d = now.date()
+    close = _CLOSE_IST.get(str(market).lower())
+    # Before the close (or for markets whose session runs past midnight IST, and
+    # for any market key we don't know) the newest possible bar is the previous
+    # session's — falling back to yesterday keeps unknown markets on the old,
+    # conservative behaviour rather than forcing pointless refetches.
+    if close is None or d.weekday() >= 5 or h < close:
+        d -= _dt.timedelta(days=1)
+    while d.weekday() >= 5:
+        d -= _dt.timedelta(days=1)
+    return d
+
+
 def refresh(market: str, symbols: List[str], yf_suffix: str = "",
             period: str = "1y", verbose: bool = True) -> pd.DataFrame:
     """Bring the market's cache up to date, fetching ONLY missing dates."""
@@ -114,9 +154,7 @@ def refresh(market: str, symbols: List[str], yf_suffix: str = "",
             # LTP for days and the reconcile gate kept blocking the mailer.
             # Any symbol whose own last bar lags the last expected trading day
             # is re-seeded over `period` (dedup keep=last replaces its rows).
-            exp = today - _dt.timedelta(days=1)
-            while exp.weekday() >= 5:
-                exp -= _dt.timedelta(days=1)
+            exp = _last_expected_session(market)
             per_sym_max = cached.groupby("Symbol")["Date"].max()
             lagged = [s for s in symbols
                       if s in per_sym_max.index and per_sym_max[s].date() < exp]

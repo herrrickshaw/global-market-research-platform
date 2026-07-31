@@ -37,6 +37,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import List, Optional
 
+import repo_registry as _RR
+
 # ── roots ─────────────────────────────────────────────────────────────────────
 # Defaults resolve from the REPO, not from ~/Downloads.
 #
@@ -169,7 +171,7 @@ DATASETS: List[Dataset] = [
             "(visible_from = filingDate, not a +90d proxy); 110,942 filings "
             "indexed back to 2015; fills over ~8 weeks of off-hours sessions",
             ["build_india_factor_panel.py"]),
-    Dataset("warehouse.ohlcv_adj_in", Path("/Users/umashankar/repos/global-market-data/warehouse/ohlcv_adj/IN"),
+    Dataset("warehouse.ohlcv_adj_in", _RR.OHLCV_ADJ_IN,
             "price_adjuster.py", "ingest", DAILY, 3.0,
             "split/bonus-ADJUSTED India prices — use for ANY multi-month return; "
             "raw closes fake -90% crashes through splits (789 events applied, "
@@ -207,6 +209,13 @@ DATASETS: List[Dataset] = [
             "screener_in.py", "ingest", DAILY, 3.0,
             "cash-conversion-cycle screen scraped from screener.in",
             ["send_mailer.py"]),
+    Dataset("intl_pit.cache", MARKET_CACHE / "intl_pit",
+            "yf_intl_pit_fundamentals.py", "ingest", "off-hours trickle (resumable backfill)", None,
+            "🔴 per-symbol raw yfinance earnings_dates+quarterly_income_stmt cache, JP/KR/CN — "
+            "the source this session's fix for the fabricated fy_end+90d PIT dates trickles from; "
+            "loads into Postgres fundamentals.intl_pit_quarterly / fundamentals.next_earnings "
+            "(see system_state.list_data_sources()). max_age_days=None: a partial backfill is "
+            "expected, not stale — check coverage via `yf_intl_pit_fundamentals.py --status`."),
 
     # ---- mailer ----------------------------------------------------------
     Dataset("scan.india", CODE / "indian_full_scan",

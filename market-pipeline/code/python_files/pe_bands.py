@@ -46,28 +46,25 @@ import pandas as pd
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
 sys.path.insert(0, "/Users/umashankar/scripts")
+import pg_client
+
 DSN = "dbname=market_data host=/tmp user=umashankar"
 SCHEMA = "fundamentals"
+COLUMN_TYPES = {
+    "symbol": "text", "obs_date": "date", "close": "double precision",
+    "ttm_eps": "double precision", "pe": "double precision",
+    "pe_mean": "double precision", "pe_sd": "double precision",
+    "pe_z": "double precision", "band": "text", "tier": "integer",
+}
 MIN_ANNUAL = 6       # annual observations needed on the screener path
 MIN_Q = 8            # quarters of TTM history before a band is meaningful
 BAND_WIN = 12        # trailing quarters for the rolling mean/sigma
 K = 2.0
 SD_FLOOR_LOG = 0.15  # minimum sigma of log P/E — see _bands()
 
-DDL = f"""
-CREATE TABLE IF NOT EXISTS pg."{SCHEMA}".india_pe_daily (
-  symbol VARCHAR, obs_date DATE, close DOUBLE, ttm_eps DOUBLE, pe DOUBLE,
-  pe_mean DOUBLE, pe_sd DOUBLE, pe_z DOUBLE, band VARCHAR, tier INTEGER
-);
-"""
-
-
 def connect():
-    import duckdb
-    con = duckdb.connect()
-    con.execute("INSTALL postgres"); con.execute("LOAD postgres")
-    con.execute(f"ATTACH '{DSN}' AS pg (TYPE postgres)")
-    return con
+    pg_client.connect()
+    return pg_client.get_connection()
 
 
 
@@ -129,10 +126,10 @@ def build(a) -> int:
                               "fy_end": "period_end"}))
         print(f"screener.in annual: {len(q):,} obs · {q.symbol.nunique():,} "
               f"symbols with >= {MIN_ANNUAL} years", flush=True)
-        return _bands(q, con, P)
-    q = con.execute(f'''SELECT symbol, period_end, filing_date, eps
-                        FROM pg."{SCHEMA}".india_quarterly
-                        WHERE eps IS NOT NULL''').df()
+        return _bands(q, con, P, a.source)
+    q = pd.read_sql(f'''SELECT symbol, period_end, filing_date, eps
+                        FROM "{SCHEMA}".india_quarterly
+                        WHERE eps IS NOT NULL''', con)
     if q.empty:
         print("no parsed quarters — run scripts/nse_xbrl_eps.py --parse-local")
         return 1
@@ -180,10 +177,10 @@ def build(a) -> int:
         print("no symbol has enough history yet — fetch more filings first")
         return 1
 
-    return _bands(q, con, P)
+    return _bands(q, con, P, a.source)
 
 
-def _bands(q, con, P) -> int:
+def _bands(q, con, P, source: str = "xbrl") -> int:
     px, _ = P.load_prices()
     out = []
     for sym, g in q.groupby("symbol"):
@@ -233,23 +230,139 @@ def _bands(q, con, P) -> int:
         print("no overlap between parsed EPS and the price panel"); return 1
     d = pd.concat(out, ignore_index=True)
     # cross-sectional decile per date — "cheapest tenth TODAY", level-invariant
+    # 🔴 THIS PRODUCED ELEVEN BUCKETS, NOT TEN. The previous form was
+    #   rank(pct=True).mul(10).clip(upper=10).fillna(0).astype(int)
+    # and astype(int) TRUNCATES: a percentile rank runs (0, 1], so ×10 gives
+    # (0, 10] and int() floors the bottom of the range to 0 while ONLY the single
+    # highest-ranked symbol — the one whose rank is exactly 1.0 — reaches 10.
+    # Deciles 0..9 held ~143 symbols each and decile 10 held exactly ONE. Any
+    # comparison of "the expensive decile" was therefore reading a single stock.
+    # Surfaced immediately by writing the tier table into the report artifact on
+    # 2026-07-29, having been invisible while the panel only lived in Postgres.
+    # ceil maps (0, 1] onto 1..10 with no truncation and no orphan bucket.
     d["tier"] = (d.groupby("obs_date").pe
-                  .rank(pct=True).mul(10).clip(upper=10).fillna(0).astype(int))
-    con.execute(DDL)
-    con.register("inc", d)
-    con.execute(f'DELETE FROM pg."{SCHEMA}".india_pe_daily')
-    con.execute(f'INSERT INTO pg."{SCHEMA}".india_pe_daily SELECT * FROM inc')
+                  .rank(pct=True).mul(10).apply(np.ceil)
+                  .clip(lower=1, upper=10).fillna(0).astype(int))
+    pg_client.replace_table_atomic(SCHEMA, "india_pe_daily", d, COLUMN_TYPES)
     print(f"wrote {len(d):,} daily P/E observations · {d.symbol.nunique():,} symbols")
     print(f"  {d.obs_date.min().date()} -> {d.obs_date.max().date()}")
     print("\nband occupancy:")
     print(d.band.value_counts(normalize=True).mul(100).round(1).to_string())
+    _write_report(source, d, con)
     return 0
+
+
+def _write_report(source: str, d, con) -> None:
+    """Persist what the build measured, including its own accuracy.
+
+    Until 2026-07-29 this script wrote to Postgres and printed to a terminal and
+    produced no document at all, so the figures it is judged on — coverage, band
+    occupancy, and the ~20.5% median error against fundamentals.ratios that
+    justifies `--source xbrl` being the default — existed nowhere a reader could
+    check them. Same failure as smallcap_screener's validation: a number nobody
+    can verify without re-running a multi-minute job is unsourced in practice,
+    however true it is.
+
+    The accuracy check is recomputed HERE rather than quoted, so the artefact
+    cannot drift from the panel it describes the way reentry_engine's docstring
+    drifted from its cited report.
+    """
+    import datetime as _dt
+    L: list[str] = []
+    def o(x=""):
+        L.append(x)
+
+    o("# India P/E panel — bands, tiers and accuracy")
+    o()
+    o(f"Generated {_dt.date.today()} by `pe_bands.py --build --source {source}`.")
+    o()
+    o(f"- **{len(d):,}** daily observations · **{d.symbol.nunique():,}** symbols")
+    o(f"- span **{d.obs_date.min().date()} → {d.obs_date.max().date()}**")
+    o(f"- P/E is TTM: four consecutive quarters, each stamped at its FILING "
+      f"date, so a lookup on any bar uses only what the market could already see")
+    o()
+    o("## Band occupancy")
+    o()
+    o("Bands are ±σ on **log** P/E. A multiple is ratio-scale and right-skewed —")
+    o("10→20 must count the same as 40→80 — and banding raw P/E produced")
+    o("z-scores of +78/−38 before this was corrected. σ carries a floor of 0.15")
+    o("log units, because a near-constant multiple otherwise divides by ~0 (one")
+    o("symbol reached z = −45 that way).")
+    o()
+    o("| band | share |")
+    o("|---|--:|")
+    for k, v in d.band.value_counts(normalize=True).mul(100).round(1).items():
+        o(f"| {k} | {v}% |")
+    o()
+    nan_pct = float((d.band == "nan").mean() * 100) if "band" in d else 0.0
+    o(f"> `nan` at {nan_pct:.1f}% is the honest coverage gap — symbols without "
+      f"enough consecutive quarters to form a TTM window, or without the "
+      f"{BAND_WIN}-observation history a band needs. It is reported rather than "
+      f"dropped: a hidden gap reads as coverage.")
+    o()
+
+    # Accuracy against the independently-built ratios table.
+    try:
+        r = pd.read_sql("""select ticker as symbol, pe as pe_ref
+                           from fundamentals.ratios
+                           where market='india' and pe > 0""", con)
+        last = d[d.obs_date == d.obs_date.max()][["symbol", "pe"]]
+        m = last.merge(r, on="symbol", how="inner")
+        m = m[(m.pe > 0) & (m.pe_ref > 0)]
+        if len(m) >= 30:
+            err = ((m.pe - m.pe_ref).abs() / m.pe_ref * 100)
+            o("## Accuracy vs `fundamentals.ratios`")
+            o()
+            o(f"Independent cross-check on the latest bar, {len(m):,} symbols "
+              f"present in both. `ratios` is built from a different source, so "
+              f"agreement is evidence and disagreement is a question, not proof "
+              f"either side is right.")
+            o()
+            o("| percentile | abs error |")
+            o("|---|--:|")
+            for q in (0.25, 0.50, 0.75, 0.90):
+                o(f"| p{int(q * 100)} | {err.quantile(q):.1f}% |")
+            o()
+            o(f"- **median {err.median():.1f}%** · within 25%: "
+              f"{(err <= 25).mean():.0%} · within 50%: {(err <= 50).mean():.0%}")
+            o()
+            o("> This number is why `--source` defaults to `xbrl`: the screener "
+              "path measures wider AND covers fewer symbols (1,301 vs 1,744). "
+              "Recomputed on every build rather than quoted, so it cannot drift "
+              "from the panel it describes.")
+            o()
+    except Exception as e:                                    # noqa: BLE001
+        con.rollback()
+        o(f"> accuracy cross-check unavailable: {str(e)[:80]}")
+        o()
+
+    o("## Cross-sectional tiers")
+    o()
+    o("`tier` is a per-DATE decile of P/E, so tier 1 is \"cheapest tenth "
+      "TODAY\" rather than cheap against a fixed historical level. That keeps "
+      "it invariant to market-wide re-rating: in a bull market every absolute "
+      "P/E rises, and a fixed threshold would silently empty the cheap tier.")
+    o()
+    try:
+        t = d[d.obs_date == d.obs_date.max()].tier.value_counts().sort_index()
+        o("| tier (latest bar) | symbols |")
+        o("|---|--:|")
+        for k, v in t.items():
+            o(f"| {k} | {v:,} |")
+        o()
+    except Exception:                                          # noqa: BLE001
+        pass
+
+    p = HERE / "reports" / f"pe_bands_{source}.md"
+    p.parent.mkdir(exist_ok=True)
+    p.write_text("\n".join(L) + "\n")
+    print(f"\nwrote {p}")
 
 
 def extremes(a) -> int:
     con = connect()
-    d = con.execute(f'''SELECT * FROM pg."{SCHEMA}".india_pe_daily
-        WHERE obs_date = (SELECT max(obs_date) FROM pg."{SCHEMA}".india_pe_daily)''').df()
+    d = pd.read_sql(f'''SELECT * FROM "{SCHEMA}".india_pe_daily
+        WHERE obs_date = (SELECT max(obs_date) FROM "{SCHEMA}".india_pe_daily)''', con)
     if d.empty:
         print("nothing built"); return 1
     print(f"as of {d.obs_date.iloc[0]} · {len(d)} symbols with a band\n")
@@ -265,8 +378,8 @@ def extremes(a) -> int:
 
 def show(a) -> int:
     con = connect()
-    d = con.execute(f'''SELECT * FROM pg."{SCHEMA}".india_pe_daily
-                        WHERE symbol = ? ORDER BY obs_date''', [a.show]).df()
+    d = pd.read_sql(f'''SELECT * FROM "{SCHEMA}".india_pe_daily
+                        WHERE symbol = %s ORDER BY obs_date''', con, params=[a.show])
     if d.empty:
         print(f"no P/E band for {a.show}"); return 1
     print(f"{a.show}: {len(d):,} days · {d.obs_date.min()} -> {d.obs_date.max()}")
@@ -279,7 +392,17 @@ def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--build", action="store_true")
-    ap.add_argument("--source", default="screener", choices=("screener", "xbrl"))
+    # 🔴 DEFAULT IS xbrl, AND CHANGING IT BACK WILL SHRINK THE TABLE. The default
+    # used to be "screener", which is not what fundamentals.india_pe_daily is
+    # built from — so a plain `--build` silently REPLACED the live 1,744-symbol
+    # XBRL table with a 1,301-symbol screener one, dropping 277k observations
+    # (done accidentally on 2026-07-28 while fixing an unrelated date lag). The
+    # XBRL path wins on both axes it is judged by: coverage 1,744 vs 1,301
+    # symbols, and accuracy ~20.5% vs ~28.5% median error against
+    # fundamentals.ratios. The screener path stays available because it reaches
+    # back to 2016 where XBRL starts at 2019, which matters for long-horizon
+    # work — but it must be asked for explicitly, not arrived at by default.
+    ap.add_argument("--source", default="xbrl", choices=("screener", "xbrl"))
     ap.add_argument("--extremes", action="store_true")
     ap.add_argument("--show")
     a = ap.parse_args()

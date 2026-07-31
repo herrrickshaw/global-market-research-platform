@@ -63,6 +63,28 @@ def _tv(x):
     return f"${x / 1e6:.1f}M" if pd.notna(x) else "—"
 
 
+def _coverage_scope_note() -> str:
+    """State WHY the brief covers two markets, rather than letting three vanish.
+
+    A section that silently disappears reads as a bug or an oversight, and the
+    reader has no way to tell a deliberate narrowing from a broken scan. The
+    reason is specific and measurable, so it is printed.
+    """
+    try:
+        import watchlist_markets as WM
+    except Exception:                                          # noqa: BLE001
+        return ""
+    parked = " · ".join(f"<b>{k}</b> {v}" for k, v in WM.PARKED.items()
+                        if k in ("JP", "KR", "EU"))
+    return (f"<p class='mut' style='font-size:11px;margin:2px 0'>📍 <b>Per-name "
+            f"coverage: {' + '.join(WM.COVERED)} only.</b> Japan, Korea and "
+            f"Europe are parked — {parked}. Their stock-level picks, watchlist "
+            f"rows and re-entry names are withheld until real ratios land; "
+            f"market-level context below (regime, momentum scoreboard, "
+            f"correlations) is price-derived and unaffected, so it still "
+            f"covers them.</p>")
+
+
 def _fund_coverage_note() -> str:
     """A one-line caveat on the fundamental screeners' alphabet coverage.
 
@@ -131,7 +153,8 @@ def _load_combined(market: str) -> dict:
         return {}
 
 
-def _news_rows(market: str, top: int = 8):
+def _news_rows(market: str, top: int = None):
+    top = _DETAIL_CAP["news"] if top is None else top
     try:
         picks = npk.news_picks(market, top=top)
     except Exception:
@@ -148,8 +171,9 @@ def _news_rows(market: str, top: int = 8):
     return rows
 
 
-def _market_picks_rows(data: dict, market: str, cap: int = 12):
+def _market_picks_rows(data: dict, market: str, cap: int = None):
     """Fundamentals-screener picks rows for India/US, liquidity-annotated."""
+    cap = _DETAIL_CAP["picks"] if cap is None else cap
     picks = data.get("picks") or []
     if not picks:
         return []
@@ -352,10 +376,11 @@ def _ccc_rows(top: int = 12):
     return rows
 
 
-def _darvas_section(market: str, cap: int = 15) -> str:
+def _darvas_section(market: str, cap: int = None) -> str:
     """Fresh Darvas breakouts for one market, capped to `cap` rows for readability
     (a full-universe scan can surface 100+ "fresh" breakouts — the header still
     reports the true Tier-1/Tier-2 totals, only the table is truncated)."""
+    cap = _DETAIL_CAP["darvas"] if cap is None else cap
     if dbrk is None:
         return "<p class='mut' style='color:#777'>Darvas fragment unavailable (darvas_breakouts.py not importable).</p>"
     label = _DARVAS_LABEL.get(market, market)
@@ -418,13 +443,25 @@ def _darvas_section(market: str, cap: int = 15) -> str:
     )
 
 
+# 🔴 INDIA AND US ONLY (2026-07-29). Europe, Japan and Korea are parked because
+# their fundamentals cannot support a per-name claim: the store holds quality
+# SCORES in ratio-named columns for exactly those markets (`pb` takes four
+# distinct values in JP/EU, `roe` takes 80/55/40/20 in KR), while india's `roe`
+# on the same column is a real fraction. fundamentals.ratios has no EU rows at
+# all. Reasons per market live in watchlist_markets.PARKED and are STATED in the
+# brief rather than the markets silently vanishing — an unexplained gap reads as
+# an oversight, and a reader should know coverage narrowed on purpose.
+#
+# The space they occupied is spent on depth in the two markets that survive
+# scrutiny, not left blank: see the _DETAIL_CAP bump below.
 _CORR_MARKETS = [
     ("nse", "🇮🇳 India (NSE)"),
     ("us", "🇺🇸 US"),
-    ("europe", "🇪🇺 Europe"),
-    ("japan", "🇯🇵 Japan"),
-    ("korea", "🇰🇷 Korea"),
 ]
+
+# Caps were sized for five markets competing for one email. With three parked,
+# the remaining two get roughly the room the five shared.
+_DETAIL_CAP = {"picks": 24, "news": 12, "darvas": 30}
 
 
 def _corr_section(top_n: int = 3) -> str:
@@ -784,6 +821,7 @@ h3{{font-size:14px;margin:14px 0 6px;color:#333}}
 <h2 style="font-size:16px;border-bottom:2px solid #1a73e8;padding-bottom:3px;margin-top:26px">🇮🇳 India <span style="font-weight:400;color:#666;font-size:13px">— mood {mood["mood"]} ({mood["score"]:+.2f}) from {mood.get("n_articles", 0)} articles</span></h2>
 <h3 style="font-size:13px;margin:12px 0 4px;color:#333">Screener — most tradable</h3>
 {_fund_coverage_note()}
+{_coverage_scope_note()}
 {_table(["Symbol", "Tier", "Screens", "Turnover", "Liquidity"], ind_picks_rows) if ind_picks_rows else "<p>no picks</p>"}
 <h3 style="font-size:13px;margin:14px 0 4px;color:#333">Cash Conversion Cycle <span style="font-weight:400;color:#777" class="mut">(screener.in 228040)</span></h3>
 <p style="font-size:11px;color:#666;margin:2px 0">Lowest/negative CCC = collects from customers before paying suppliers.</p>

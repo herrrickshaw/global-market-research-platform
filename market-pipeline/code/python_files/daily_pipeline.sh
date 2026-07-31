@@ -37,6 +37,32 @@ LOG="daily_pipeline_$(date +%Y%m%d).log"
 # rescans of unchanged closed-market data (this cost 3 extra full runs today).
 POST_ONLY=0
 for _a in "$@"; do [ "$_a" = "--post-only" ] && POST_ONLY=1; done
+
+# ── single-run lock ───────────────────────────────────────────────────────────
+# There was NO concurrency guard here until 2026-07-28. A run takes 3-5 hours and
+# launchd fires another at 00:30 every weekday, so any manual run started after
+# ~19:30 would still be going when the scheduled one began — two pipelines
+# writing watchlist.csv, reports/ and the same Postgres tables at once, with the
+# loser's writes silently interleaved rather than rejected. The watchlist is
+# read-modify-write (load csv, append rows, dump csv), so a collision does not
+# merge: whichever process writes second discards the other's rows entirely.
+# macOS has no flock(1), so this uses an atomic mkdir — the one filesystem
+# primitive that is race-free without extra tooling. A stale lock from a killed
+# run is cleared automatically once its PID is gone.
+LOCKDIR="/tmp/daily_pipeline.lock"
+if ! mkdir "$LOCKDIR" 2>/dev/null; then
+  _owner="$(cat "$LOCKDIR/pid" 2>/dev/null || echo '')"
+  if [ -n "$_owner" ] && kill -0 "$_owner" 2>/dev/null; then
+    echo "daily_pipeline already running (pid $_owner) — exiting so the two runs"
+    echo "do not interleave writes to watchlist.csv / reports / postgres."
+    exit 0
+  fi
+  echo "clearing stale lock (pid '${_owner:-unknown}' is gone)"
+  rm -rf "$LOCKDIR"; mkdir "$LOCKDIR" || exit 1
+fi
+echo $$ > "$LOCKDIR/pid"
+trap 'rm -rf "$LOCKDIR"' EXIT INT TERM
+
 mkdir -p correlation_scan
 # ── step timing ───────────────────────────────────────────────────────────────
 # Emits a machine-readable marker before every step so run times are MEASURED, not
@@ -310,6 +336,16 @@ FAILURES=()
     || FAILURES+=("ingest: bhavcopy incremental")
   /usr/bin/python3 /Users/umashankar/scripts/bhavcopy_to_db.py --to-postgres "dbname=market_data host=/tmp user=umashankar" \
     || FAILURES+=("ingest: bhavcopy -> postgres")
+  # Push the fresh dates on into the PARQUET panel. Same failure as the raw-layer
+  # freeze noted above, one layer further out: warehouse/ohlcv/IN/year=*.parquet
+  # had no daily writer at all, so it sat at 2026-07-22 while cleaned_ohlcv (one
+  # line up) ran to 2026-07-27. That panel is what load_prices() reads, so
+  # india_pe_daily — rebuilt from it — trailed live prices by five sessions and
+  # every P/E screen was screening a week-old market. Append-only by date: the
+  # parquet holds more history than cleaned_ohlcv's ~1y window, so a rebuild
+  # would truncate it (found 2026-07-28).
+  /usr/bin/python3 /Users/umashankar/scripts/warehouse_ohlcv_sync.py --apply \
+    || FAILURES+=("ingest: warehouse ohlcv parquet sync")
   /usr/bin/python3 /Users/umashankar/scripts/market_ingest.py \
     || FAILURES+=("ingest: market snapshots")
   mkdir -p reports

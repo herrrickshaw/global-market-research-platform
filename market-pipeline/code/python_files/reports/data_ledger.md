@@ -6,8 +6,8 @@ Living catalog; re-run `data_ledger.py` to refresh volume/latest/updated from di
 
 | market | rows | tickers | latest | updated | source | off-peak window | rate note |
 |---|--:|--:|--:|--:|---|---|---|
-| IN | 4,456,125 | 6,731 | 2026-07-22 | 2026-07-23 | NSE/BSE bhavcopy | 18:00+ IST (EOD) | official archive — no throttle |
-| US | 16,290,431 | 9,807 | 2026-07-22 | 2026-07-23 | NASDAQ/yfinance | post-US-close / 03:00-07:00 IST | yfinance throttles in US hours |
+| IN | 4,474,940 | 6,955 | 2026-07-28 | 2026-07-28 | NSE/BSE bhavcopy | 18:00+ IST (EOD) | official archive — no throttle |
+| US | 16,305,195 | 9,829 | 2026-07-27 | 2026-07-27 | NASDAQ/yfinance | post-US-close / 03:00-07:00 IST | yfinance throttles in US hours |
 | KR | 5,292,842 | 2,597 | 2026-07-23 | 2026-07-23 | FinanceDataReader/KRX | after 12:30 IST (KRX close) | FDR gentle; batch |
 | JP | 7,359,698 | 3,083 | 2026-07-23 | 2026-07-23 | JPX/yfinance | after 11:30 IST (TSE close) | yfinance; J-Quants for validation |
 | EU | 3,828,110 | 1,618 | 2026-07-22 | 2026-07-23 | yfinance (17 exchanges) | after 21:30 IST (EU close) | yfinance; Volume sparse |
@@ -29,8 +29,8 @@ Living catalog; re-run `data_ledger.py` to refresh volume/latest/updated from di
 
 | scope | rows | updated | builder | note |
 |---|--:|--:|---|---|
-| IN/US/KR | 9,083 | 2026-07-27 | `financial_ratios.py` | rebuilt daily [15b] |
-| 6 markets | 10,202 | 2026-07-27 | `build_all_ratios.py` | adds JP/EU/CN |
+| IN/US/KR | 9,478 | 2026-07-28 | `financial_ratios.py` | rebuilt daily [15b] |
+| 6 markets | 10,202 | 2026-07-28 | `build_all_ratios.py` | adds JP/EU/CN |
 
 ## Reference (free exchange masters)
 

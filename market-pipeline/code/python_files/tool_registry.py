@@ -55,6 +55,7 @@
 
 from __future__ import annotations
 
+import time
 from dataclasses import dataclass, field
 from typing import Callable, Dict, List, Optional
 
@@ -155,8 +156,41 @@ def run_all_screeners(candidate) -> List[str]:
 
 
 def run_analysis(key: str, context):
+    """Run a registered analysis, persisting one row of run history
+    (system_state.analysis_runs) — closes the total gap this registry used
+    to have: nothing recorded that an analysis ran, when, or what it found.
+    Only run_analysis() is instrumented, not run_screener()/
+    run_all_screeners(): those run once per candidate inside a scan loop
+    (thousands of calls/day), where auto-persisting would flood the table
+    and add a DB round-trip to the hot path. Analyses run once per pipeline
+    stage — the right granularity for one row per call.
+
+    Persistence itself never raises or changes the return value/exception
+    behaviour below — see _record_analysis_run()."""
     a = _ANALYSES.get(key)
-    return a.fn(context) if a else None
+    if not a:
+        return None
+    t0 = time.time()
+    try:
+        result = a.fn(context)
+        _record_analysis_run(key, "ok", result, time.time() - t0)
+        return result
+    except Exception as e:
+        _record_analysis_run(key, "error", None, time.time() - t0, error=str(e))
+        raise
+
+
+def _record_analysis_run(key: str, status: str, result, duration_s: float,
+                         error: Optional[str] = None) -> None:
+    """Best-effort, lazy-imported (system_state pulls in psycopg2/pandas via
+    pg_client) — persistence must never break an analysis that would
+    otherwise have succeeded or propagated its own real exception."""
+    try:
+        import system_state as _SS
+        _SS.record_analysis_run(key, status, summary=result,
+                                duration_s=duration_s, error=error)
+    except Exception:                                             # noqa: BLE001
+        pass
 
 
 def get_news_source(key: str) -> Optional[RegisteredNewsSource]:

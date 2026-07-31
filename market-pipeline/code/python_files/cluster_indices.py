@@ -230,6 +230,34 @@ def main() -> int:
         out(f"| {lbl} | {len(g)} | {g['random'].mean():.4f} | "
             f"{g['official'].mean():.4f} | {g['data'].mean():.4f} |")
     out()
+    out("## sensitivity to k — the whole result lives or dies here")
+    out()
+    out(f"This run used **k={a.k}** ({d.n_data.mean():.0f} usable clusters). The "
+        f"comparison is only fair when the two groupings have comparable "
+        f"granularity, because smaller groups are mechanically more homogeneous "
+        f"— so k is not a free parameter to be tuned until the answer is nice. "
+        f"The recorded sweep (reproduce any row with `--k N`):")
+    out()
+    out("| k | data groups | vs random | vs OFFICIAL | t |")
+    out("|--:|--:|--:|--:|--:|")
+    for k_, g_, r_, o_, t_ in ((15, 4, "+0.0379", "-0.0467", "-7.77"),
+                               (30, 6, "+0.0807", "-0.0039", "-0.55"),
+                               (45, 8, "+0.1118", "+0.0272", "4.37"),
+                               (60, 10, "+0.1420", "+0.0574", "13.27"),
+                               (80, 11, "+0.1598", "+0.0752", "17.62")):
+        mark = " ⬅ **shipped**" if k_ == a.k else ""
+        out(f"| {k_}{mark} | {g_} | {r_} | {o_} | {t_} |")
+    out()
+    out("> The sign FLIPS between k=30 and k=45, and the t-statistic rises "
+        "monotonically with k. Any single-k claim is therefore an artefact of k, "
+        "in either direction. k=45 is shipped as the closest fair match to the "
+        "16 official industries after MIN_GROUP filtering — not because it is "
+        "the most flattering. It is not: k=80 reports +0.0752 (t 17.62), nearly "
+        "three times larger, and a report built on it was in this repo until "
+        "2026-07-28. Higher k means smaller groups, which raises within-group "
+        "correlation mechanically, so that number measures granularity as much "
+        "as structure.")
+    out()
     out("> RANDOM is the floor, not zero: any basket inherits market beta, so "
         "even shuffled groups co-move. A taxonomy earns its status only by "
         "beating it. Clusters are rebuilt from trailing returns at every "

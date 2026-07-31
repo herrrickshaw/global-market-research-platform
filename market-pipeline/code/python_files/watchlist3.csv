@@ -1,1 +1,6 @@
 symbol,market,purge_note,enrolled,baseline_price,last_price,ret_pct,rsi,rsi_zone,last_checked,promoted,trigger
+SSTK,US,19.9 RSI @ 2026-07-24,2026-07-27,5.579999923706055,5.889999866485596,5.56,22.3,BUY,2026-07-28,2026-07-28,ret +5.6% + RSI BUY zone
+INSG,US,25.7 RSI @ 2026-07-24,2026-07-27,6.659999847412109,7.019999980926514,5.41,29.4,BUY,2026-07-28,2026-07-28,ret +5.4% + RSI BUY zone
+INFY,IN,evicted 2026-07-23 after 35 sessions in sell zone,2026-07-27,1079.199951171875,1155.5999755859375,7.08,62.7,BUY,2026-07-29,2026-07-29,ret +7.1% + RSI BUY zone
+SANDUMA,IN,evicted 2026-07-23 after 30 sessions in sell zone,2026-07-27,198.1499938964844,208.55999755859375,5.25,56.9,BUY,2026-07-29,2026-07-29,ret +5.2% + RSI BUY zone
+CHTR,US,cheap-vs-market (LONG) | purged 2026-07-27 — prediction audit: stock bear-state + negative Kalman drift,2026-07-27,123.30999755859376,139.97000122070312,13.51,56.3,HOLD,2026-07-29,2026-07-29,ret +13.5% >= +10.0%

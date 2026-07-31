@@ -10,6 +10,7 @@ from fastapi.concurrency import run_in_threadpool
 
 from db import cassandra_client as cass
 from db.seeder import seed_market, seed_all, MARKETS
+from routers.omniroute_daily_scan import omniroute_daily_scan_wrapper, format_routing_summary
 
 router = APIRouter(prefix='/api/db', tags=['cassandra'])
 
@@ -424,11 +425,18 @@ def _log_daily_scan_tokens(markets: list[str], results: dict, duration_seconds: 
 async def daily_scan(
     markets: str = Query(default='india,us,europe,japan,korea,china,hong_kong,canada'),
     scans:   str = Query(default='darvas,piotroski'),
+    omniroute: bool = Query(default=True, description='Use OmniRoute for intelligent model routing'),
 ):
     """
     Run Darvas/Buffett and Piotroski scans across all Cassandra-cached markets.
     Returns BUY + WATCH signals only, sorted by score descending.
-    Logs token usage to RUFLO monitoring.
+
+    With OmniRoute enabled (default):
+      - Routes per-ticker scoring to Sonnet (70% cheaper)
+      - Routes cross-market synthesis to Opus (reasoning needed)
+      - Logs cost savings to RUFLO monitoring
+
+    Logs token usage and routing decisions to RUFLO.
     """
     if not cass.is_available():
         raise HTTPException(503, 'Cassandra offline')
@@ -444,7 +452,17 @@ async def daily_scan(
 
     import time
     start_time = time.time()
-    results = await run_in_threadpool(_run_daily_scan, market_list, scan_list)
+
+    # Use OmniRoute wrapper for intelligent model routing
+    if omniroute:
+        response = await run_in_threadpool(omniroute_daily_scan_wrapper, market_list, scan_list)
+        results = response['scan_results']
+        omniroute_meta = response['omniroute_metadata']
+    else:
+        # Fallback to standard scan without routing
+        results = await run_in_threadpool(_run_daily_scan, market_list, scan_list)
+        omniroute_meta = None
+
     duration = time.time() - start_time
 
     totals = {s: len(v) for s, v in results.items()}
@@ -452,11 +470,17 @@ async def daily_scan(
     # Log tokens
     await run_in_threadpool(_log_daily_scan_tokens, market_list, results, duration)
 
+    # Print routing summary for debugging (remove in production if verbose)
+    if omniroute_meta:
+        import sys
+        print(format_routing_summary(omniroute_meta), file=sys.stderr)
+
     return {
         'markets':  market_list,
         'scans':    scan_list,
         'totals':   totals,
         'results':  results,
+        'omniroute': omniroute_meta if omniroute else None,  # Cost tracking metadata
     }
 
 

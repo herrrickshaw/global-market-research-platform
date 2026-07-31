@@ -55,8 +55,11 @@ import sys
 import time
 import urllib.request
 
-import duckdb
 import pandas as pd
+import psycopg2.extras
+
+sys.path.insert(0, "/Users/umashankar/market-pipeline/code/python_files")
+import pg_client
 
 DSN = "dbname=market_data host=/tmp user=umashankar"
 SCHEMA = "funds"
@@ -67,33 +70,30 @@ CHUNK_DAYS = 30          # ~17MB/25 dates observed; a month keeps memory bounded
 SLEEP_S = 1.5            # be a polite guest on a free public endpoint
 AMFI_EPOCH = dt.date(2006, 4, 1)
 
+# Native Postgres DDL for pg_client.ensure_schema() — no `pg.` ATTACH-alias
+# prefix, Postgres type names (DOUBLE PRECISION not DuckDB's bare DOUBLE).
+# Combines the old DDL (attached-catalog side) and PG_SETUP (postgres_execute
+# side, since duckdb's pg extension couldn't CREATE INDEX/VIEW there) into
+# one statement list — psycopg2 has no such split.
 DDL = f"""
-CREATE SCHEMA IF NOT EXISTS pg."{SCHEMA}";
-CREATE TABLE IF NOT EXISTS pg."{SCHEMA}".nav (
-  scheme_code BIGINT, nav_date DATE, nav DOUBLE
+CREATE SCHEMA IF NOT EXISTS "{SCHEMA}";
+CREATE TABLE IF NOT EXISTS "{SCHEMA}".nav (
+  scheme_code BIGINT, nav_date DATE, nav DOUBLE PRECISION
 );
-CREATE TABLE IF NOT EXISTS pg."{SCHEMA}".schemes (
+CREATE TABLE IF NOT EXISTS "{SCHEMA}".schemes (
   scheme_code BIGINT, scheme_name VARCHAR, isin_growth VARCHAR,
   isin_reinvest VARCHAR, amc VARCHAR, category VARCHAR,
   plan VARCHAR, option VARCHAR, first_seen DATE, last_seen DATE
 );
-CREATE TABLE IF NOT EXISTS pg."{SCHEMA}".ingest_log (
+CREATE TABLE IF NOT EXISTS "{SCHEMA}".ingest_log (
   run_at TIMESTAMP, frm_date DATE, to_date DATE, schemes_seen BIGINT,
   rows_appended BIGINT, total_rows BIGINT, status VARCHAR, detail VARCHAR
 );
-"""
-
-# Indexes and the survivorship view go through postgres_execute — duckdb's pg
-# extension cannot CREATE INDEX / CREATE VIEW on the attached side.
-PG_SETUP = f"""
 CREATE UNIQUE INDEX IF NOT EXISTS nav_pk
   ON "{SCHEMA}".nav (scheme_code, nav_date);
 CREATE INDEX IF NOT EXISTS nav_date_ix ON "{SCHEMA}".nav (nav_date);
 CREATE UNIQUE INDEX IF NOT EXISTS schemes_pk
   ON "{SCHEMA}".schemes (scheme_code);
--- A scheme is DEAD when it stopped reporting well before the panel's own high
--- water mark. 10 sessions of slack: funds miss the odd day, and a fund that
--- merged last week should not be called dead until it has actually gone quiet.
 CREATE OR REPLACE VIEW "{SCHEMA}".scheme_status AS
 SELECT s.*,
        (SELECT max(nav_date) FROM "{SCHEMA}".nav) AS panel_last,
@@ -196,77 +196,88 @@ def parse(text: str) -> pd.DataFrame:
 
 
 def connect():
-    con = duckdb.connect()
-    con.execute("INSTALL postgres")
-    con.execute("LOAD postgres")
-    con.execute(f"ATTACH '{DSN}' AS pg (TYPE postgres)")
-    for stmt in filter(None, (s.strip() for s in DDL.split(";"))):
-        con.execute(stmt)
-    con.execute("CALL postgres_execute('pg', ?)", [PG_SETUP])
-    con.execute("CALL pg_clear_cache()")
-    return con
+    pg_client.connect()
+    pg_client.ensure_schema([s.strip() for s in DDL.split(";") if s.strip()])
+    return pg_client.get_connection()
 
 
 def upsert(con, df: pd.DataFrame) -> int:
     """Append unseen (scheme_code, nav_date) and refresh the scheme master."""
-    con.register("incoming", df)
+    df = df.drop_duplicates(["scheme_code", "nav_date"], keep="last")
 
-    # NAV — anti-join so a re-run of the same window appends nothing.
-    # The count is taken from the anti-join itself, BEFORE inserting. Two
-    # rejected alternatives: RETURNING (duckdb's pg extension cannot bind it on
-    # an attached table) and diffing count(*) before/after (both reads land in
-    # one transaction snapshot, so the second count cannot see the insert and
-    # the delta is always 0 — it silently under-reported a 158,643-row load).
-    novel = f"""
-        SELECT i.scheme_code, i.nav_date, i.nav
-        FROM (SELECT DISTINCT ON (scheme_code, nav_date) scheme_code, nav_date, nav
-              FROM incoming ORDER BY scheme_code, nav_date) i
-        LEFT JOIN pg."{SCHEMA}".nav n
-          ON n.scheme_code = i.scheme_code AND n.nav_date = i.nav_date
-        WHERE n.scheme_code IS NULL
-    """
-    appended = con.execute(f"SELECT count(*) FROM ({novel})").fetchone()[0]
+    # NAV — anti-join in pandas (was a DuckDB LEFT JOIN against the attached
+    # table). Scoped to this chunk's scheme_codes (upsert() is called per
+    # ~30-day CHUNK_DAYS window, never the full history at once), so the
+    # existing-keys query stays bounded even across a 10-year backfill.
+    with con.cursor() as cur:
+        cur.execute(
+            f'SELECT scheme_code, nav_date FROM "{SCHEMA}".nav '
+            "WHERE scheme_code = ANY(%s)",
+            # psycopg2 can't adapt numpy.int64 inside a list->ARRAY parameter
+            # (unlike execute_values' row-tuple path) — cast to native int.
+            ([int(x) for x in df.scheme_code.unique()],),
+        )
+        have = set(cur.fetchall())
+    key = list(zip(df.scheme_code, df.nav_date))
+    novel = df[[k not in have for k in key]]
+    appended = len(novel)
     if appended:
-        con.execute(f'INSERT INTO pg."{SCHEMA}".nav (scheme_code, nav_date, nav) {novel}')
+        rows = pg_client.to_rows(novel, ["scheme_code", "nav_date", "nav"])
+        pg_client.append_rows(SCHEMA, "nav", ["scheme_code", "nav_date", "nav"], rows)
 
-    # Scheme master — widen first_seen / last_seen. This IS the survivorship
-    # record, so it must never narrow: a backfill of older months can only push
-    # first_seen back, never drag last_seen backwards.
-    con.execute(f"""
-        CREATE OR REPLACE TEMP VIEW incoming_schemes AS
-        SELECT scheme_code,
-               max(scheme_name) AS scheme_name, max(isin_growth) AS isin_growth,
-               max(isin_reinvest) AS isin_reinvest, max(amc) AS amc,
-               max(category) AS category, max(plan) AS plan, max(option) AS option,
-               min(nav_date) AS first_seen, max(nav_date) AS last_seen
-        FROM incoming GROUP BY scheme_code
-    """)
-    con.execute(f"""
-        UPDATE pg."{SCHEMA}".schemes s
-        SET first_seen = LEAST(s.first_seen, i.first_seen),
-            last_seen  = GREATEST(s.last_seen, i.last_seen),
-            scheme_name = i.scheme_name, category = i.category, amc = i.amc,
-            plan = i.plan, option = i.option,
-            isin_growth = COALESCE(i.isin_growth, s.isin_growth),
-            isin_reinvest = COALESCE(i.isin_reinvest, s.isin_reinvest)
-        FROM incoming_schemes i WHERE s.scheme_code = i.scheme_code
-    """)
-    con.execute(f"""
-        INSERT INTO pg."{SCHEMA}".schemes
-        SELECT i.scheme_code, i.scheme_name, i.isin_growth, i.isin_reinvest,
-               i.amc, i.category, i.plan, i.option, i.first_seen, i.last_seen
-        FROM incoming_schemes i
-        LEFT JOIN pg."{SCHEMA}".schemes s ON s.scheme_code = i.scheme_code
-        WHERE s.scheme_code IS NULL
-    """)
-    con.unregister("incoming")
+    # Scheme master — widen first_seen / last_seen, never narrow (this IS the
+    # survivorship record: a backfill of older months can only push first_seen
+    # back, never drag last_seen backwards). Aggregated in pandas (was a
+    # DuckDB TEMP VIEW), then ONE native INSERT ... ON CONFLICT DO UPDATE —
+    # Postgres can express the widen-or-insert atomically here, unlike
+    # DuckDB's attached-table access, which needed a separate UPDATE plus an
+    # INSERT ... WHERE NOT EXISTS.
+    def _last_non_null(s):
+        s = s.dropna()
+        return s.iloc[-1] if len(s) else None
+    agg = df.groupby("scheme_code").agg(
+        scheme_name=("scheme_name", _last_non_null),
+        isin_growth=("isin_growth", _last_non_null),
+        isin_reinvest=("isin_reinvest", _last_non_null),
+        amc=("amc", _last_non_null),
+        category=("category", _last_non_null),
+        plan=("plan", _last_non_null),
+        option=("option", _last_non_null),
+        first_seen=("nav_date", "min"),
+        last_seen=("nav_date", "max"),
+    ).reset_index()
+    cols = ["scheme_code", "scheme_name", "isin_growth", "isin_reinvest", "amc",
+            "category", "plan", "option", "first_seen", "last_seen"]
+    scheme_rows = pg_client.to_rows(agg, cols)
+    if scheme_rows:
+        try:
+            with con.cursor() as cur:
+                psycopg2.extras.execute_values(
+                    cur,
+                    f'INSERT INTO "{SCHEMA}".schemes ({", ".join(cols)}) VALUES %s '
+                    "ON CONFLICT (scheme_code) DO UPDATE SET "
+                    "first_seen = LEAST(schemes.first_seen, EXCLUDED.first_seen), "
+                    "last_seen = GREATEST(schemes.last_seen, EXCLUDED.last_seen), "
+                    "scheme_name = EXCLUDED.scheme_name, category = EXCLUDED.category, "
+                    "amc = EXCLUDED.amc, plan = EXCLUDED.plan, option = EXCLUDED.option, "
+                    "isin_growth = COALESCE(EXCLUDED.isin_growth, schemes.isin_growth), "
+                    "isin_reinvest = COALESCE(EXCLUDED.isin_reinvest, schemes.isin_reinvest)",
+                    scheme_rows,
+                )
+            con.commit()
+        except Exception:
+            con.rollback()
+            raise
     return appended
 
 
 def log(con, frm, to, schemes, appended, total, status, detail=""):
-    con.execute(f'INSERT INTO pg."{SCHEMA}".ingest_log VALUES (?,?,?,?,?,?,?,?)',
-                [dt.datetime.now(), frm, to, schemes, appended, total,
-                 status, detail[:400]])
+    pg_client.append_rows(
+        SCHEMA, "ingest_log",
+        ["run_at", "frm_date", "to_date", "schemes_seen", "rows_appended",
+         "total_rows", "status", "detail"],
+        [(dt.datetime.now(), frm, to, schemes, appended, total, status, detail[:400])],
+    )
 
 
 def months(frm: dt.date, to: dt.date):
@@ -279,10 +290,13 @@ def months(frm: dt.date, to: dt.date):
 
 def status(con) -> int:
     try:
-        n, mn, mx = con.execute(
-            f'SELECT count(*), min(nav_date), max(nav_date) FROM pg."{SCHEMA}".nav'
-        ).fetchone()
+        with con.cursor() as cur:
+            cur.execute(
+                f'SELECT count(*), min(nav_date), max(nav_date) FROM "{SCHEMA}".nav'
+            )
+            n, mn, mx = cur.fetchone()
     except Exception as e:                            # noqa: BLE001
+        con.rollback()
         print(f"funds.nav unavailable: {str(e)[:120]}")
         return 1
     print(f"\n=== AMFI NAV PANEL ===")
@@ -290,20 +304,24 @@ def status(con) -> int:
     print(f"  date range  : {mn} -> {mx}")
     if not n:
         return 0
-    alive, dead = con.execute(
-        f"""SELECT count(*) FILTER (WHERE status='alive'),
-                   count(*) FILTER (WHERE status='dead')
-            FROM pg."{SCHEMA}".scheme_status"""
-    ).fetchone()
+    with con.cursor() as cur:
+        cur.execute(
+            f"""SELECT count(*) FILTER (WHERE status='alive'),
+                       count(*) FILTER (WHERE status='dead')
+                FROM "{SCHEMA}".scheme_status"""
+        )
+        alive, dead = cur.fetchone()
     print(f"  schemes     : {alive + dead:,}  ({alive:,} alive · {dead:,} dead)")
     print("\n  EQUITY CATEGORIES (alive · growth option, the scorecard peer sets)")
-    rows = con.execute(f"""
-        SELECT category, count(*) FILTER (WHERE plan='direct') AS direct,
-               count(*) FILTER (WHERE plan='regular') AS regular
-        FROM pg."{SCHEMA}".scheme_status
-        WHERE status='alive' AND option='growth' AND category ILIKE '%Equity%'
-        GROUP BY category ORDER BY direct DESC LIMIT 15
-    """).fetchall()
+    with con.cursor() as cur:
+        cur.execute(f"""
+            SELECT category, count(*) FILTER (WHERE plan='direct') AS direct,
+                   count(*) FILTER (WHERE plan='regular') AS regular
+            FROM "{SCHEMA}".scheme_status
+            WHERE status='alive' AND option='growth' AND category ILIKE '%Equity%'
+            GROUP BY category ORDER BY direct DESC LIMIT 15
+        """)
+        rows = cur.fetchall()
     for c, d, r in rows:
         print(f"    {d:4d} direct · {r:4d} regular   {c}")
     return 0
@@ -332,7 +350,9 @@ def main() -> int:
         frm = today - dt.timedelta(days=int(a.backfill_years * 365.25))
     else:
         # Incremental: resume the day after the panel's high-water mark.
-        mx = con.execute(f'SELECT max(nav_date) FROM pg."{SCHEMA}".nav').fetchone()[0]
+        with con.cursor() as cur:
+            cur.execute(f'SELECT max(nav_date) FROM "{SCHEMA}".nav')
+            mx = cur.fetchone()[0]
         frm = (mx + dt.timedelta(days=1)) if mx else today - dt.timedelta(days=30)
     to = dt.date.fromisoformat(a.to) if a.to else today
     frm = max(frm, AMFI_EPOCH)
@@ -384,7 +404,9 @@ def main() -> int:
 
 
 def _total(con) -> int:
-    return con.execute(f'SELECT count(*) FROM pg."{SCHEMA}".nav').fetchone()[0]
+    with con.cursor() as cur:
+        cur.execute(f'SELECT count(*) FROM "{SCHEMA}".nav')
+        return cur.fetchone()[0]
 
 
 if __name__ == "__main__":

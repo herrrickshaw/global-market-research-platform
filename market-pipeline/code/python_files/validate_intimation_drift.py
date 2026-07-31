@@ -33,9 +33,10 @@ import numpy as np
 import pandas as pd
 from scipy import stats
 
+import repo_registry as _RR
+
 BASE = os.path.dirname(os.path.abspath(__file__))
-ADJ = os.path.expanduser(
-    "~/repos/global-market-data/warehouse/ohlcv_adj/IN/*.parquet")
+ADJ = str(_RR.OHLCV_ADJ_IN / "*.parquet")
 EVENTS = os.path.join(BASE, "reports", "pit_event_studies.parquet")
 GRID_MD = os.path.join(BASE, "reports", "MULTIPLE_TESTING.md")
 OUT_MD = os.path.join(BASE, "reports", "INTIMATION_VALIDATION.md")

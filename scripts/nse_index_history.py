@@ -47,8 +47,10 @@ import urllib.request
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 
-import duckdb
 import pandas as pd
+
+sys.path.insert(0, "/Users/umashankar/market-pipeline/code/python_files")
+import pg_client
 
 DSN = "dbname=market_data host=/tmp user=umashankar"
 SCHEMA = "indices"
@@ -59,19 +61,21 @@ DEAD = Path.home() / ".local" / "state" / "nse_index_dead_dates.txt"
 WORKERS = 6
 EPOCH = dt.date(2016, 4, 1)
 
+# Native Postgres DDL for pg_client.ensure_schema() — no `pg.` ATTACH-alias
+# prefix, Postgres type names (DOUBLE PRECISION not DuckDB's bare DOUBLE).
 DDL = f"""
-CREATE SCHEMA IF NOT EXISTS pg."{SCHEMA}";
-CREATE TABLE IF NOT EXISTS pg."{SCHEMA}".nse_daily (
-  index_name VARCHAR, index_date DATE, open DOUBLE, high DOUBLE, low DOUBLE,
-  close DOUBLE, points_change DOUBLE, change_pct DOUBLE, volume DOUBLE,
-  turnover_cr DOUBLE, pe DOUBLE, pb DOUBLE, div_yield DOUBLE
+CREATE SCHEMA IF NOT EXISTS "{SCHEMA}";
+CREATE TABLE IF NOT EXISTS "{SCHEMA}".nse_daily (
+  index_name VARCHAR, index_date DATE, open DOUBLE PRECISION,
+  high DOUBLE PRECISION, low DOUBLE PRECISION, close DOUBLE PRECISION,
+  points_change DOUBLE PRECISION, change_pct DOUBLE PRECISION,
+  volume DOUBLE PRECISION, turnover_cr DOUBLE PRECISION,
+  pe DOUBLE PRECISION, pb DOUBLE PRECISION, div_yield DOUBLE PRECISION
 );
-CREATE TABLE IF NOT EXISTS pg."{SCHEMA}".ingest_log (
+CREATE TABLE IF NOT EXISTS "{SCHEMA}".ingest_log (
   run_at TIMESTAMP, frm DATE, to_ DATE, dates_fetched BIGINT,
   rows_appended BIGINT, total_rows BIGINT, status VARCHAR, detail VARCHAR
 );
-"""
-PG_SETUP = f"""
 CREATE UNIQUE INDEX IF NOT EXISTS nse_daily_pk
   ON "{SCHEMA}".nse_daily (index_name, index_date);
 CREATE INDEX IF NOT EXISTS nse_daily_date_ix ON "{SCHEMA}".nse_daily (index_date);
@@ -125,56 +129,60 @@ def fetch_day(d: dt.date):
 
 
 def connect():
-    con = duckdb.connect()
-    con.execute("INSTALL postgres"); con.execute("LOAD postgres")
-    con.execute(f"ATTACH '{DSN}' AS pg (TYPE postgres)")
-    for stmt in filter(None, (s.strip() for s in DDL.split(";"))):
-        con.execute(stmt)
-    con.execute("CALL postgres_execute('pg', ?)", [PG_SETUP])
-    con.execute("CALL pg_clear_cache()")
-    return con
+    pg_client.connect()
+    pg_client.ensure_schema([s.strip() for s in DDL.split(";") if s.strip()])
+    return pg_client.get_connection()
 
 
 def total(con) -> int:
-    return con.execute(f'SELECT count(*) FROM pg."{SCHEMA}".nse_daily').fetchone()[0]
+    with con.cursor() as cur:
+        cur.execute(f'SELECT count(*) FROM "{SCHEMA}".nse_daily')
+        return cur.fetchone()[0]
 
 
 def upsert(con, df: pd.DataFrame) -> int:
-    con.register("incoming", df)
-    novel = f"""
-        SELECT i.* FROM (SELECT DISTINCT ON (index_name, index_date) *
-                         FROM incoming ORDER BY index_name, index_date) i
-        LEFT JOIN pg."{SCHEMA}".nse_daily n
-          ON n.index_name = i.index_name AND n.index_date = i.index_date
-        WHERE n.index_name IS NULL
-    """
-    n = con.execute(f"SELECT count(*) FROM ({novel})").fetchone()[0]
+    """Anti-join in pandas (was a DuckDB LEFT JOIN against the attached
+    table): keyed on the fetched data's own index_name/index_date, never a
+    request string — see nse_index_tri.py's migration for why that matters."""
+    df = df.drop_duplicates(["index_name", "index_date"], keep="last")
+    with con.cursor() as cur:
+        cur.execute(
+            f'SELECT index_name, index_date FROM "{SCHEMA}".nse_daily '
+            "WHERE index_name = ANY(%s)",
+            (list(df.index_name.unique()),),
+        )
+        have = set(cur.fetchall())
+    key = list(zip(df.index_name, df.index_date))
+    novel = df[[k not in have for k in key]]
+    n = len(novel)
     if n:
-        cols = ", ".join(df.columns)
-        con.execute(f'INSERT INTO pg."{SCHEMA}".nse_daily ({cols}) '
-                    f"SELECT {cols} FROM ({novel})")
-    con.unregister("incoming")
+        cols = list(df.columns)
+        rows = pg_client.to_rows(novel, cols)
+        pg_client.append_rows(SCHEMA, "nse_daily", cols, rows)
     return n
 
 
 def status(con) -> int:
-    n, mn, mx = con.execute(
-        f'SELECT count(*), min(index_date), max(index_date) '
-        f'FROM pg."{SCHEMA}".nse_daily').fetchone()
+    with con.cursor() as cur:
+        cur.execute(f'SELECT count(*), min(index_date), max(index_date) '
+                    f'FROM "{SCHEMA}".nse_daily')
+        n, mn, mx = cur.fetchone()
     print(f"\n=== NSE INDEX PANEL ===\n  rows: {n:,}\n  range: {mn} -> {mx}")
     if not n:
         return 0
-    n_idx = con.execute(
-        f'SELECT count(DISTINCT index_name) FROM pg."{SCHEMA}".nse_daily'
-    ).fetchone()[0]
+    with con.cursor() as cur:
+        cur.execute(f'SELECT count(DISTINCT index_name) FROM "{SCHEMA}".nse_daily')
+        n_idx = cur.fetchone()[0]
     print(f"  indices: {n_idx}")
-    rows = con.execute(f"""
-        SELECT index_name, count(*) d, min(index_date) f, max(index_date) l,
-               avg(pe) FILTER (WHERE pe > 0) ape
-        FROM pg."{SCHEMA}".nse_daily
-        WHERE index_name IN ('Nifty 50','Nifty Midcap 150','Nifty Smallcap 250',
-                             'Nifty 500','Nifty Next 50')
-        GROUP BY 1 ORDER BY 2 DESC""").fetchall()
+    with con.cursor() as cur:
+        cur.execute(f"""
+            SELECT index_name, count(*) d, min(index_date) f, max(index_date) l,
+                   avg(pe) FILTER (WHERE pe > 0) ape
+            FROM "{SCHEMA}".nse_daily
+            WHERE index_name IN ('Nifty 50','Nifty Midcap 150','Nifty Smallcap 250',
+                                 'Nifty 500','Nifty Next 50')
+            GROUP BY 1 ORDER BY 2 DESC""")
+        rows = cur.fetchall()
     print("\n  KEY BENCHMARKS (the segment bars the fund comparison needs)")
     for nm, dd, f, l, ape in rows:
         print(f"    {nm:22s} {dd:>5,} days  {f} -> {l}  avg P/E {ape or 0:.1f}")
@@ -200,7 +208,9 @@ def main() -> int:
     elif a.backfill_years:
         frm = today - dt.timedelta(days=int(a.backfill_years * 365.25))
     else:
-        mx = con.execute(f'SELECT max(index_date) FROM pg."{SCHEMA}".nse_daily').fetchone()[0]
+        with con.cursor() as cur:
+            cur.execute(f'SELECT max(index_date) FROM "{SCHEMA}".nse_daily')
+            mx = cur.fetchone()[0]
         frm = (mx + dt.timedelta(days=1)) if mx else today - dt.timedelta(days=30)
     frm = max(frm, EPOCH)
     to = dt.date.fromisoformat(a.to) if a.to else today
@@ -241,9 +251,13 @@ def main() -> int:
     save_dead(dead | new_dead)
     tot = total(con)
     st = "partial" if failed else "ok"
-    con.execute(f'INSERT INTO pg."{SCHEMA}".ingest_log VALUES (?,?,?,?,?,?,?,?)',
-                [dt.datetime.now(), frm, to, fetched, appended, tot, st,
-                 "; ".join(failed[:5])])
+    pg_client.append_rows(
+        SCHEMA, "ingest_log",
+        ["run_at", "frm", "to_", "dates_fetched", "rows_appended", "total_rows",
+         "status", "detail"],
+        [(dt.datetime.now(), frm, to, fetched, appended, tot, st,
+          "; ".join(failed[:5]))],
+    )
     print(f"\n{fetched} trading days · appended {appended:,} · panel {tot:,} rows")
     if failed:
         print(f"  ⚠ {len(failed)} request(s) FAILED (not cached as holidays) — "

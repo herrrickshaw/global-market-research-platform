@@ -149,22 +149,52 @@ def upsert_quotes(market: str, live_df: pd.DataFrame) -> int:
         if col not in live_df.columns:
             live_df[col] = None
 
-    def _fv(v) -> Optional[float]:
+    # 🔴 A MISSING VALUE MUST NOT BE WRITTEN AS NULL. This statement carries all
+    # 41 columns, and in Cassandra binding None writes a TOMBSTONE — it deletes
+    # whatever was there. So a price-only fetch (bulk_fetcher Phase 1, the
+    # documented with_fundamentals=false mode) passed None for pe/pb/roe/opm/eps
+    # and ERASED the fundamentals, while a fundamentals-only load passed None for
+    # cmp/rsi/ema_* and erased the prices. The two loaders were mutually
+    # destructive, each silently deleting the other's columns on every run.
+    #
+    # Observed on 2026-07-29: ~25,500 rows carrying cmp at 08:27 were down to 3
+    # by 09:40 after a fundamentals rebuild, and hong_kong lost its partition
+    # entirely. The reverse had happened earlier — the same morning's audit found
+    # `eps > 0` in ZERO rows across every market, which is what a price fetch
+    # leaves behind.
+    #
+    # UNSET_VALUE is the protocol-level answer: the column is skipped entirely,
+    # writing neither a value nor a tombstone, so absent data leaves existing
+    # data alone. Needs protocol v4+; this cluster is Cassandra 5.0.8 (v5) and
+    # the Cluster() is not pinned to an older version.
+    #
+    # THE TRADE-OFF, stated: a value that legitimately becomes null (a company
+    # whose P/E stops being meaningful) will now RETAIN its last known figure
+    # rather than clearing. That is the right side to err on here — a stale
+    # multiple is a smaller error than deleting every fundamental in the table —
+    # but it means this column set is append-biased, and a genuine clear has to
+    # be done explicitly rather than by omission.
+    try:
+        from cassandra.query import UNSET_VALUE as _UNSET
+    except ImportError:                                        # pragma: no cover
+        _UNSET = None          # ancient driver: fall back to old (lossy) behaviour
+
+    def _fv(v):
         try:
             f = float(v)
-            return None if math.isnan(f) else f
+            return _UNSET if math.isnan(f) else f
         except (TypeError, ValueError):
-            return None
+            return _UNSET
 
-    def _iv(v) -> Optional[int]:
+    def _iv(v):
         f = _fv(v)
-        return int(f) if f is not None else None
+        return int(f) if f is not _UNSET and f is not None else _UNSET
 
-    def _sv(v) -> Optional[str]:
+    def _sv(v):
         if v is None or (isinstance(v, float) and math.isnan(v)):
-            return None
+            return _UNSET
         s = str(v).strip()
-        return s if s else None
+        return s if s else _UNSET
 
     rows: list[tuple] = []
     for row in live_df.itertuples(index=False, name='Q'):
@@ -178,7 +208,9 @@ def upsert_quotes(market: str, live_df: pd.DataFrame) -> int:
             _fv(row.ema_20),
             _fv(row.ema_50),
             _fv(row.ema_200),
-            str(getattr(row, 'rsi_signal', 'HOLD') or 'HOLD'),
+            # Defaulted to 'HOLD' unconditionally, so a load with no RSI in it
+            # stamped 'HOLD' over a real BUY/SELL signal. Absent means absent.
+            _sv(getattr(row, 'rsi_signal', None)),
             _fv(row.macd),
             _fv(row.macd_signal),
             _fv(row.pe),

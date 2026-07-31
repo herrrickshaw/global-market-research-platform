@@ -89,6 +89,44 @@ def _parse_table(table: list[list], page_label: str, market: str) -> list[dict]:
     return results
 
 
+def _ocr_fallback(file_bytes: bytes, market: str) -> tuple[list[dict], str]:
+    """
+    Scanned/image-only PDFs yield nothing from pdfplumber. If an Unlimited-OCR
+    endpoint is configured (UNLIMITED_OCR_URL — see ~/ocr/serve/README.md),
+    transcribe the pages remotely and re-run the same table/text matching on
+    the transcript. Silently a no-op when the endpoint isn't configured.
+    """
+    import os
+    import sys
+    home = os.path.expanduser('~')
+    if home not in sys.path:
+        sys.path.append(home)
+    try:
+        from ocr.unlimited_ocr import is_configured, markdown_tables, ocr_pdf_bytes
+    except ImportError:
+        return [], ''
+    if not is_configured():
+        return [], ''
+    try:
+        text = ocr_pdf_bytes(file_bytes)
+    except Exception as e:
+        return [], f'OCR fallback failed: {e}'
+
+    stocks: dict[str, dict] = {}
+    for table in markdown_tables(text):
+        for rec in _parse_table(table, 'ocr', market):
+            stocks.setdefault(rec['yf_ticker'], rec)
+    for rec in extract_from_text(text, market):
+        stocks.setdefault(rec['yf_ticker'],
+                          {**rec, 'symbol': rec['yf_ticker'], 'sheet': 'ocr'})
+    if stocks:
+        return list(stocks.values()), (
+            'Symbols were recovered via Unlimited-OCR transcription of a '
+            'scanned PDF — review the list for recognition errors.'
+        )
+    return [], ''
+
+
 def parse_pdf(file_bytes: bytes, market: str = 'india') -> dict:
     import pdfplumber
 
@@ -113,6 +151,13 @@ def parse_pdf(file_bytes: bytes, market: str = 'india') -> dict:
                 yf = rec['yf_ticker']
                 if yf not in stocks:
                     stocks[yf] = {**rec, 'symbol': yf, 'sheet': label}
+
+    if not stocks:
+        ocr_stocks, ocr_warning = _ocr_fallback(file_bytes, market)
+        for rec in ocr_stocks:
+            stocks.setdefault(rec['yf_ticker'], rec)
+        if ocr_warning:
+            warnings.append(ocr_warning)
 
     if not stocks:
         warnings.append(

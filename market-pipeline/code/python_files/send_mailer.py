@@ -44,9 +44,29 @@ def _digest_section() -> tuple:
         import watchlist_digest as W
         wl_path = Path(W.__file__).resolve().parent / "watchlist.csv"
         wl = pd.read_csv(wl_path)
+        # 🔴 COVERAGE GATE AT THE POINT OF SEND (2026-07-29). watchlist_repair
+        # prunes parked markets, but it runs FIRST in the pipeline while the
+        # screeners that add rows run after it — so a JP/KR/EU name added during
+        # today's run would sit in the file until tomorrow's prune and would be
+        # MAILED tonight. Filtering here is what actually guarantees the brief
+        # only carries markets whose fundamentals can support a per-name claim.
+        # Applied to the digest's view only; the file itself is left to
+        # watchlist_repair so the two do not fight over it.
+        import watchlist_markets as WM
+        _parked = wl[~wl["market"].map(WM.covered)].copy() if "market" in wl else wl.iloc[0:0]
+        wl = WM.restrict(wl)
+        if len(_parked):
+            print(f"  digest: coverage gate held back {len(_parked)} row(s) "
+                  f"outside {'/'.join(WM.COVERED)}")
         wl, evicted, purged, changed = W.maintain(wl)
         if changed:
-            wl.to_csv(wl_path, index=False)
+            # 🔴 WRITE BACK THE PARKED ROWS TOO. maintain() returns only the
+            # filtered frame, so persisting it alone would DELETE every JP/KR/EU
+            # row from watchlist.csv silently and without archiving — turning a
+            # display filter into data loss. watchlist_repair owns removal, and
+            # it archives to watchlist_purged.csv with a reason; this path must
+            # leave the file no smaller than it found it.
+            pd.concat([wl, _parked], ignore_index=True).to_csv(wl_path, index=False)
         if evicted:
             print("  digest: evicted " + ", ".join(evicted))
         if purged:
@@ -163,7 +183,85 @@ def send(subject: str, text: str, html: str, attachments=None,
         s.sendmail(user, [a.strip() for a in to.split(",")], msg.as_string())
     print(f"  sent '{subject}' → {to}"
           + (f" (+{len(attachments)} attachment)" if attachments else ""))
+    # Durable proof that a brief went out, for anything that later needs to ask
+    # "was one actually sent?" — the send was previously recorded ONLY as a line
+    # of stdout, so no other process could tell. On 2026-07-29 the pipeline's
+    # end-of-run alert reported "mailer: NOT SENT" at 08:08 from a FAILURES entry
+    # recorded at 22:55, four and a half hours after a brief had in fact been
+    # sent out-of-band at 03:36. Written after sendmail() returns, so it records
+    # a send that happened, never one that was merely attempted.
+    try:
+        import datetime as _dtm
+        import json as _json
+        from pathlib import Path as _P
+        _m = _P(__file__).resolve().parent / "state"
+        _m.mkdir(exist_ok=True)
+        (_m / "last_brief_sent.json").write_text(_json.dumps({
+            "sent_at": _dtm.datetime.now().isoformat(timespec="seconds"),
+            "subject": subject, "to": to, "pid": os.getpid(),
+        }, indent=2))
+    except Exception as _e:                                   # noqa: BLE001
+        # A marker failure must never turn a SUCCESSFUL send into a failure.
+        print(f"  (send marker not written: {str(_e)[:60]})")
     return True
+
+
+def _technical_section() -> str:
+    """Tier 2 (EU/JP/KR, daily) + Tier 3 (everything else, weekly) Darvas
+    signal counts — TECHNICAL ONLY, never a fundamentals-based pick. Added
+    2026-07-31 per the user's 3-tier priority (market_tiers.py): tier 1
+    (IN/US) keeps its full fundamentals-backed digest above unchanged;
+    watchlist_markets.PARKED's reasons tier 2/3 can't carry a per-name
+    fundamentals claim are still real and unchanged — this section only
+    ever reports Darvas breakout counts from market_daily.snapshots, which
+    weekly_extended_scan.py (tier 3) and the existing daily scans (tier 2)
+    already populate. Failure-isolated like every other optional block
+    here — must never block the core brief."""
+    try:
+        import pg_client
+        import watchlist_markets as WM
+        if not pg_client.connect():
+            return ""
+        conn = pg_client.get_connection()
+        cur = conn.cursor()
+        cur.execute("""
+            WITH latest AS (
+                SELECT market, MAX(as_of_date) AS d FROM market_daily.snapshots GROUP BY market
+            )
+            SELECT s.market, l.d,
+                   COUNT(*) FILTER (WHERE s.darvas_signal ILIKE '%%BUY%%') AS signals,
+                   COUNT(*) AS total
+            FROM market_daily.snapshots s JOIN latest l ON s.market = l.market AND s.as_of_date = l.d
+            GROUP BY s.market, l.d
+        """)
+        by_market = {WM.norm(m): (asof, sig, tot) for m, asof, sig, tot in cur.fetchall()}
+
+        def _row(tier: int, label: str) -> str:
+            parts = []
+            for m in WM.technical_markets(tier):
+                hit = by_market.get(m)
+                if not hit:
+                    continue
+                asof, sig, tot = hit
+                parts.append(f"{m} {sig}/{tot} ({asof:%d %b})")
+            return (f'<div style="margin:3px 0"><b>{label}:</b> ' + " · ".join(parts) + "</div>"
+                    if parts else "")
+
+        t2 = _row(2, "Tier 2 — daily, technical only")
+        t3 = _row(3, "Tier 3 — weekly, technical only")
+        if not (t2 or t3):
+            return ""
+        return (
+            '<div style="background:#eef4f6;border-left:4px solid #0B2F4A;'
+            'padding:10px 14px;margin:12px 0;border-radius:6px;font-size:13px">'
+            '<b>📈 Also watching (Darvas breakout counts, no fundamentals claim)</b>'
+            + t2 + t3 +
+            '<div style="color:#777;font-size:11px;margin-top:4px">Tier 2/3 fundamentals '
+            'coverage gap is unchanged (see watchlist_markets.PARKED) — these counts are '
+            'price/volume signals only, never a per-name pick.</div></div>')
+    except Exception as e:  # noqa: BLE001 — isolation is the whole point
+        print(f"  technical section skipped: {str(e)[:100]}")
+        return ""
 
 
 if __name__ == "__main__":
@@ -171,6 +269,7 @@ if __name__ == "__main__":
 
     subject, text, html = build()
     digest_html, digest_subj, digest_full, pngs = _digest_section()
+    technical_html = _technical_section()
 
     # Web copy of the full watchlist (2026-07-27): upload to GDrive via rclone
     # and put the share link at the top of the digest — the attachment stays,
@@ -199,6 +298,7 @@ if __name__ == "__main__":
     pred_html = ""
     try:
         import pandas as _pd
+        import watchlist_markets as WM
         _sc = Path("reports/watchlist_prediction_scores.csv")
         if _sc.exists():
             _s = _pd.read_csv(_sc)
@@ -208,7 +308,7 @@ if __name__ == "__main__":
             if "rsi_zone" in _s.columns:
                 _rz = _s["rsi_zone"].value_counts()
                 _rows += ('<div style="margin:4px 0"><b>RSI zones</b> '
-                          '(per-market read: momentum IN, mean-revert US/JP/KR/EU): '
+                          '(per-market read: momentum IN, mean-revert US): '
                           + " · ".join(f"{k} {v}" for k, v in _rz.items()
                                        if k != "?") + '</div>')
             _sr = Path("reports/held_sell_review.csv")
@@ -240,15 +340,25 @@ if __name__ == "__main__":
                 _fresh = (_dtt.date.today() - _dtt.date.fromtimestamp(
                     _re.stat().st_mtime)).days <= 1
                 _rc = _pd.read_csv(_re) if _fresh else _pd.DataFrame()
+                _rc = WM.restrict(_rc)
                 if len(_rc):
                     _names = ", ".join(f"{r.market}:{r.symbol} (rsi {r.rsi:.0f})"
                                        for r in _rc.head(8).itertuples())
+                    # 🔴 THE EDGE CLAIM HERE WAS WITHDRAWN 2026-07-29. This block
+                    # advertised "backtested excess +5-25%/63d, t 7-15" straight
+                    # into the reader's inbox. The report it came from now
+                    # measures IN 63d at excess -2.01% median, t=0.06, and an
+                    # independently written re-run agrees at t=0.27 on n=508.
+                    # reentry_engine's docstring was corrected the same day but
+                    # the number had also been copied HERE, which is exactly how
+                    # a retracted figure outlives its retraction.
                     _rows += (f'<div style="margin:4px 0"><b>↩ Re-entry queue '
-                              f'(mean-reversion engine):</b> {_names} — backtested '
-                              f'excess +5–25%/63d, t 7–15</div>')
+                              f'(mean-reversion engine, UNVALIDATED):</b> {_names} '
+                              f'— <span style="color:#b00">no measured forward '
+                              f'edge (t=0.06); paper-track only</span></div>')
             _rr = Path("reports/reentry_recent.csv")
             if _rr.exists():
-                _rrd = _pd.read_csv(_rr, parse_dates=["trigger_date"])
+                _rrd = WM.restrict(_pd.read_csv(_rr, parse_dates=["trigger_date"]))
                 if len(_rrd):
                     _by = _rrd.groupby("market").size().to_dict()
                     _top = "; ".join(
@@ -285,6 +395,7 @@ if __name__ == "__main__":
             + '<div style="margin:22px 0 10px;border-top:3px solid #0B2F4A"></div>'
             + wl_link
             + pred_html
+            + technical_html
             + digest_html)
     subject += digest_subj
     attachments = None

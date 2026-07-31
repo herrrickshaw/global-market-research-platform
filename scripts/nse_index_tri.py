@@ -37,8 +37,12 @@ import sys
 import time
 import urllib.request
 
-import duckdb
+import sys
+
 import pandas as pd
+
+sys.path.insert(0, "/Users/umashankar/market-pipeline/code/python_files")
+import pg_client
 
 DSN = "dbname=market_data host=/tmp user=umashankar"
 SCHEMA = "indices"
@@ -49,13 +53,13 @@ INDICES = ["NIFTY 50", "NIFTY NEXT 50", "NIFTY 100", "NIFTY 500",
            "NIFTY MIDCAP 150", "NIFTY SMALLCAP 250", "NIFTY MIDCAP 100",
            "NIFTY SMALLCAP 100", "NIFTY MICROCAP 250"]
 
+# Native Postgres DDL for pg_client.ensure_schema() — no `pg.` ATTACH-alias
+# prefix, Postgres type names (DOUBLE PRECISION not DuckDB's bare DOUBLE).
 DDL = f"""
-CREATE SCHEMA IF NOT EXISTS pg."{SCHEMA}";
-CREATE TABLE IF NOT EXISTS pg."{SCHEMA}".nse_tri (
-  index_name VARCHAR, index_date DATE, tri DOUBLE
+CREATE SCHEMA IF NOT EXISTS "{SCHEMA}";
+CREATE TABLE IF NOT EXISTS "{SCHEMA}".nse_tri (
+  index_name VARCHAR, index_date DATE, tri DOUBLE PRECISION
 );
-"""
-PG_SETUP = f"""
 CREATE UNIQUE INDEX IF NOT EXISTS nse_tri_pk
   ON "{SCHEMA}".nse_tri (index_name, index_date);
 """
@@ -84,14 +88,9 @@ def fetch(idx: str, frm: str, to: str) -> pd.DataFrame:
 
 
 def connect():
-    con = duckdb.connect()
-    con.execute("INSTALL postgres"); con.execute("LOAD postgres")
-    con.execute(f"ATTACH '{DSN}' AS pg (TYPE postgres)")
-    for s in filter(None, (x.strip() for x in DDL.split(";"))):
-        con.execute(s)
-    con.execute("CALL postgres_execute('pg', ?)", [PG_SETUP])
-    con.execute("CALL pg_clear_cache()")
-    return con
+    pg_client.connect()
+    pg_client.ensure_schema([s.strip() for s in DDL.split(";") if s.strip()])
+    return pg_client.get_connection()
 
 
 def main() -> int:
@@ -105,9 +104,11 @@ def main() -> int:
     con = connect()
 
     if a.status or not a.build:
-        r = con.execute(f'''SELECT index_name, count(*), min(index_date),
-                            max(index_date) FROM pg."{SCHEMA}".nse_tri
-                            GROUP BY 1 ORDER BY 1''').fetchall()
+        with con.cursor() as cur:
+            cur.execute(f'''SELECT index_name, count(*), min(index_date),
+                                max(index_date) FROM "{SCHEMA}".nse_tri
+                                GROUP BY 1 ORDER BY 1''')
+            r = cur.fetchall()
         print(f"=== NSE TOTAL RETURN INDICES ({len(r)}) ===")
         for n, c, f, l in r:
             print(f"  {n:24s} {c:>5,} obs  {f} -> {l}")
@@ -123,17 +124,29 @@ def main() -> int:
         if d.empty:
             print(f"  {idx:24s} no data")
             continue
-        con.register("inc", d)
-        novel = f"""SELECT i.* FROM (SELECT DISTINCT ON (index_name,index_date) *
-                    FROM inc ORDER BY index_name,index_date) i
-                    LEFT JOIN pg."{SCHEMA}".nse_tri t
-                      ON t.index_name=i.index_name AND t.index_date=i.index_date
-                    WHERE t.index_name IS NULL"""
-        n = con.execute(f"SELECT count(*) FROM ({novel})").fetchone()[0]
+        d = d.drop_duplicates(["index_name", "index_date"], keep="last")
+        # Anti-join in pandas (was a DuckDB LEFT JOIN against the attached
+        # table). Keyed on the FETCHED DATA's own index_name column, not the
+        # requested `idx` string — niftyindices.com's API normalises casing
+        # in its response ("Nifty 50") independently of what's requested
+        # ("NIFTY 50"), and the table already carries both as distinct rows
+        # from before this migration. Filtering existing rows by `idx`
+        # instead of d.index_name's actual values missed the already-loaded
+        # "Nifty 50" rows and produced a UniqueViolation on re-insert.
+        with con.cursor() as cur:
+            cur.execute(
+                f'SELECT index_name, index_date FROM "{SCHEMA}".nse_tri '
+                "WHERE index_name = ANY(%s)",
+                (list(d.index_name.unique()),),
+            )
+            have = set(cur.fetchall())
+        key = list(zip(d.index_name, d.index_date))
+        novel = d[[k not in have for k in key]]
+        n = len(novel)
         if n:
-            con.execute(f'INSERT INTO pg."{SCHEMA}".nse_tri '
-                        f"SELECT index_name,index_date,tri FROM ({novel})")
-        con.unregister("inc")
+            rows = pg_client.to_rows(novel, ["index_name", "index_date", "tri"])
+            pg_client.append_rows(SCHEMA, "nse_tri",
+                                  ["index_name", "index_date", "tri"], rows)
         total_new += n
         print(f"  {idx:24s} {len(d):>5,} obs · {n:>5,} new", flush=True)
         time.sleep(1.0)

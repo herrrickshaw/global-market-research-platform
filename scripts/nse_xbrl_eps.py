@@ -41,8 +41,10 @@ import xml.etree.ElementTree as ET
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 
-import duckdb
 import pandas as pd
+
+sys.path.insert(0, "/Users/umashankar/market-pipeline/code/python_files")
+import pg_client
 
 CACHE = Path("/Users/umashankar/market-pipeline/market_cache/nse_xbrl")
 XMLDIR = CACHE / "xml"
@@ -71,7 +73,8 @@ EPS_TAGS = ("BasicEarningsLossPerShareFromContinuingAndDiscontinuedOperations",
             "BasicEarningsPerShareAfterExtraordinaryItems",
             "BasicEarningsPerShareBeforeExtraordinaryItems",
             "BasicEarningsLossPerShareFromContinuingOperations",
-            "BasicEarningsLossPerShare")
+            "BasicEarningsLossPerShare",
+            "EarningPerShare")          # singular variant, 5 filings
 
 # 🔴 NSE TAGS THE RESULTS TABLE BY COLUMN, NOT BY PERIOD. An Indian quarterly
 # results table is: col 1 = current quarter, col 4 = year-to-date. The XBRL
@@ -82,17 +85,29 @@ EPS_TAGS = ("BasicEarningsLossPerShareFromContinuingAndDiscontinuedOperations",
 # are the ONLY ones carrying EPS facts (847 OneD / 646 FourD), so preferring
 # OneD is not a heuristic here, it is the format.
 QUARTER_CONTEXT_IDS = ("OneD",)
-NON_FINANCIAL_PREFIXES = ("INTEGRATED_",)
+# 🔴 EXCLUDE ONLY THE GOVERNANCE SUBTYPE. "INTEGRATED_" as a blanket prefix was
+# wrong and cost most of 2025-2026: NSE moved to an integrated filing format
+# around 2025 and encodes the SUBTYPE in the filename —
+#   INTEGRATED_FILING_INDAS_*       20,768  financial results
+#   INTEGRATED_FILING_GOVERNANCE_*  16,654  board/committee disclosures only
+#   INTEGRATED_FILING_NBFC_INDAS_*   1,491  financial
+#   INTEGRATED_FILING_BANKING_*        411  financial
+# Sampling a 2024 GOVERNANCE file and generalising to the whole class discarded
+# ~22,900 results filings, which is why parsed coverage stopped at 2024-12 and
+# LUPIN's TTM ran ~18 months stale (EPS 62.92 against screener.in's implied
+# 124.1, i.e. a P/E of 38.3 against a true 19.3). Only GOVERNANCE is skipped now.
+NON_FINANCIAL_PREFIXES = ("INTEGRATED_FILING_GOVERNANCE_",)
 PAT_TAGS = ("ProfitLossForThePeriod",
             "ProfitLossAfterTaxesMinorityInterestAndShareOfProfitLossOfAssociates",
             "ProfitLossFromOrdinaryActivitiesAfterTax")
 REV_TAGS = ("RevenueFromOperations", "Income", "TotalIncome")
 
 DDL = f"""
-CREATE SCHEMA IF NOT EXISTS pg."{SCHEMA}";
-CREATE TABLE IF NOT EXISTS pg."{SCHEMA}".india_quarterly (
+CREATE SCHEMA IF NOT EXISTS "{SCHEMA}";
+CREATE TABLE IF NOT EXISTS "{SCHEMA}".india_quarterly (
   symbol VARCHAR, period_start DATE, period_end DATE, consolidated BOOLEAN,
-  eps DOUBLE, pat DOUBLE, revenue DOUBLE, filing_date TIMESTAMP, src VARCHAR
+  eps DOUBLE PRECISION, pat DOUBLE PRECISION, revenue DOUBLE PRECISION,
+  filing_date TIMESTAMP, src VARCHAR
 );
 """
 
@@ -107,9 +122,14 @@ def local_index() -> pd.DataFrame:
     d = d.sort_values("filing_ts")
     # consolidated preferred, then latest filing
     d["cons"] = d.consolidated.astype(str).str.contains("Non", case=False) == False
-    d = (d.sort_values(["cons", "filing_ts"])
-           .drop_duplicates(["symbol", "financialYear", "relatingTo"], keep="last"))
-    return d
+    # 🔴 DO NOT PRE-DEDUPE ON INDEX METADATA. INTEGRATED filings carry
+    # financialYear=None and relatingTo='Original'/'New', so the old key
+    # (symbol, financialYear, relatingTo) collapsed EVERY integrated filing for
+    # a symbol into ONE row — LUPIN's 19 filings since 2025 became 2, which is
+    # why its TTM stayed pinned at 2024-12 and read EPS 62.92 against
+    # screener.in's implied 124.1. Dedupe is deferred to AFTER parsing, on the
+    # period_end the XML itself reports, which is the only reliable key.
+    return d.drop_duplicates(subset=["fn"])
 
 
 def parse_one(path: Path):
@@ -138,6 +158,26 @@ def parse_one(path: Path):
                 pass
     if not ctx:
         return None
+
+    # 🔴 DANGLING contextRef — the single biggest cause of "unusable". Many
+    # filings reference `OneD`/`FourD` on the EPS fact while defining ONLY
+    # concept-suffixed contexts (OneOperatingExpenses01D,
+    # FourItemsThatWillNotBeReclassified01D, ...), so the plain ID resolves to
+    # nothing and the fact is discarded. 1,003 of 1,009 EPS facts in a
+    # 300-file failure sample died this way.
+    # NSE prefixes every column-1 context with "One" and every column-4 with
+    # "Four", and in 200 of 200 sampled failures ALL One* contexts shared
+    # exactly ONE period — so the column prefix determines the period
+    # unambiguously and a dangling ref can be resolved from its siblings.
+    col_period: dict[str, set] = {}
+    for cid, per in ctx.items():
+        for pre in ("One", "Two", "Three", "Four", "Five"):
+            if cid.startswith(pre):
+                col_period.setdefault(pre, set()).add(per)
+                break
+    fallback = {pre: next(iter(v)) for pre, v in col_period.items() if len(v) == 1}
+    for pre, per in fallback.items():
+        ctx.setdefault(pre + "D", per)      # OneD, FourD, ...
 
     def pick(tags):
         """The CURRENT QUARTER value: right tag, quarter-length context, and
@@ -194,17 +234,17 @@ def parse_local(a) -> int:
     if not rows:
         print("nothing parsed"); return 1
     df = pd.DataFrame(rows)
-    con = duckdb.connect()
-    con.execute("INSTALL postgres"); con.execute("LOAD postgres")
-    con.execute(f"ATTACH '{DSN}' AS pg (TYPE postgres)")
-    for s in filter(None, (x.strip() for x in DDL.split(";"))):
-        con.execute(s)
-    con.register("inc", df)
-    con.execute(f'DELETE FROM pg."{SCHEMA}".india_quarterly WHERE src IN '
-                "(SELECT DISTINCT src FROM inc)")
-    con.execute(f'INSERT INTO pg."{SCHEMA}".india_quarterly '
-                "SELECT symbol,period_start,period_end,consolidated,eps,pat,"
-                "revenue,filing_date,src FROM inc")
+    # dedupe on the PARSED period: consolidated preferred, then latest filing
+    df = (df.sort_values(["consolidated", "filing_date"])
+            .drop_duplicates(["symbol", "period_end"], keep="last"))
+    pg_client.connect()
+    pg_client.ensure_schema([s.strip() for s in DDL.split(";") if s.strip()])
+    cols = ["symbol", "period_start", "period_end", "consolidated", "eps",
+            "pat", "revenue", "filing_date", "src"]
+    srcs = sorted(df.src.unique().tolist())
+    out_rows = pg_client.to_rows(df, cols)
+    pg_client.delete_and_insert(SCHEMA, "india_quarterly", "src = ANY(%s)",
+                                (srcs,), out_rows, cols)
     print(f"\nparsed {len(df):,} quarters · {df.symbol.nunique():,} symbols · "
           f"{bad:,} unusable")
     print(f"period_end {df.period_end.min()} -> {df.period_end.max()}")
@@ -242,19 +282,23 @@ def fetch(a) -> int:
 
 
 def status(a) -> int:
-    con = duckdb.connect()
-    con.execute("INSTALL postgres"); con.execute("LOAD postgres")
-    con.execute(f"ATTACH '{DSN}' AS pg (TYPE postgres)")
+    pg_client.connect()
+    con = pg_client.get_connection()
     try:
-        n, s, mn, mx = con.execute(
-            f'SELECT count(*), count(DISTINCT symbol), min(period_end), '
-            f'max(period_end) FROM pg."{SCHEMA}".india_quarterly').fetchone()
+        with con.cursor() as cur:
+            cur.execute(
+                f'SELECT count(*), count(DISTINCT symbol), min(period_end), '
+                f'max(period_end) FROM "{SCHEMA}".india_quarterly')
+            n, s, mn, mx = cur.fetchone()
     except Exception as e:                                # noqa: BLE001
+        con.rollback()
         print(f"table absent: {str(e)[:80]}"); return 1
     print(f"india_quarterly: {n:,} rows · {s:,} symbols · {mn} -> {mx}")
-    r = con.execute(f'''SELECT extract(year from period_end) y, count(*) n,
-        count(DISTINCT symbol) s FROM pg."{SCHEMA}".india_quarterly
-        GROUP BY 1 ORDER BY 1''').fetchall()
+    with con.cursor() as cur:
+        cur.execute(f'''SELECT extract(year from period_end) y, count(*) n,
+            count(DISTINCT symbol) s FROM "{SCHEMA}".india_quarterly
+            GROUP BY 1 ORDER BY 1''')
+        r = cur.fetchall()
     for y, nn, ss in r:
         print(f"   {int(y)}  {nn:>6,} quarters  {ss:>5,} symbols")
     return 0

@@ -270,6 +270,57 @@ def _fetch_missing(d: pd.DataFrame, asof: Optional[pd.Timestamp]) -> pd.DataFram
     return d
 
 
+def realized_sales() -> pd.DataFrame:
+    """(symbol) -> real, tax-filed sale summary: total sell value, total
+    buy value, total realized gain/loss, last sale date, holding period.
+
+    THE FIX FOR THE 2026-07-31 FINDING: "sold" rows previously compared
+    entry_price to the CURRENT market price (no exit price was tracked
+    anywhere), so a name that crashed AFTER being sold showed a huge
+    fabricated "loss" that was never the user's actual result — WKHS/AMC/
+    BLNK showed -90%+ this way. The real numbers were sitting unused the
+    whole time: FA_SHEET (already read above for entry dates) carries a
+    SECOND table in the same sheet, columns O onward — Security/Sale
+    date/Sold Units/Sell Value($)/Buy Value($)/Gain-Loss($)/Holding
+    period — the user's own actual, tax-filed Schedule FA sale records.
+    Aggregated by symbol since a name can have multiple partial-sale
+    transactions."""
+    if not FA_SHEET.exists():
+        return pd.DataFrame()
+    try:
+        fa = pd.read_excel(FA_SHEET, sheet_name="FA_SHEET")
+    except Exception:
+        return pd.DataFrame()
+    if len(fa.columns) < 27:
+        return pd.DataFrame()
+    # Positional, not by header name — this second table shares the sheet
+    # with the acquisition-record table above it and isn't a named range.
+    sale = fa.iloc[:, 14:27].copy()
+    sale.columns = ["symbol", "sale_date", "sold_units", "sell_value_usd",
+                     "buy_value_usd", "brokerage_usd", "gain_loss_usd",
+                     "gain_loss_inr", "buy_date", "buy_qty", "buy_amount_usd",
+                     "holding_period_days", "matching_buy_date"]
+    sale = sale.dropna(subset=["symbol"]).copy()
+    sale["symbol"] = sale["symbol"].astype(str).str.strip().str.upper()
+    sale["sale_date"] = pd.to_datetime(sale["sale_date"], errors="coerce")
+    for c in ("sell_value_usd", "buy_value_usd", "brokerage_usd", "gain_loss_usd",
+              "gain_loss_inr", "holding_period_days"):
+        sale[c] = pd.to_numeric(sale[c], errors="coerce")
+    agg = sale.groupby("symbol").agg(
+        realized_sell_value_usd=("sell_value_usd", "sum"),
+        realized_buy_value_usd=("buy_value_usd", "sum"),
+        realized_brokerage_usd=("brokerage_usd", "sum"),
+        realized_gain_loss_usd=("gain_loss_usd", "sum"),
+        realized_gain_loss_inr=("gain_loss_inr", "sum"),
+        last_sale_date=("sale_date", "max"),
+        n_sale_transactions=("sale_date", "count"),
+        avg_holding_period_days=("holding_period_days", "mean"),
+    ).reset_index()
+    agg["realized_pct"] = (agg["realized_gain_loss_usd"] /
+                            agg["realized_buy_value_usd"].replace(0, np.nan)) * 100
+    return agg
+
+
 def build(market: Optional[str], status: Optional[str],
           asof: Optional[pd.Timestamp] = None) -> pd.DataFrame:
     wl = pd.read_csv(WATCHLIST)
@@ -367,7 +418,27 @@ def build(market: Optional[str], status: Optional[str],
             ltp, entry, pct, xpct, basis
         g["as_of"], g["stale_days"] = asof_col, stale
         out.append(g)
-    return pd.concat(out, ignore_index=True) if out else pd.DataFrame()
+    result = pd.concat(out, ignore_index=True) if out else pd.DataFrame()
+
+    # Overlay REAL realized numbers onto "sold" rows wherever the tax
+    # filing has a matching sale record — replacing the current-price
+    # comparison, which is not a real result for a closed position (see
+    # realized_sales()'s docstring). Rows with no match keep the old
+    # current-price estimate, now explicitly labeled as unverified rather
+    # than presented the same way as a real one.
+    if not result.empty:
+        rs = realized_sales()
+        if not rs.empty:
+            result = result.merge(rs, on="symbol", how="left")
+            is_sold = result["status"] == "sold"
+            has_real = is_sold & result["realized_gain_loss_usd"].notna()
+            result.loc[has_real, "pct_since"] = result.loc[has_real, "realized_pct"]
+            result.loc[has_real, "basis"] = "realized-tax-filing"
+        result.loc[result["status"] == "sold", "basis"] = result.loc[
+            result["status"] == "sold", "basis"].where(
+            result.loc[result["status"] == "sold", "basis"] == "realized-tax-filing",
+            "sold-no-exit-price-on-file")
+    return result
 
 
 def main() -> int:
