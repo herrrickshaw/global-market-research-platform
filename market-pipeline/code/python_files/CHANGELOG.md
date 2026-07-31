@@ -206,9 +206,17 @@ close of 1234.50 instead of 1130.10 while passing the India-membership filter un
 - The LMDB loop is retained as a fallback for a missing seed. It remains exposed to the collision,
   which is why it is the fallback and not the path.
 
-- **Not fixed, recorded as a risk.** `custom_screener.py:189` is a `__main__` demo, so off every
-  pipeline path, but would be badly wrong if run: `symbols()[:800]` sorts lexicographically, so
-  numeric Chinese codes lead, and each is hard-labelled `StockData(s, "IN", …)`.
+- **`custom_screener.py` demo fixed too — it was broken twice over.** The `__main__` block is off
+  every pipeline path, but was wrong in two independent ways. (1) `store.symbols()[:800]` reads the
+  shared store and hard-labels every row `"IN"`; `symbols()` sorts lexicographically, so on a global
+  store the first 800 are numeric Chinese codes and the demo would have screened Shenzhen stocks
+  and printed them as Indian. (2) Even on an India-only store the slice was useless: India's
+  bhavcopy leads with bond/debenture codes (`0ANSPL28`, `0APL26`, `0KFL25` …), so it screened 800
+  debt instruments and printed an **empty table**. Now takes its universe from `kit.load(market,
+  min_turnover_usd=1e6)` — the seed for the market actually requested, with the documented
+  liquidity pre-filter — and the market is a CLI arg, so the label cannot drift from the data.
+  Verified: `IN` → 794 liquid equities with a populated result; `TW` → 735, correctly labelled;
+  unknown market exits with the list of seeded markets.
 - **Why `watchlist_pnl` was worth fixing before the US seed lands rather than after**: all 15
   foreign seeds are currently exchange-qualified (verified: **zero** bare symbols), so nothing
   collides today. The failure only appears when a `cleaned_long_US.parquet` arrives — and it
