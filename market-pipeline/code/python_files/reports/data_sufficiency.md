@@ -4,7 +4,7 @@ Guards against false outcomes from thin data. **completeness** = fundamentals co
 
 | market | fund tickers | liquid universe | coverage | years | formations | nonov-6M | completeness | power |
 |---|--:|--:|--:|--:|--:|--:|:--:|:--:|
-| IN | 1,870 | 3,103 | 50% | 2012-2026 | 102 | 17 | 🔴 THIN | ✅ powered |
+| IN | 1,880 | 3,121 | 49% | 2006-2026 | 102 | 17 | 🔴 THIN | ✅ powered |
 | US | 4,597 | 6 | 83% | 1987-2029 | 102 | 17 | ✅ complete | ✅ powered |
 | KR | 1,564 | 1,622 | 58% | 2016-2026 | 102 | 17 | 🔴 THIN | ✅ powered |
 | JP | 1,437 | 1,609 | 36% | 2011-2024 | 102 | 17 | 🔴 THIN | ✅ powered |
@@ -15,7 +15,7 @@ Guards against false outcomes from thin data. **completeness** = fundamentals co
 
 | market | trust the value-reversion result? | why |
 |---|---|---|
-| IN | 🟡 RETURNS ONLY | 17 obs (powered) BUT 50% liquid cov — a coverage bias risk; fetch more fundamentals |
+| IN | 🟡 RETURNS ONLY | 17 obs (powered) BUT 49% liquid cov — a coverage bias risk; fetch more fundamentals |
 | US | ✅ YES | 1987-2029, 83% liquid cov, 17 non-overlap obs — powered & complete |
 | KR | 🟡 RETURNS ONLY | 17 obs (powered) BUT 58% liquid cov — a coverage bias risk; fetch more fundamentals |
 | JP | 🟡 RETURNS ONLY | 17 obs (powered) BUT 36% liquid cov — a coverage bias risk; fetch more fundamentals |

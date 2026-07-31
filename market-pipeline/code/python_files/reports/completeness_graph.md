@@ -1,26 +1,50 @@
 # Completeness audit — data, claims, and gates
 
-Generated 2026-07-30 by `completeness_graph.py` (LangGraph, 4 nodes, deterministic — no LLM).
+Generated 2026-07-31 by `completeness_graph.py` (LangGraph, 4 nodes, deterministic — no LLM).
 
-**15 sources inventoried, 0 missing/erroring, 0 source(s) past their expected refresh cadence · 8 scheduled scripts checked, 1 quoting numbers their own cited report no longer contains · 8 analyses checked for the contamination gate, 0 ungated · 30 conclusions have a declared universe, 8 rest on a top-N liquid SAMPLE rather than the full market · 7 Cassandra market(s) audited, 1 present but hollow (rows and prices, no fundamentals)**
+**39 sources inventoried, 0 missing/erroring, 0 source(s) past their expected refresh cadence · 8 scheduled scripts checked, 1 quoting numbers their own cited report no longer contains · 8 analyses checked for the contamination gate, 0 ungated · 30 conclusions have a declared universe, 8 rest on a top-N liquid SAMPLE rather than the full market · 7 Cassandra market(s) audited, 1 present but hollow (rows and prices, no fundamentals)**
 
 ## 1. Data completeness
 
 | source | rows | symbols | span | stale (d) | cadence | crit |
 |---|--:|--:|---|--:|---|:--:|
-| `bhavcopy.cleaned_ohlcv` | 1,241,642 | 7,838 | 2025-06-25 -> 2026-07-29 | 1 | daily | ✅ |
-| `bhavcopy.nse_deep_ohlcv` | 4,423,382 | 3,476 | 2016-01-01 -> 2026-07-13 | 17 | static |  |
-| `fundamentals.india_pe_daily` | 1,962,914 | 1,744 | 2019-01-17 -> 2026-07-28 | 2 | daily | ✅ |
-| `fundamentals.india_quarterly` | 53,794 | 2,575 | 2018-05-21 -> 2026-07-27 | 3 | quarterly | ✅ |
-| `fundamentals.ratios` | 9,478 | 9,456 | — | — | weekly |  |
-| `funds.nav` | 22,327,834 | 22,668 | 2016-07-28 -> 2026-07-27 | 3 | daily |  |
-| `indices.nse_daily` | 240,314 | 173 | 2016-07-28 -> 2026-07-27 | 3 | daily |  |
-| `indices.nse_tri` | 22,266 | 17 | 2016-08-01 -> 2026-07-27 | 3 | daily |  |
-| `indices.custom_daily` | 61,963 | 31 | — | — | weekly |  |
-| `market_daily.snapshots` | 180,816 | 17,398 | — | — | daily | ✅ |
-| `market_daily.ticker_freshness` | 21,290 | 21,209 | — | — | daily | ✅ |
-| `public.ohlcv_history` | 38,235,027 | — | 2011-01-04 -> 2026-07-17 | 13 | external |  |
+| `bhavcopy.bhavcopy_ohlcv` | 1,820,782 | 7,882 | 2025-06-11 -> 2026-07-30 | 1 | daily | ✅ |
+| `bhavcopy.bse_raw` | 1,344,502 | — | — | — | daily |  |
+| `bhavcopy.cleaned_ohlcv` | 1,237,633 | 7,835 | 2025-06-27 -> 2026-07-30 | 1 | daily | ✅ |
+| `bhavcopy.nse_deep_ohlcv` | 4,423,382 | 3,476 | 2016-01-01 -> 2026-07-13 | 18 | static |  |
+| `bhavcopy.nse_raw` | 647,458 | — | — | — | daily |  |
+| `etl.load_batches` | 49 | — | 2026-07-27 -> 2026-07-27 | 4 | per-run |  |
+| `etl.source_registry` | 16 | — | — | — | static config |  |
+| `etl.stage_fundamentals` | 0 | 0 | — | — | per-run |  |
+| `fundamentals.india_pe_daily` | 1,979,108 | 1,776 | 2019-01-17 -> 2026-07-29 | 2 | daily | ✅ |
+| `fundamentals.india_quarterly` | 55,002 | 2,576 | 2018-05-21 -> 2026-07-30 | 1 | quarterly | ✅ |
+| `fundamentals.intl_pit_quarterly` | 4,179 | 401 | 2004-11-14 -> 2026-07-29 | 2 | JP/KR/CN daily off-hours trickle; AU/CA/DE/HK/SA/TW/BR/CH/SE/SG/UK/ZA weekly (Tier 3 cadence) | ✅ |
+| `fundamentals.next_earnings` | 442 | 442 | 2007-05-10 -> 2027-03-11 | -223 | off-hours trickle |  |
+| `fundamentals.ratios` | 9,630 | 9,608 | — | — | weekly |  |
+| `funds.nav` | 22,345,052 | 22,677 | 2016-07-28 -> 2026-07-29 | 2 | daily |  |
+| `funds.schemes` | 22,677 | 22,677 | — | — | daily |  |
+| `indices.custom_daily` | 62,048 | 31 | — | — | weekly |  |
+| `indices.factsheet_holding` | 1,336 | 137 | — | — | daily |  |
+| `indices.factsheet_meta` | 253 | 253 | — | — | daily |  |
+| `indices.factsheet_sector` | 1,192 | 107 | — | — | daily |  |
+| `indices.ingest_log` | 4 | — | — | — | per-run |  |
+| `indices.nse_daily` | 240,622 | 174 | 2016-07-28 -> 2026-07-30 | 1 | daily |  |
+| `indices.nse_tri` | 22,266 | 17 | 2016-08-01 -> 2026-07-27 | 4 | daily |  |
+| `market_daily.ingest_log` | 216 | — | — | — | per-run |  |
+| `market_daily.snapshots` | 214,202 | 33,090 | — | — | daily | ✅ |
+| `market_daily.step_timings` | 179 | — | — | — | per-run |  |
+| `market_daily.symbol_names` | 26,948 | 26,948 | — | — | daily |  |
+| `market_daily.ticker_freshness` | 37,321 | 36,897 | — | — | daily | ✅ |
+| `market_daily.ticker_reference` | 37,321 | 36,897 | 2026-07-31 -> 2026-07-31 | 0 | every 15 min (local join only, see run_quarter_hourly_refresh.sh) | ✅ |
+| `public.fact_insider_transaction` | 204,977 | — | 2017-01-03 -> 2025-12-31 | 212 | built once (v8) |  |
+| `public.fact_screener_signal` | 4,980,728 | — | 2009-08-21 -> 2026-10-13 | -74 | built once (v8), not scheduled | ✅ |
+| `public.fact_short_interest` | 97,555 | — | 2017-12-29 -> 2026-06-30 | 31 | built once (v8) |  |
+| `public.fundamentals` | 1 | — | — | — | dead |  |
 | `public.global_fundamentals` | 245,116 | 25,430 | — | — | external |  |
+| `public.load_batches` | 24 | — | 2026-07-07 -> 2026-07-19 | 12 | per-run |  |
+| `public.markets` | 8 | — | — | — | static dimension | ✅ |
+| `public.ohlcv_history` | 38,235,027 | — | 2011-01-04 -> 2026-07-17 | 14 | external |  |
+| `public.stocks` | 35,243 | 34,357 | 2026-07-07 -> 2026-07-18 | 13 | append | ✅ |
 | `india split factors` | 688 | 468 | — | — | — | ✅ |
 | `india unverifiable` | 29 | 29 | — | — | — | ✅ |
 
@@ -103,6 +127,8 @@ Generated 2026-07-30 by `completeness_graph.py` (LangGraph, 4 nodes, determinist
 
 ## Notes
 
+- 🔴 fundamentals.next_earnings: max next_earnings_date is 2027-03-11 — IN THE FUTURE, table contains impossible dates
+- 🔴 public.fact_screener_signal: max signal_date is 2026-10-13 — IN THE FUTURE, table contains impossible dates
 - 🔴 cassandra[japan]: fund_pct reports 100% populated, but only 0.0% of that is measured — the rest is fundamentals_source='median_imputed' reporting as if it were real per-symbol data
 - 🔴 cassandra[korea]: fund_pct reports 100% populated, but only 0.0% of that is measured — the rest is fundamentals_source='median_imputed' reporting as if it were real per-symbol data
 - 🔴 cassandra[china]: fund_pct reports 100% populated, but only 0.4% of that is measured — the rest is fundamentals_source='median_imputed' reporting as if it were real per-symbol data
