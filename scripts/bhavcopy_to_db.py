@@ -36,6 +36,9 @@ from pathlib import Path
 
 import duckdb
 
+sys.path.insert(0, "/Users/umashankar/market-pipeline/code/python_files")
+import pg_client
+
 HOME = Path("/Users/umashankar")
 # The pipeline (and its cache) migrated out of ~/Downloads on 2026-07-16; the
 # launchd plist exports BHAV_CACHE pointing at the live location — honor it.
@@ -154,41 +157,56 @@ def to_postgres(db_path: Path, dsn: str, schema: str = "bhavcopy") -> None:
     that model, so it is kept side-by-side rather than merged — merging would
     require a symbol->stock_id mapping and risks corrupting live data.
     """
-    # NB: a read_only DuckDB connection forces ATTACHed databases read-only too,
-    # so we must open read-write here even though we only READ the local tables.
-    con = duckdb.connect(str(db_path))
-    con.execute("INSTALL postgres"); con.execute("LOAD postgres")
-    con.execute(f"ATTACH '{dsn}' AS pg (TYPE postgres)")
-    con.execute(f'CREATE SCHEMA IF NOT EXISTS pg."{schema}"')
+    # Read-only: we only ever read the local tables now — no ATTACH, no
+    # need for the read-write workaround the old DuckDB-postgres path required.
+    con = duckdb.connect(str(db_path), read_only=True)
+    pg_client.connect(dsn)
+    pg_client.ensure_schema([f'CREATE SCHEMA IF NOT EXISTS "{schema}"'])
+    pconn = pg_client.get_connection()
     for tbl in TABLES:
         exists = con.execute(
             "SELECT count(*) FROM information_schema.tables WHERE table_name=?", [tbl]
         ).fetchone()[0]
         if not exists:
             continue
-        tgt = f'pg."{schema}"."{tbl}"'
-        con.execute(f'CREATE TABLE IF NOT EXISTS {tgt} AS SELECT * FROM "{tbl}" LIMIT 0')
-        before = con.execute(f"SELECT count(*) FROM {tgt}").fetchone()[0]
         local_n = con.execute(f'SELECT count(*) FROM "{tbl}"').fetchone()[0]
+        col_types = {c[0]: pg_client.pg_type(c[1])
+                     for c in con.execute(f'DESCRIBE "{tbl}"').fetchall()}
+        cols = list(col_types.keys())
+        cols_ddl = ", ".join(f'"{c}" {t}' for c, t in col_types.items())
+        # CREATE TABLE IF NOT EXISTS — never DROP: market_daily.ticker_freshness
+        # (a view built by market_ingest.py) depends on cleaned_ohlcv, and DROP
+        # would require CASCADE-ing it away.
+        pg_client.ensure_schema([f'CREATE TABLE IF NOT EXISTS "{schema}"."{tbl}" ({cols_ddl})'])
+
+        with pconn.cursor() as cur:
+            cur.execute(f'SELECT count(*) FROM "{schema}"."{tbl}"')
+            before = cur.fetchone()[0]
+
         if before == 0:
-            con.execute(f'INSERT INTO {tgt} SELECT * FROM "{tbl}"')
+            df = con.execute(f'SELECT * FROM "{tbl}"').df()
+            pg_client.append_rows(schema, tbl, cols, pg_client.to_rows(df, cols))
         elif tbl in REGENERATED:
             # regenerated sources drop/replace historical rows — an append can
             # never reconcile that, so rebuild whenever the mirror disagrees.
-            # DELETE+INSERT, not DROP: market_daily.ticker_freshness (a view
-            # built by market_ingest.py) depends on cleaned_ohlcv, and DROP
-            # would require CASCADE-ing it away.
+            # TRUNCATE, not DROP — same reason as above: preserves the
+            # table's identity so the dependent view keeps working.
             if before != local_n:
-                con.execute(f"DELETE FROM {tgt}")
-                con.execute(f'INSERT INTO {tgt} SELECT * FROM "{tbl}"')
+                df = con.execute(f'SELECT * FROM "{tbl}"').df()
+                pg_client.delete_and_insert(schema, tbl, "", (),
+                                            pg_client.to_rows(df, cols), cols, truncate=True)
         else:
             # append only rows newer than what Postgres already has
             dc = TABLES[tbl][1]
-            mx = con.execute(f'SELECT max("{dc}") FROM {tgt}').fetchone()[0]
-            con.execute(
-                f'INSERT INTO {tgt} SELECT * FROM "{tbl}" WHERE "{dc}" > ?', [mx]
-            )
-        after = con.execute(f"SELECT count(*) FROM {tgt}").fetchone()[0]
+            with pconn.cursor() as cur:
+                cur.execute(f'SELECT max("{dc}") FROM "{schema}"."{tbl}"')
+                mx = cur.fetchone()[0]
+            df = con.execute(f'SELECT * FROM "{tbl}" WHERE "{dc}" > ?', [mx]).df()
+            pg_client.append_rows(schema, tbl, cols, pg_client.to_rows(df, cols))
+
+        with pconn.cursor() as cur:
+            cur.execute(f'SELECT count(*) FROM "{schema}"."{tbl}"')
+            after = cur.fetchone()[0]
         note = " (rebuilt)" if tbl in REGENERATED and before not in (0, after) else ""
         print(f"  pg.{schema}.{tbl:16s} {before:>9,} -> {after:>9,} rows (+{after-before:,}){note}")
     con.close()

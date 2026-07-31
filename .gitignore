@@ -75,6 +75,12 @@ stock-extractor.pem
 # Audit manifests from scripts/build_audit_manifest.py (dated, regenerable).
 /data/audit/
 
+# Business-valuation workbooks (build_business_valuation_report.py) embed
+# real personal portfolio positions (actual cost basis, current holdings) —
+# this repo's origin is PUBLIC, so these must never be committed. Track the
+# generator script only; the workbook regenerates locally on demand.
+/market-pipeline/code/python_files/reports/business_valuation/
+
 # ── ~/market-pipeline: the pipeline's new home (moved out of ~/Downloads, which
 # macOS TCC makes unreadable to launchd). Track the CODE, never the data.
 # Same reasoning as the Downloads rules above: these paths match *.parquet /
@@ -114,3 +120,16 @@ market-pipeline/code/python_files/watchlist_full.html
 market-pipeline/code/python_files/data/benchmark_holdings/
 market-pipeline/code/python_files/data/nse_equity_list.csv
 market-pipeline/code/python_files/data/nse_symbolchange.csv
+
+# ── run detritus (added 2026-07-29) ──────────────────────────────────────────
+# These were already TRACKED when this block was added, so ignoring them alone
+# was a no-op — git keeps tracking what it already tracks. They were untracked
+# with `git rm --cached` in the same commit; the local copies are untouched.
+# 205,050 insertions went to this PUBLIC repo on 2026-07-29 and carried a
+# .DS_Store, two empty .out files, a stderr capture and two watchlist backups
+# with them. None were secret, all are permanent in history now.
+.DS_Store
+**/.DS_Store
+*.err
+manual_run_*.out
+*.bak-*

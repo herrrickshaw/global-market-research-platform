@@ -7,6 +7,101 @@ All notable changes follow [Semantic Versioning](https://semver.org/):
 
 ---
 
+## [3.11.0] — 2026-07-30 — DDD architecture retrofit: stock_ddd + IPO/earnings-call bounded contexts
+
+### Added
+- **`code/python_files/stock_ddd/`** — relocated from an untracked
+  `~/Downloads/code/stock_ddd/` copy to where `tool_registry.py`'s
+  `register_builtin_screeners()` hook already expected it (that hook has
+  existed since 3.9.0's Extensibility Registry, silently returning 0 the
+  whole time because the folder was never placed where it looked). Bounded
+  contexts for `market_data`/`screening`/`backtest`/`intraday`/`reporting`,
+  a working 3-tier `CompositeStockRepository` (memory → Parquet → yfinance),
+  Evans-literate value objects (`Ticker`, `Exchange`, `MarketRegime`, `Price`,
+  `Percentage`) in `domain/shared/value_objects.py`. Verified:
+  `register_builtin_screeners()` now returns 6, not 0.
+- **`domain/ipo/`** (`entities.py` + `infrastructure/ipo/legacy_adapter.py`)
+  — `IpoListing`/`ListingGateStage`/`NewListingEvent` value objects wrapping
+  the existing, working `ipo_tracker.py`/`ipo_monitor.py` (739+107 lines)
+  behind an adapter — no logic rewritten. Verified behaviour-preserving
+  against a synthetic bhavcopy CSV fixture (adapter's symbol set matches
+  calling `ipo_tracker.py` directly).
+- **`domain/earnings_call/`** (`entities.py` + `ports.py`) — new bounded
+  context, design only (no scraper/parser adapter yet): `EarningsCallEvent`,
+  `EarningsCallTranscript`, `GuidanceChange`, `EarningsCallSignal` entities
+  and the `IEarningsCallScheduleSource`/`IEarningsCallTranscriptSource`/
+  `IEarningsCallAnalyzer`/`IEarningsCallSignalRepository` ports. Designed so
+  the scheduling side can later wrap the existing `earnings_dates_sec_8k.py`
+  (US, SEC EDGAR 8-K Item 2.02) and `earnings_dates_tdnet.py` (Japan, JPX
+  TDnet) date collectors instead of duplicating a new date-fetcher — the
+  transcript/guidance/sentiment side is genuinely new (confirmed by
+  exhaustive grep, nothing existed anywhere).
+
+### Removed
+- Two dead DDD scaffolds — `repos/global-market-data/src/` and
+  `repos/global-stock-screener/src/` (one incidental commit each, no
+  adapters, no tests, nothing imported them) — superseded by
+  `stock_ddd/`, deleted rather than left as confusing dead code.
+- 3 duplicate `ipo_tracker.py` copies (839/142/738 lines, across
+  `repos/global-market-data`, `repos/global-stock-screener`,
+  `Downloads/code/python_files`) and 3 duplicate `ipo_monitor.py` copies —
+  diffed first, confirmed no unique logic beyond a stale
+  `~/Downloads/market_cache`/`~/Downloads/data/bhavcopy_cache` path default
+  (the same deprecated location `etl_registry.py`'s weekly audit already
+  flags). Canonical copies stay in `code/python_files/`.
+
+### Decisions
+- **Wrap, don't rewrite, for anything already working**: `ipo_tracker.py`
+  and `ipo_monitor.py` keep their exact tested logic; the DDD layer is an
+  adapter around them, not a reimplementation. Same principle applied to
+  the `stock_ddd` relocation itself — it moved, it wasn't redesigned.
+- **Rejected: a full DDD retrofit across every existing script.** Considered
+  and rejected in favour of building new capability (IPO consolidation,
+  earnings-call) inside the DDD layer where regression risk is near zero,
+  while leaving proven, recently-stabilized code (the mailer/research
+  chain, `daily_mailer.sh`/`daily_research.sh`, the `/tmp` pipeline lock,
+  `watchlist_markets.py`) completely untouched.
+- **Rejected: reworking the bash+`mkdir`-lock orchestration into a formal
+  task-graph.** Every orchestration incident this cycle (a 9-hour full
+  pipeline run, a launchd chain-fire bug needing `AbandonProcessGroup`, a
+  stale-price near-miss) was already fixed with no new incident since —
+  reworking orchestration now would be the highest-regret move available,
+  not a response to an actual live problem.
+- Full options survey and staged plan (Phase 0-3) recorded in
+  `~/.claude/plans/swift-nibbling-shore.md`.
+
+## [3.10.0] — 2026-07-29 — Unlimited-OCR integration (scanned-PDF fallback)
+
+### Added
+- **`ocr/`** — shared client for a remote **baidu/Unlimited-OCR** endpoint
+  (arXiv:2606.23050, "Unlimited OCR Works": R-SWA attention transcribes dozens
+  of pages in a single forward pass with constant KV cache, 32K context, MIT
+  license). The model needs an NVIDIA GPU, so it is NOT run locally — it is
+  served on Colab/EC2 GPU behind vLLM's OpenAI-compatible API and reached over
+  HTTP. Config: `UNLIMITED_OCR_URL` (env or `~/.config/market-secrets/
+  credentials.env`). CLI: `python3 -m ocr file.pdf` / `--ping`. Pages are
+  batched 8-per-request by default to exploit the single-pass design.
+- **`ocr/serve/`** — Colab notebook (free T4 + cloudflared quick tunnel) and
+  docker one-liner (`vllm/vllm-openai:unlimited-ocr`) to bring the endpoint up.
+- **`backend/parsers/pdf_parser.py`** — OCR fallback: when pdfplumber extracts
+  zero symbols (scanned/image-only portfolio PDFs), the transcript is fetched
+  and re-fed through the same table/text symbol matching, with an explicit
+  review warning. Strictly opt-in: with `UNLIMITED_OCR_URL` unset, behavior is
+  byte-identical to before.
+- **`requirements-ocr.txt`** added to every repo that parses documents/PDFs
+  (BazaarTalks, india-trade-sector-policy-recommendations,
+  ppac-ready-reckoner-data, repos/cng-cgd-retail-outlet-mapping,
+  repos/global-market-{data,scanners}, repos/global-stock-screener,
+  vehicle_fuel_mileage, market-pipeline); appended to the two existing
+  requirements.txt in this repo (root + backend).
+
+### Decisions
+- **Remote-serve over local**: no CUDA on macOS; alternatives rejected —
+  CPU/MPS transformers (unsupported/slow), tesseract (poor on tabular Indian
+  filings, no layout), paid OCR APIs (cost + the repo is public).
+- **Opt-in, never required**: OCR deps are lazy imports; pipelines must not
+  gain a hard GPU-service dependency.
+
 ## [3.9.0] — 2026-06-26 — Extensibility Registry + Approach Docs
 
 ### Added
