@@ -113,9 +113,42 @@ every India-wide statistic silently widens to include six other markets.
   source is not dirty but the wrong market, and drop-and-continue would quietly rebuild the panel
   from another country's data. **Rejected: refuse on any foreign ticker at all** — one stray symbol
   would re-freeze the panel, which is the failure this release exists to end.
-- **Not yet fixed:** why the LMDB held a global universe. A subsequent `ingest.sh` rebuild restored
-  it to 7,837 India-only symbols, so the store is currently correct and the writer that polluted it
-  is unidentified. The guard now blocks the damage regardless of the cause, but the cause is open.
+### Root cause found: nothing polluted the LMDB — it was never India-only
+
+The earlier note here ("a subsequent `ingest.sh` rebuild restored it") was wrong. That run did not
+restore anything; it simply **won the last write**. `bhavcopy_store.build()` has two entry paths
+that rebuild the SAME store with DIFFERENT universes, and each `shutil.rmtree`s it first, so the
+store's contents are whoever ran most recently:
+
+| caller | call | resulting store |
+|---|---|---|
+| `bhavcopy_history.py:365,451` | `_build_store(out_all)` — India dict passed | India-only, 7,837 |
+| `screener_kit.py:69,181` | `store.build()` — no `hist` | **global, 23,868** |
+
+With no `hist`, `build()` takes its glob branch, and the intent is explicit in its own comment:
+*"ingest every market seed present … into one store."* That is working as designed. The defect was
+that `warehouse_update._fresh_in()` read that shared store as though it were the India bhavcopy
+store — its docstring said exactly that — and folded whatever it found into the India panel.
+
+- **Why it stayed hidden until now.** The glob had nothing else to find: no `cleaned_long_<MKT>.parquet`
+  existed, so the "global" path coincidentally produced India-only. The new
+  `com.umashankar.weekly-extended-scan` job (plist created 2026-07-31 05:02) calls
+  `screener_kit.update()` per market, which materialised 15 seeds (`TW` 05:09, then `DK AU BR CA CH
+  CN DE FI HK SA SE SG UK ZA` 06:06–06:27) and rebuilt the store global. Smoking gun in its own log:
+  `weekly_extended_scan_20260731.log:514  update TW: 0 symbols got new bars; store rebuilt`.
+- **Fix**: `_fresh_in()` now reads the INDIA SEED (`bs.CLEANED` = `cleaned_long.parquet`) directly
+  and never touches the shared LMDB. That seed is India by construction —
+  `screener_kit._seed_name("IN")` returns exactly that filename — so the ambiguity is removed at
+  source instead of filtered afterwards. Verified byte-identical to the LMDB path when the store
+  happens to be India-only (1,242,325 rows / 7,837 symbols / 0 suffixed, same symbol set), and
+  **immune to the store's universe**: re-running with a simulated global store returns the same
+  7,837 India symbols. It is also cheaper — the function scans every symbol anyway, so the LMDB's
+  keyed access never bought anything here.
+- **Rejected: intersecting the LMDB against the ticker reference.** The reference holds 5,981
+  Indian tickers against the bhavcopy's 7,837, so that would have silently dropped ~1,850
+  legitimate names — trading one invisible data error for another.
+- The LMDB fallback (seed missing/unusable) is retained but now passes through the same exchange
+  allowlist, and refuses outright on a global store (75% foreign ≫ 20%) rather than corrupting.
 
 ## 2026-07-29 — Claims audited against their own evidence; three locks; a stale-price near-miss
 
