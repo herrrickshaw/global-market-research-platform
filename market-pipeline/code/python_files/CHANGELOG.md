@@ -2,6 +2,44 @@
 
 Decisions and material changes to the pipeline, newest first.
 
+## 2026-07-31 — Bond↔equity linkage measured; three of four hypotheses came back NULL
+
+`bond_equity_entropy.py` runs the two entropy directions the literature actually supports, plus
+the two practical questions behind them, on S&P 500 + the full Treasury curve, 1990–2026 (9,135
+days). Report: `reports/bond_equity_linkage.md`. **Most results are null, and that is the finding.**
+
+- **Estimator validated before use.** On synthetic data with a known 1-lag coupling, effective TE
+  recovers it at p=0.007, correctly rejects the reverse direction (p=0.64) and an independent
+  series (p=0.42). Raw TE on independent series reads 0.0015 — the finite-sample upward bias —
+  which the surrogate correction removes to 0.00008. Reporting raw TE without this correction
+  would have manufactured "information flow" between unrelated series.
+- **Transfer entropy found essentially nothing.** One of ten direction/period cells reached p<0.05
+  (equity→bond 2000-09, p=0.020), about what ten tests give by chance; several effective values are
+  NEGATIVE. At a 1-day lag there is no reliable directional flow. The plain contemporaneous
+  correlation (−0.165) carries more than any lead-lag measured. **Same shape as the entropic yield
+  curve rejection** — an elaborate method that does not beat the boring number.
+- **A bond selloff does not predict equity weakness.** 49 de-clustered episodes (20-session 10y
+  rise > 95th pct, +43bp): edge over unconditional is +0.24pp at 21d and NEGATIVE at 63/126/252d.
+- **No borrow-and-trade carry channel.** The opposite, if anything: dearest-funding quintile has the
+  HIGHEST forward 1y return (+12.47% vs +10.42% cheapest), and a funding shock correlates
+  POSITIVELY with forward equity returns (+0.213) — the procyclical reading, not a carry unwind.
+  The Q3 outlier (−2.20%) is period clustering (2000-02, 2007-08), not a rate effect.
+- **Crisis entropy: weakly supported, one event carrying it.** SampEn fell in GFC (−0.03), COVID
+  (−0.63) and 2022 (−0.06) but ROSE in dot-com (+0.14). Only COVID is a large move. Not merely
+  inverted volatility (corr −0.352), so it does measure something distinct — but on this data the
+  published claim rests almost entirely on one crisis.
+- **The one durable finding: the stock–bond correlation is not constant and has flipped twice.**
+  +0.34 in the 1990s (fell together), −0.23 to −0.41 across 2000–2021 (bonds hedged), +0.05 in
+  2022–2026 (hedge broke). So "what happens to equities in a bond selloff" has no era-independent
+  answer, because whether bonds hedge is itself regime-dependent. **Any allocation rule assuming
+  the 2010s negative correlation is assuming a regime that ended.**
+- **🔴 Effective sample size governs section 4.** Forward returns use OVERLAPPING windows: 9,135
+  rows over 37 years is ~37 independent observations at the 252-day horizon, not 9,135. A quintile
+  holding 1,800 "days" holds ~7 independent years. Stated at the top of the report, not in a
+  footnote, because the row counts otherwise imply precision that is not there.
+- **Rejected: reporting TE as a finding because the method is fashionable.** Held to the same bar
+  as Parker — measured against a baseline, bias-corrected, permutation-tested. It failed that bar.
+
 ## 2026-07-31 — Entropic yield curve tested and REJECTED; ticker→exchange reference built
 
 **`entropic_yield_curve.py`** implements Parker (2017, *Entropy* 19:292) — a yield curve
