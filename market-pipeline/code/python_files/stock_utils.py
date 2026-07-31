@@ -318,9 +318,21 @@ def _strip_suffix(ticker: str) -> str:
     strip Europe's suffixes (.DE/.F/.L/.PA/...) -- for Europe the suffix
     IS the warehouse's own bare-ticker convention, not a yfinance-only
     addition, so stripping it here would corrupt those tickers instead of
-    normalizing them."""
+    normalizing them.
+
+    Anchored with endswith(), not a blind .replace() -- the previous
+    version did `ticker.replace(sfx, "")` for every sfx in the list, which
+    matches the substring ANYWHERE in the string, not just as a trailing
+    suffix. Japan's ".T" is itself a substring of Taiwan's ".TW"/".TWO",
+    so "2330.TW" silently became "2330W" and "1513.TWO" became "1513WO" --
+    keys that then NEVER matched screener_kit.update()'s own cache keys
+    (built from the seed parquet's real "2330.TW" symbols), so update()
+    silently merged zero fresh bars for Taiwan in every run before this
+    fix, with no error at all (confirmed live 2026-07-31: TW returned
+    updated=0 while all other 14 Tier 3 markets refreshed correctly)."""
     for sfx in (".NS", ".BO", ".T", ".KS", ".KQ"):
-        ticker = ticker.replace(sfx, "")
+        if ticker.endswith(sfx):
+            return ticker[:-len(sfx)]
     return ticker
 
 
