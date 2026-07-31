@@ -75,6 +75,12 @@ stock-extractor.pem
 # Audit manifests from scripts/build_audit_manifest.py (dated, regenerable).
 /data/audit/
 
+# Business-valuation workbooks (build_business_valuation_report.py) embed
+# real personal portfolio positions (actual cost basis, current holdings) —
+# this repo's origin is PUBLIC, so these must never be committed. Track the
+# generator script only; the workbook regenerates locally on demand.
+/market-pipeline/code/python_files/reports/business_valuation/
+
 # ── ~/market-pipeline: the pipeline's new home (moved out of ~/Downloads, which
 # macOS TCC makes unreadable to launchd). Track the CODE, never the data.
 # Same reasoning as the Downloads rules above: these paths match *.parquet /
