@@ -152,7 +152,21 @@ def update(market: str, verbose: bool = True) -> dict:
         if sym in fresh:
             df = pd.concat([old, fresh[sym]])
             df = df[~df.index.duplicated(keep="last")].sort_index()
-            df = clean_ohlcv(df, ticker=sym, min_bars=1) or df
+            # `clean_ohlcv(...) or df` looked like a "use the cleaned
+            # result, falling back to df if cleaning failed" idiom, but
+            # `or` evaluates bool(cleaned) first — and a non-None
+            # DataFrame's bool() ALWAYS raises "truth value is ambiguous"
+            # (pandas requires .empty/.any()/.all(), never bare truthiness).
+            # So this raised on every symbol clean_ohlcv actually
+            # succeeded on — the common case — aborting the entire
+            # update() call for the whole market on its first successful
+            # clean, with every caller's except-block silently falling
+            # back to the stale cached baseline. Confirmed live 2026-07-31:
+            # every one of 15 Tier 3 markets hit this ("DataFrame is
+            # ambiguous"), meaning update() never actually merged a
+            # single fresh bar in any run before this fix.
+            cleaned = clean_ohlcv(df, ticker=sym, min_bars=1)
+            df = cleaned if cleaned is not None else df
             if len(df) > len(old):
                 updated += 1
         g = df.reset_index(); g.columns = ["Date", "Open", "High", "Low", "Close", "Volume"]
