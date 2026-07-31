@@ -67,10 +67,33 @@ days). Report: `reports/bond_equity_linkage.md`. **Most results are null, and th
   violent liquidation, self-reinforcing through margin calls (close position → buy back yen → yen
   appreciates → more margin calls). A linear correlation on daily data averages the asymmetry to
   approximately zero.
-- **Next test, not yet run**: replace the domestic proxy with the US–JP funding differential; treat
-  sharp yen appreciation as the event; check response asymmetry between yen depreciation and
-  appreciation. Data is fetchable (`USDJPY=X`, `^N225`). Until then the honest statement is: **no
-  domestic-funding carry channel found, cross-currency one not tested.**
+### The cross-currency test, now run (`yen_carry_test.py`, `reports/yen_carry_linkage.md`)
+
+USD/JPY + Nikkei + S&P, 1996–2026 (7,703 sessions), with the real US−JP funding differential from
+FRED (`IR3TIB01JPM156N`, 2002+). Key read from the FRED key in the canonical credential store,
+never printed.
+
+- **Validation caught a false alarm in my own check.** The first run reported "August 2024 NOT
+  flagged". It was flagged — the episode spans 2024-07-18 .. 2024-09-10 with peak 2024-08-05
+  (+5.71% 5-day yen move). My validation window (25 Jul – 15 Aug) was simply too narrow, because
+  30-day clustering dates the episode at its ONSET (18 Jul), 18 days before the crash. Fixed to
+  test episode COVERAGE, and both datings are now reported since they answer different questions.
+- **🔴 The damage is CONTEMPORANEOUS, not forward — which is why every forward-looking test found
+  nothing.** Over the unwind window the Nikkei averages **−2.10%** (worst episode −49.37%) and the
+  S&P **−0.71%** (worst −42.69%). Forward returns from either dating are flat-to-positive
+  (peak-dated: +1.30pp edge, S&P 21d). Equities fall DURING an unwind and rebound after. **This
+  likely explains the bond-selloff null too** — that study only looked forward.
+- **My convexity hypothesis was WRONG, and the data says so plainly.** I predicted a hard fall on
+  yen appreciation with no matching rise on depreciation. Deciles reject it: strongest-appreciation
+  D10 has the BEST forward 5-day S&P (+0.51%), depreciation D1 the worst (−0.10%) — +0.61pp the
+  OPPOSITE way. The linear corr of +0.069 was not hiding an asymmetry.
+- **Carry LEVEL predicts nothing (corr +0.009); carry COMPRESSION does.** After a top-decile 63-day
+  compression of the US−JP differential — the unwind trigger — forward 63-day S&P is **−1.07% vs
+  +1.96% unconditional, a −3.03pp edge**. Largest effect found across both studies.
+- **Confound stated, not buried**: the differential compresses when the Fed cuts relative to the
+  BoJ, and the Fed cuts when the US is deteriorating. This may be measuring "the Fed eases into
+  trouble" rather than "carry unwinds hurt equities"; the two are near-collinear over 2002–2026 and
+  this design cannot separate them. Needs a growth-outlook control not in this dataset.
 
 ## 2026-07-31 — Entropic yield curve tested and REJECTED; ticker→exchange reference built
 
