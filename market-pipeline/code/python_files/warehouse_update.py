@@ -108,11 +108,43 @@ def _fresh_us() -> pd.DataFrame:
 
 
 def _fresh_in() -> pd.DataFrame:
-    """bhavcopy LMDB -> long frame."""
+    """India bhavcopy bars -> long frame.
+
+    READS THE INDIA SEED PARQUET, NOT THE SHARED LMDB — this is the whole point.
+    bhavcopy_store's LMDB is not an India store. `build()` called with no `hist`
+    deliberately globs every cleaned_long_<MKT>.parquet into one store ("ingest
+    every market seed present"), which is what screener_kit does; while
+    bhavcopy_history rebuilds the same store from an India-only dict. Both paths
+    rmtree it first, so the store's universe is simply whoever wrote last.
+
+    That stayed invisible while no per-market seeds existed. On 2026-07-31 a new
+    weekly-extended-scan job began calling screener_kit.update() per market,
+    which materialised 15 seeds and rebuilt the store global (23,868 symbols) —
+    and this function, believing it was reading India, folded 8,802 Shenzhen,
+    Shanghai, Taiwan, Sydney, HK and Singapore bars into the INDIA panel.
+
+    bs.CLEANED is India by construction (screener_kit._seed_name("IN") is exactly
+    "cleaned_long.parquet"), so reading it removes the ambiguity at source rather
+    than filtering after the fact. It is also cheaper: this function scans every
+    symbol regardless, so the LMDB's keyed access never bought anything here.
+    """
     try:
         import bhavcopy_store as bs
     except Exception:
         return pd.DataFrame()
+
+    if bs.CLEANED.exists():
+        d = pd.read_parquet(bs.CLEANED)
+        if not d.empty and {"Symbol", "Date", "Close"} <= set(d.columns):
+            d["Date"] = pd.to_datetime(d["Date"])
+            d["Symbol"] = d["Symbol"].astype(str).str.upper()
+            return d[[c for c in COLS if c in d.columns]]
+        print(f"  IN: {bs.CLEANED.name} unusable — falling back to the LMDB")
+    else:
+        print(f"  IN: {bs.CLEANED.name} missing — falling back to the LMDB")
+
+    # Fallback only. The store may hold any market, so the result is passed
+    # through the same exchange allowlist the merge uses.
     out = []
     for sym in bs.symbols():
         try:
@@ -128,7 +160,11 @@ def _fresh_in() -> pd.DataFrame:
         d = d.rename(columns={dcol: "Date"})
         d["Symbol"] = str(sym).upper()
         out.append(d[[c for c in COLS if c in d.columns]])
-    return pd.concat(out, ignore_index=True) if out else pd.DataFrame()
+    if not out:
+        return pd.DataFrame()
+    df = pd.concat(out, ignore_index=True)
+    kept = _drop_foreign("IN", df)
+    return pd.DataFrame() if kept is None else kept
 
 
 FRESH = {"US": _fresh_us, "IN": _fresh_in}
