@@ -93,11 +93,21 @@ def setup_database():
 
 def scrape_tenders(username: str, password: str) -> List[Dict]:
     """
-    Scrape tenders from Tenders on Time.
+    Scrape tenders from Tenders on Time (last 3 months).
+
+    Searches for tenders issued in the past 90 days to capture reopened tenders.
     Includes SSL handling and detailed error logging.
     """
+    from datetime import timedelta
+
     tenders = []
     base_url = "https://www.tenderontime.com"
+
+    # Calculate date range (last 3 months)
+    end_date = datetime.now()
+    start_date = end_date - timedelta(days=90)
+    date_range = f"{start_date.strftime('%Y-%m-%d')} to {end_date.strftime('%Y-%m-%d')}"
+    logger.info(f"Searching for tenders issued: {date_range}")
 
     # Create session with retries and SSL handling
     session = requests.Session()
@@ -177,8 +187,11 @@ def scrape_tenders(username: str, password: str) -> List[Dict]:
             logger.info(f"  {commodity}...")
 
             try:
-                # Multiple search endpoint attempts
+                # Multiple search endpoint attempts with date range
                 search_paths = [
+                    f"/search?keyword={quote(commodity)}&from_date={start_date.strftime('%Y-%m-%d')}&to_date={end_date.strftime('%Y-%m-%d')}",
+                    f"/tenders/search?query={quote(commodity)}&issued_date_from={start_date.strftime('%d-%m-%Y')}&issued_date_to={end_date.strftime('%d-%m-%Y')}",
+                    f"/api/tenders/search?keyword={quote(commodity)}&from_date={start_date.strftime('%Y-%m-%d')}&to_date={end_date.strftime('%Y-%m-%d')}",
                     f"/search?keyword={quote(commodity)}",
                     f"/tenders/search?query={quote(commodity)}",
                     f"/api/tenders/search?keyword={quote(commodity)}",
@@ -295,7 +308,7 @@ def parse_date(date_str: Optional[str]) -> Optional[str]:
     return date_str
 
 
-def save_tenders(conn: duckdb.DuckDatabaseConnection, tenders: List[Dict]):
+def save_tenders(conn, tenders: List[Dict]):
     """Save tenders to DuckDB."""
     if not tenders:
         logger.warning("No tenders to save")
