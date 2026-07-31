@@ -158,7 +158,7 @@ Every reader of the shared store was then audited for the same assumption. Five 
 |---|---|---|
 | `warehouse_update._fresh_in` | `symbols()`+`get()` | was broken; fixed above |
 | `bhavcopy_history._lmdb_max_date` | `symbols()` sample → median | **broken from 2026-08-01** — fixed here |
-| `watchlist_pnl.py:164` | `symbols()`+`get()` | safe today; latent, see below |
+| `watchlist_pnl.py:164` | `symbols()`+`get()` | latent collision — fixed below |
 | `custom_screener.py:189` | `symbols()[:800]`, labels `"IN"` | demo block (`__main__`) only |
 | `screener_kit.get` | `get(symbol)` keyed | **safe by design** — screener_kit is the multi-market layer and *wants* the global store |
 
@@ -180,12 +180,39 @@ one that never does, and this one protects P&L from stale prices.
   the old guard fires on 08-01/03/07 and the new one does not. Critically, it still fires when
   India is genuinely stale by 3 and by 5 days — the 2026-07-21 scenario — so the false positive
   was removed without introducing a false negative.
-- **Not fixed, recorded as risks.** `custom_screener.py:189` is a `__main__` demo, but would be
-  badly wrong if run: `symbols()[:800]` sorts lexicographically, so numeric Chinese codes lead, and
-  each is hard-labelled `StockData(s, "IN", …)`. `watchlist_pnl.py:164` is safe *today* only
-  because all 15 foreign seeds are fully exchange-qualified (verified: **zero** bare symbols, so no
-  key can collide with a bare Indian ticker) — a future `cleaned_long_US.parquet` would break that,
-  since US symbols are bare and names like `INFY` list on both NSE and NASDAQ.
+### watchlist_pnl hardened — and the first attempt at it was wrong
+
+`watchlist_pnl._current_prices("IN")` marks India positions off the shared store. The obvious fix
+was to filter its iteration to the India seed's symbol set. **That was implemented, tested, and
+found insufficient**, which is worth recording because the reasoning looked sound:
+
+The collision is not in the consumer, it is **inside the LMDB's key namespace**. `build()` merges
+seeds with `hist[str(sym)] = …` — a plain dict write over one namespace — so when two markets carry
+the same bare ticker the LAST SEED WINS and the other market's series is *gone from the store*.
+Filtering afterwards cannot repair that: the India key is still present, it just holds foreign
+prices. Simulated with a US seed loaded, `INFY` (listed on both NSE and NASDAQ) priced at the US
+close of 1234.50 instead of 1130.10 while passing the India-membership filter untouched.
+
+- **Actual fix**: read `cleaned_long.parquet` directly, as `_fresh_in` now does. It has its own
+  namespace, so it is immune by construction, and it is the fresher source anyway — the LMDB is
+  built *from* it, which is precisely what `_lmdb_behind_cleaned()` polices.
+- **Verified equivalent**: all 7,837 symbols agree with the old path, keys identical. Only 2,746
+  matched to 1e-9 at first glance — the remainder differ solely by **float32 round-trip**, since
+  `bhavcopy_store._ser()` downcasts OHLC to float32 for storage. Max relative difference 5.7e-08
+  (worst case 1028.69 vs 1028.68994140625), i.e. the new path is marginally MORE precise. `asof`
+  capping preserved (2026-07-28 → 7,825 prices, max date 07-28).
+- **Verified protective**: under a simulated US seed, `INFY` holds 1130.10 and `AAPL` does not leak
+  into the India price map.
+- The LMDB loop is retained as a fallback for a missing seed. It remains exposed to the collision,
+  which is why it is the fallback and not the path.
+
+- **Not fixed, recorded as a risk.** `custom_screener.py:189` is a `__main__` demo, so off every
+  pipeline path, but would be badly wrong if run: `symbols()[:800]` sorts lexicographically, so
+  numeric Chinese codes lead, and each is hard-labelled `StockData(s, "IN", …)`.
+- **Why `watchlist_pnl` was worth fixing before the US seed lands rather than after**: all 15
+  foreign seeds are currently exchange-qualified (verified: **zero** bare symbols), so nothing
+  collides today. The failure only appears when a `cleaned_long_US.parquet` arrives — and it
+  appears silently, as a plausible number on a P&L line, with no error anywhere.
 
 ## 2026-07-29 — Claims audited against their own evidence; three locks; a stale-price near-miss
 

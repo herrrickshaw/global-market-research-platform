@@ -117,6 +117,40 @@ def _cap(s: pd.Series, asof: Optional[pd.Timestamp]) -> pd.Series:
         return s
 
 
+def _india_bars() -> Optional["pd.DataFrame"]:
+    """India bhavcopy bars, read from the seed that DEFINES India.
+
+    🔴 Do not price India off bhavcopy_store's LMDB. That store is shared:
+    build() with no `hist` globs every cleaned_long_<MKT>.parquet into ONE key
+    namespace, and it assigns with `hist[str(sym)] = …` — a plain dict write.
+    So when two markets contain the same bare ticker the LAST SEED WINS and the
+    other market's series is simply gone from the store.
+
+    Filtering the store's symbols afterwards cannot repair that: the India key
+    is still present, it just holds foreign prices now. Verified by simulation —
+    with a US seed loaded, INFY (listed on BOTH NSE and NASDAQ) priced at the US
+    close while passing an India-membership filter unharmed. Nothing errors and
+    the number looks plausible.
+
+    cleaned_long.parquet is India by construction (screener_kit's seed name for
+    "IN" is exactly that file) and has its own namespace, so reading it is
+    immune. It is also the fresher source — the LMDB is built FROM it, which is
+    what bhavcopy_history._lmdb_behind_cleaned() exists to police.
+    """
+    try:
+        import bhavcopy_store as bs
+        if not bs.CLEANED.exists():
+            return None
+        d = pd.read_parquet(bs.CLEANED, columns=["Date", "Symbol", "Close"])
+        if d.empty:
+            return None
+        d["Date"] = pd.to_datetime(d["Date"])
+        d["Symbol"] = d["Symbol"].astype(str).str.upper()
+        return d
+    except Exception:
+        return None
+
+
 def _current_prices(market: str, asof: Optional[pd.Timestamp] = None):
     """(price, as_of_date) per symbol from the FRESHEST store, not the deepest.
 
@@ -159,23 +193,39 @@ def _current_prices(market: str, asof: Optional[pd.Timestamp] = None):
         except Exception:
             pass
     elif market == "IN":
-        try:
-            import bhavcopy_store as bs
-            for sym in bs.symbols():
-                try:
-                    df = bs.get(sym)
-                except Exception:
-                    continue
-                if df is None or df.empty or "Close" not in df.columns:
-                    continue
-                c = _cap(pd.to_numeric(df["Close"], errors="coerce").dropna(), asof)
-                if not len(c):
-                    continue
-                k = str(sym).upper()
-                px[k] = float(c.iloc[-1])
-                dates[k] = pd.to_datetime(c.index[-1])
-        except Exception:
-            pass
+        d = _india_bars()
+        if d is not None:
+            try:
+                d = d.dropna(subset=["Close"])
+                if asof is not None:
+                    d = d[d["Date"] <= pd.Timestamp(asof)]
+                last = d.sort_values("Date").groupby("Symbol", sort=False).tail(1)
+                px = {s: float(c) for s, c in zip(last["Symbol"], last["Close"])}
+                dates = dict(zip(last["Symbol"], last["Date"]))
+            except Exception:
+                px, dates = {}, {}
+        if not px:
+            # Seed missing or unusable. Fall back to the shared store, filtered
+            # to whatever India membership we can establish — best effort, and
+            # still exposed to the key-collision above, so it is the fallback
+            # rather than the path.
+            try:
+                import bhavcopy_store as bs
+                for sym in bs.symbols():
+                    try:
+                        df = bs.get(sym)
+                    except Exception:
+                        continue
+                    if df is None or df.empty or "Close" not in df.columns:
+                        continue
+                    c = _cap(pd.to_numeric(df["Close"], errors="coerce").dropna(), asof)
+                    if not len(c):
+                        continue
+                    k = str(sym).upper()
+                    px[k] = float(c.iloc[-1])
+                    dates[k] = pd.to_datetime(c.index[-1])
+            except Exception:
+                pass
     return pd.Series(px, dtype=float), pd.Series(dates)
 
 
