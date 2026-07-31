@@ -90,10 +90,43 @@ never printed.
 - **Carry LEVEL predicts nothing (corr +0.009); carry COMPRESSION does.** After a top-decile 63-day
   compression of the US−JP differential — the unwind trigger — forward 63-day S&P is **−1.07% vs
   +1.96% unconditional, a −3.03pp edge**. Largest effect found across both studies.
-- **Confound stated, not buried**: the differential compresses when the Fed cuts relative to the
-  BoJ, and the Fed cuts when the US is deteriorating. This may be measuring "the Fed eases into
-  trouble" rather than "carry unwinds hurt equities"; the two are near-collinear over 2002–2026 and
-  this design cannot separate them. Needs a growth-outlook control not in this dataset.
+### Growth control added — and it KILLS the one surviving result (`--growth`)
+
+The −3.03pp compression effect had an obvious alternative explanation: the differential narrows
+when the Fed cuts relative to the BoJ, and the Fed cuts when the US is deteriorating. Controls
+added from FRED — initial claims, unemployment, Chicago Fed NFCI — each shifted by its publication
+lag so it is knowable on the day applied.
+
+- **NBER's `USREC` deliberately EXCLUDED.** It is dated retroactively, often a year later, so
+  conditioning on it injects information nobody had and would have manufactured a clean result.
+- **🔴 A silent alignment bug nearly produced a fake "no data" answer.** `ICSA` is stamped on
+  Saturdays (week-ending); reindexing straight onto a trading-day index dropped 1,907 of 1,908
+  observations *before* `ffill` could carry them, while `NFCI`/`UNRATE` happened to land on
+  weekdays and survived. Fixed by aligning on the index UNION, forward-filling, then restricting
+  to trading days. Worth noting the failure was loud (zero rows) — a slightly different join would
+  have silently produced a biased subsample instead.
+- **Result: the effect does NOT survive.** Double sort over 2002–2026 (6,182 days):
+
+  | growth state | carry state | n | mean fwd 63d S&P |
+  |---|---|---|---|
+  | stable | no compression | 3,476 | +2.06% |
+  | stable | COMPRESSING | 88 | +4.20% |
+  | deteriorating | no compression | 2,088 | +3.27% |
+  | deteriorating | COMPRESSING | 530 | **−2.02%** |
+
+  The compression effect is **−5.29pp when growth is deteriorating and +2.14pp when it is not** —
+  concentrated entirely in the deteriorating bucket. Regression agrees: compression alone
+  R²=0.0009, growth alone R²=0.0729, both together R²=0.0733, i.e. **ΔR² = 0.0004**.
+- **Conclusion**: carry compression carries **no information about forward equity returns that the
+  growth outlook does not already contain**. The headline −3.03pp was the Fed easing into trouble.
+- **Rejected: claiming the sign flip as a finding.** The growth-stable/compressing cell holds 88
+  overlapping days — a couple of independent episodes on 63-day windows. The defensible claim is
+  "no effect independent of growth", NOT "compression is good for equities when growth is fine".
+- **Net across all four studies**: entropic yield curve rejected, transfer entropy null, bond
+  selloff null, domestic carry null, cross-currency carry null once controlled. The only durable
+  results are (a) the stock–bond correlation regime flip and (b) that carry-unwind damage is
+  **contemporaneous, not forward** — which is likely why every forward-looking test here found
+  nothing.
 
 ## 2026-07-31 — Entropic yield curve tested and REJECTED; ticker→exchange reference built
 
