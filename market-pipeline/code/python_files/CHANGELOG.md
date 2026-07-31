@@ -40,6 +40,38 @@ days). Report: `reports/bond_equity_linkage.md`. **Most results are null, and th
 - **Rejected: reporting TE as a finding because the method is fashionable.** Held to the same bar
   as Parker — measured against a baseline, bias-corrected, permutation-tested. It failed that bar.
 
+### Literature check, and a limitation it exposed (`reports/bond_equity_literature.md`)
+
+- **The correlation flip has a theory that matches our numbers.** Campbell, Pflueger & Viceira:
+  the stock–bond correlation sign tracks the **inflation/output-gap** correlation. Demand-shock
+  world (≈2001–2021) → recession brings disinflation and cuts, bonds rally as stocks fall →
+  negative correlation. Supply-shock world (1980s–90s, 2022–) → inflation scare means higher
+  yields *and* weaker growth, tightening into weakness → positive correlation, both fall. This is
+  why the selloff study found no era-independent answer: the question is underdetermined until you
+  know the shock regime.
+- **🔴 Our carry null is scoped, and the scope matters.** `--carry` used the **US 3-month bill**,
+  i.e. DOMESTIC funding. The carry trade that actually moves equities is **cross-currency** — a
+  yen-funded trade borrows at the BoJ's rate, not the Fed's, so our proxy moves with the wrong
+  central bank and the test was **structurally blind** to it. Absence of evidence, not evidence of
+  absence.
+- **August 2024 is the counter-example our method could not see.** BoJ hiked 0.1%→0.25% on 31 Jul;
+  weak US payrolls on 2 Aug compressed the differential from the other side; the yen rose ~6.15%
+  over 29 Jul–5 Aug; Topix/Nikkei fell **>12%** on 5 Aug (steepest since 1987), S&P −3%. The
+  equity drawdown was **not** caused by a bond selloff — it was a funding-rate convergence in
+  another currency, invisible to a US-yield analysis.
+- **Why the option re-emerged post-recovery**: carry is a function of policy DIVERGENCE, and
+  post-pandemic normalisation produced it directly — the Fed hiking into the 2022 inflation shock
+  while the BoJ held ultra-easy far longer. Reported mid-2026 as regaining momentum on renewed
+  divergence.
+- **Second reason section 4 found nothing**: carry unwinds are **convex** — quiet accumulation,
+  violent liquidation, self-reinforcing through margin calls (close position → buy back yen → yen
+  appreciates → more margin calls). A linear correlation on daily data averages the asymmetry to
+  approximately zero.
+- **Next test, not yet run**: replace the domestic proxy with the US–JP funding differential; treat
+  sharp yen appreciation as the event; check response asymmetry between yen depreciation and
+  appreciation. Data is fetchable (`USDJPY=X`, `^N225`). Until then the honest statement is: **no
+  domestic-funding carry channel found, cross-currency one not tested.**
+
 ## 2026-07-31 — Entropic yield curve tested and REJECTED; ticker→exchange reference built
 
 **`entropic_yield_curve.py`** implements Parker (2017, *Entropy* 19:292) — a yield curve
