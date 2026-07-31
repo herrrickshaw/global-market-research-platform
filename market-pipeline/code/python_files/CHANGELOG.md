@@ -2,6 +2,121 @@
 
 Decisions and material changes to the pipeline, newest first.
 
+## 2026-07-31 — Entropic yield curve tested and REJECTED; ticker→exchange reference built
+
+**`entropic_yield_curve.py`** implements Parker (2017, *Entropy* 19:292) — a yield curve
+derived from information loss, whose "implied information processing ratio" R/C is claimed to
+have exploding variance just before bear markets. Built as a measured quantity and tested, not
+adopted. **Verdict: rejected. Do not wire into the brief.** Full result in
+`reports/entropic_rc_test.md`, literature boundary in `reports/entropic_rc_literature.md`.
+
+- **The reconstruction is faithful, and that is what makes the negative result stick.** Parker's
+  Table 1 says only "(Time starts at t = 1)" — ambiguous between years, months, and a maturity
+  index. `--sensitivity` fits all three. Months reproduces his published Table 2 in the BULL
+  zones (I: 3.47/0.40 vs his 3.41/0.41; V: 4.11/0.05 vs 4.07/0.10); years does not (0.21/0.34).
+  So the estimator is right — and it still fails to reproduce the two CRISIS zones the whole
+  thesis rests on: he reports mean R/C −56.78 and −24.35 with variances 1097 and 1302; the same
+  dates and the same Treasury series give 3.38/1.06 and 3.52/1.62. Mean R/C is flat (3.33–4.11)
+  across all five zones, and zone III — a *bull* period — has higher variance (1.85) than either
+  crisis zone.
+- **It is a reparameterisation of the term spread.** corr(R/C, 10Y−3M) = **+0.821**. In an
+  expanding-window event study over 1990–2026 (4 bear onsets, no lookahead), Var(R/C) fires 11
+  times, catches 1 of 4 at precision 0.09. Plain 10Y−3M inversion fires the same 11 times,
+  catches 2, at precision 0.27. **Strictly dominated by the simplest possible baseline.**
+- **Mechanism.** Under Parker's own settings (σ=1 kills the second term entirely) the model
+  collapses to one parameter, and R/C = 1 + ln(1−a) has a log singularity at a=1. Values like
+  −56.78 are what a fit wandering near that singularity prints. Corroboration: Parker's own
+  later work (Entropy 2020) reports **no** negative R/C and triggers on a *bounded* R/C < 1.02.
+  **Rejected: declaring the paper wrong outright** — the 2020 variant solves for σ over 1M–30Y
+  maturities and was NOT tested here; the claim is scoped to the 2017 specification.
+- **Fit quality**: the fixed-shape one-parameter curve misses the real Treasury curve by a median
+  67bp (p95 210bp), and R/C is undefined (a ≥ 1) on 8.7% of days.
+- **The 2020 variant (Entropy 20:662) was then tested too, and fails the same way**
+  (`--variant2020`, `reports/entropic_rc_2020.md`). It differs substantively: first term
+  `ln(t)/t`, maturities 1M–30Y, and **σ free** rather than pinned at 1. With `A = 1−p` and
+  `B = −p·ln σ` it reduces to ordinary OLS in `{ln(t)/t, 1/t}` — no solver needed. Freeing σ
+  **improves the curve fit a lot (67 → 34 bp median RMSE) and the signal not at all.** His 2020
+  trigger is a LOW-LEVEL one (R/C < 1.02), so that shape was tested directly: 8 fires, 1 of 4
+  bears, 0.12 precision, against inversion's 2 of 4 at 0.27. corr(R/C, 10Y−3M) = **+0.811**,
+  still the term spread. **C₁ is unknown and cannot rescue it**: R/C = 1 + ln(p)/C₁ is monotone
+  in p for any C₁>0 and Var(R/C) = Var(ln p)/C₁², so every percentile-breach signal is invariant
+  to C₁ — only printed levels move. One honest positive: σ is uncorrelated with the spread
+  (−0.014), so it is genuinely new information, but it still scores below the baseline (0.17 vs
+  0.27) and n=4 onsets cannot distinguish those.
+- **Correction to a widely repeated claim**: entropy does *not* spike in crises. Olbryś & Majewska
+  (36 EU+US indices, GFC and COVID) find sequential entropy **falls** — crises make indices more
+  regular. Distribution entropy rises, sequential entropy falls; summaries conflate them.
+
+**`ticker_exchange_map.py`** — every ticker must be exchange-qualified, so
+`cache_seed/ticker_exchange_reference.parquet` is now the ready reference: **74,239 symbols, 42
+exchanges, 34 countries**, with MIC codes, 0.4% unresolved.
+- Exchange is re-derived from the yfinance suffix, because `global-ticker-universe`'s own
+  `exchange` column is coarse — "NSE/BSE", "SSE+SZSE", "Xetra + Frankfurt" each cover 2–3 venues.
+- US symbols are bare and unresolvable from a suffix, so the NASDAQ Trader directory supplies the
+  real listing venue plus an ETF flag. yfinance and NASDAQ spell classes, preferreds and warrants
+  differently (`BRK-B`↔`BRK.B`, `ABR-PD`↔`ABR$D`, `ACHR-WT`↔`ACHR.W`); indexing on all three
+  published symbol columns and trying each spelling cut unresolved from 733 to 272 (the remainder
+  are rights, units and delisted names genuinely absent from the live directory).
+- Distinct from `build_ticker_reference.py`, which builds the Postgres name/liquidity/earnings
+  dictionary and has no exchange column. That file is untouched.
+
+## 2026-07-31 — A backup file inside the dataset directory doubled every 2026 bar
+
+Ingest `[7/7]` had been refusing to fold fresh bars into the deep panels since 2026-07-27, so
+`warehouse/ohlcv/IN` was frozen at 2026-07-29 and `US` at 2026-07-27 while the daily brief kept
+shipping. The refusal was the guard working — but it was guarding against its own writer.
+
+- **Root cause: `_write_years` wrote its pre-write backup NEXT TO the partition it backed up.**
+  `year=2026.parquet.bak` sat inside `warehouse/ohlcv/<MKT>/`, and `pd.read_parquet(<dir>)` loads
+  every file it discovers there, not just `year=*.parquet` — a `.bak` is itself valid parquet. So
+  each read returned the 2026 partition twice: **IN 338,851 and US 1,207,003 duplicate
+  (Symbol, Date) keys, every one byte-identical, zero conflicting values, and confined to 2026** —
+  the only year the writer had ever backed up. The merge's `drop_duplicates` then correctly
+  collapsed them, the row-count check read the collapse as lost history, and the write was refused.
+  Self-sustaining: the guard could never pass, because reading the panel re-created the condition.
+- **Fixes.** Backups now go to `warehouse/_backup/ohlcv/<MKT>/`, outside the dataset root. Panels
+  are read through `_read_panel()`, which globs `year=*.parquet` explicitly, so a stray `.bak` or a
+  `.tmp` from an interrupted run can never be counted as data. The guard's baseline is now the
+  DEDUPED panel: the invariant that matters is *no bar disappears*, not *no row disappears* — only
+  the former is history loss. Years touched by a dedup are added to the rewrite set, and a dedup
+  repair now writes even when there are no new bars, so cleanup no longer depends on fresh bars
+  happening to land in the same year.
+- **Rejected: relaxing the guard to a tolerance** (e.g. allow ≤15% row loss). It would have let this
+  write through while leaving the panel corrupt, and would have masked genuine truncation — the
+  exact failure the guard exists to catch. The guard was right; its baseline was wrong.
+- **Rejected: deleting the `.bak` files.** They are the only copy of the pre-merge partitions, and
+  the corruption they caused was positional, not intrinsic. Moved, not removed.
+- **Verified.** Against a pre-image of the deduped panels: 0 pre-existing bars missing, 0 values
+  changed, 0 duplicate keys remaining, and two consecutive runs are a clean no-op. IN now current
+  to 2026-07-31 (4,493,072 rows), US to 2026-07-30 (16,326,906).
+- **Blast radius.** ~15 modules read the warehouse; all but one glob `year=*.parquet` and were
+  unaffected. `signal_tracker.py` read the directory and was consuming doubled 2026 bars — hardened
+  to the same `_panel()` pattern.
+
+### Uncovered by the above: the India LMDB was serving a GLOBAL universe
+
+Unfreezing the merge immediately exposed a second fault the four-day freeze had been hiding. The
+first successful fold took the IN panel from 7,043 to 15,845 symbols — the new arrivals were
+**2,874 `.SZ`, 2,297 `.SS`, 992 `.TW`, 962 `.AX`, 421 `.HK`, 223 `.SI`**: Shenzhen, Shanghai,
+Taiwan, Sydney, Hong Kong and Singapore tickers written into the *India* panel. `_fresh_in()` reads
+`bhavcopy_store.symbols()`, and that LMDB was holding a global universe rather than NSE/BSE.
+
+This is the nastiest failure mode in the repo: the IN and US panels hold **bare** tickers, so a
+foreign ticker sitting in one is not visibly wrong — it reads as an unfamiliar Indian smallcap, and
+every India-wide statistic silently widens to include six other markets.
+
+- **Contained.** 8,802 contaminant bars, all a single date (2026-07-31), all year 2026, removed;
+  pre-cleanup partition preserved at `_backup/ohlcv/IN/year=2026.parquet.precleanup`. The panel now
+  holds 7,078 symbols — the original 7,043 plus 35 genuine new Indian names.
+- **Guard added** (`_drop_foreign`). Fresh tickers carrying an exchange suffix are dropped from
+  IN/US merges with a loud line. Above 20% foreign the merge is REFUSED outright: at that share the
+  source is not dirty but the wrong market, and drop-and-continue would quietly rebuild the panel
+  from another country's data. **Rejected: refuse on any foreign ticker at all** — one stray symbol
+  would re-freeze the panel, which is the failure this release exists to end.
+- **Not yet fixed:** why the LMDB held a global universe. A subsequent `ingest.sh` rebuild restored
+  it to 7,837 India-only symbols, so the store is currently correct and the writer that polluted it
+  is unidentified. The guard now blocks the damage regardless of the cause, but the cause is open.
+
 ## 2026-07-29 — Claims audited against their own evidence; three locks; a stale-price near-miss
 
 An end-to-end pipeline run at 22:36 (off the usual 00:30 schedule) exposed a class of failure the
