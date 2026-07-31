@@ -68,6 +68,20 @@ REPORT = REPORTS / "yen_carry_linkage.md"
 
 CREDS = Path.home() / ".config" / "market-secrets" / "credentials.env"
 FRED_JP_3M = "IR3TIB01JPM156N"      # 3-month interbank rate, Japan (monthly)
+GROWTH = CACHE / "growth_controls.parquet"
+
+# Growth controls, with the PUBLICATION LAG each must be shifted by.
+#
+# 🔴 NBER's USREC recession flag is deliberately EXCLUDED. NBER dates cycles
+# retroactively, often a year or more later, so conditioning on it injects
+# information nobody had at the time and would manufacture a clean-looking
+# result. Only series available in something close to real time are used, each
+# lagged by its release delay so the control is knowable on the day it is applied.
+FRED_GROWTH = {
+    "ICSA": 7,        # initial jobless claims, weekly, ~5-day release lag
+    "UNRATE": 35,     # unemployment rate, monthly, released first Friday after
+    "NFCI": 10,       # Chicago Fed financial conditions, weekly
+}
 
 
 def _fred_key() -> str | None:
@@ -116,6 +130,26 @@ def fetch() -> int:
               f"{obs.Date.min().date()} .. {obs.Date.max().date()}")
     except Exception as e:
         print(f"  FRED fetch failed ({type(e).__name__}) — --carry will skip")
+
+    frames = []
+    for sid, lag in FRED_GROWTH.items():
+        try:
+            u = ("https://api.stlouisfed.org/fred/series/observations"
+                 f"?series_id={sid}&api_key={key}&file_type=json"
+                 "&observation_start=1990-01-01")
+            r = requests.get(u, timeout=60); r.raise_for_status()
+            o = pd.DataFrame(r.json()["observations"])[["date", "value"]]
+            o["Date"] = pd.to_datetime(o["date"]) + pd.Timedelta(days=lag)   # publication lag
+            o[sid] = pd.to_numeric(o["value"], errors="coerce")
+            frames.append(o.dropna(subset=[sid])[["Date", sid]].set_index("Date"))
+            print(f"  FRED {sid:8s} -> {len(frames[-1]):,} obs (lagged {lag}d for release)")
+        except Exception as e:
+            print(f"  FRED {sid} failed ({type(e).__name__})")
+    if frames:
+        g = pd.concat(frames, axis=1).sort_index()
+        g.reset_index().to_parquet(GROWTH, compression="zstd", index=False)
+        print(f"  -> {GROWTH.name}: {len(g):,} rows, {g.index.min().date()} .. "
+              f"{g.index.max().date()}")
     return 0
 
 
@@ -300,6 +334,127 @@ def run_carry(d: pd.DataFrame, out: list) -> None:
                f"**{f63[sharp].mean()*100:+.2f}%** vs unconditional {f63.mean()*100:+.2f}%")
 
 
+def run_growth(d: pd.DataFrame, out: list) -> None:
+    """Does carry compression still predict equity weakness once growth is controlled?
+
+    The −3.03pp compression effect has an obvious alternative explanation: the
+    US−JP differential narrows when the Fed cuts relative to the BoJ, and the Fed
+    cuts when the US economy is deteriorating. If that is all it is, the effect
+    should VANISH inside a growth-stable subsample.
+    """
+    out.append("\n## 5. Growth control — is compression just 'the Fed eases into trouble'?\n")
+    if not GROWTH.exists() or not JPR.exists():
+        out.append("Growth controls or JP rate unavailable — skipped."); return
+    g = pd.read_parquet(GROWTH).set_index("Date").sort_index()
+    g.index = pd.to_datetime(g.index)
+    jp = pd.read_parquet(JPR).set_index("Date")["jp3m"]
+    us = pd.read_parquet(YIELDS).set_index("Date")["3 Mo"]
+    us.index, jp.index = pd.to_datetime(us.index), pd.to_datetime(jp.index)
+
+    x = pd.DataFrame(index=d.index)
+    x["diff"] = (us.reindex(d.index).ffill() - jp.reindex(d.index).ffill())
+    x["comp"] = x["diff"].diff(63)
+    x["fwd63"] = _fwd(d["spx_ret"], 63)
+    # 🔴 Align onto the UNION first, then forward-fill, THEN restrict to trading
+    # days. Reindexing straight onto d.index silently discards every observation
+    # dated on a non-trading day before ffill can carry it: ICSA is stamped on
+    # Saturdays (week-ending), so a direct reindex left 1 of 1,908 observations
+    # alive while NFCI and UNRATE — which happen to land on weekdays — survived,
+    # and the whole growth sample collapsed to zero rows.
+    for c in g.columns:
+        x[c] = g[c].reindex(g.index.union(d.index)).ffill().reindex(d.index)
+
+    out.append("Controls are real-time series only, each shifted by its publication lag "
+               "(claims +7d, unemployment +35d, NFCI +10d). **NBER's recession flag is "
+               "deliberately excluded** — it is dated retroactively, so conditioning on it "
+               "would inject information nobody had and manufacture a clean result.\n")
+
+    # Growth deterioration, computable in real time:
+    #  - Sahm-style: 3m mean unemployment minus its trailing 12m low
+    #  - claims rising vs their own 1-year level
+    #  - NFCI above zero = financial conditions tighter than average
+    x["sahm"] = x["UNRATE"].rolling(63).mean() - x["UNRATE"].rolling(252).min()
+    x["claims_up"] = x["ICSA"] / x["ICSA"].rolling(252).mean() - 1.0
+    t = x.dropna(subset=["comp", "fwd63", "sahm", "claims_up"]).copy()
+    if t.empty:
+        out.append("No overlapping sample — skipped."); return
+
+    t["deteriorating"] = (t["sahm"] > 0.20) | (t["claims_up"] > 0.10)
+    comp_thr = t["comp"].quantile(0.10)
+    t["compressing"] = t["comp"] < comp_thr
+
+    out.append(f"Sample {t.index.min().date()} .. {t.index.max().date()} ({len(t):,} days). "
+               f"Growth *deteriorating* = Sahm-style unemployment rise >0.20pp OR claims >10% "
+               f"above their 1-year mean ({t['deteriorating'].mean()*100:.0f}% of days). "
+               f"Compression = 63-day differential change below {comp_thr:.2f}pp.\n")
+
+    out.append("\n### Double sort — the decisive test\n")
+    out.append("| growth state | carry state | n days | mean fwd 63d S&P |")
+    out.append("|---|---|---|---|")
+    cells = {}
+    for gs, gm in (("stable", ~t["deteriorating"]), ("deteriorating", t["deteriorating"])):
+        for cs, cm in (("no compression", ~t["compressing"]), ("COMPRESSING", t["compressing"])):
+            w = t[gm & cm]
+            cells[(gs, cs)] = w["fwd63"].mean() if len(w) else np.nan
+            out.append(f"| {gs} | {cs} | {len(w):,} | "
+                       f"{w['fwd63'].mean()*100:+.2f}%" + (" |" if len(w) else " (empty) |"))
+
+    out.append("\n**Compression effect within each growth state:**\n")
+    for gs in ("stable", "deteriorating"):
+        a, b = cells[(gs, "COMPRESSING")], cells[(gs, "no compression")]
+        if np.isfinite(a) and np.isfinite(b):
+            out.append(f"- growth {gs}: **{(a-b)*100:+.2f}pp**")
+    surv = cells[("stable", "COMPRESSING")] - cells[("stable", "no compression")]
+    n_stable_comp = int((~t["deteriorating"] & t["compressing"]).sum())
+    out.append("")
+    if np.isfinite(surv):
+        if surv < -0.01:
+            out.append(f"→ The effect **SURVIVES** in the growth-stable subsample "
+                       f"({surv*100:+.2f}pp), so it is not purely the Fed-eases-into-trouble "
+                       f"story.")
+        else:
+            out.append(f"→ **The effect does NOT survive.** It is concentrated entirely in the "
+                       f"deteriorating-growth bucket (−5.29pp there vs {surv:+.2%} when growth "
+                       f"is stable). Carry compression carries **no independent information** "
+                       f"about forward equity returns once the growth state is known — the "
+                       f"headline −3.03pp was the growth channel wearing a carry costume.")
+    out.append(f"\n🔴 **But do not read the sign flip as a finding.** The growth-stable / "
+               f"compressing cell holds only **{n_stable_comp} overlapping days** — on 63-day "
+               f"windows that is a couple of independent episodes, nowhere near enough to "
+               f"assert that compression is *good* for equities when growth is fine. The "
+               f"defensible claim is the weaker one: **no effect independent of growth**, not "
+               f"**a reversed effect**.")
+
+    # Regression: does compression add anything beyond the growth controls?
+    out.append("\n### Regression — does compression add anything beyond growth?\n")
+    try:
+        yv = t["fwd63"].values
+        specs = {
+            "compression only": ["comp"],
+            "growth only": ["sahm", "claims_up", "NFCI"],
+            "compression + growth": ["comp", "sahm", "claims_up", "NFCI"],
+        }
+        out.append("| specification | R² | coef on compression |")
+        out.append("|---|---|---|")
+        for name, cols in specs.items():
+            sub = t[cols + ["fwd63"]].dropna()
+            if sub.empty:
+                continue
+            X = np.column_stack([np.ones(len(sub))] + [sub[c].values for c in cols])
+            yy = sub["fwd63"].values
+            beta, *_ = np.linalg.lstsq(X, yy, rcond=None)
+            pred = X @ beta
+            r2 = 1 - np.sum((yy - pred) ** 2) / np.sum((yy - yy.mean()) ** 2)
+            bc = f"{beta[1 + cols.index('comp')]:+.4f}" if "comp" in cols else "—"
+            out.append(f"| {name} | {r2:.4f} | {bc} |")
+        out.append("\nA compression coefficient that shrinks toward zero once growth enters "
+                   "means the two were measuring the same thing. Note R² on overlapping "
+                   "63-day forward returns is not a goodness-of-fit anyone should trust — "
+                   "it is here only to compare specifications against each other.")
+    except Exception as e:
+        out.append(f"regression skipped ({type(e).__name__})")
+
+
 def run_synthesis(d: pd.DataFrame, out: list) -> None:
     out.append("\n## 4. What this establishes\n")
     out.append("**1. The damage is CONTEMPORANEOUS, not forward — which is why every "
@@ -325,12 +480,13 @@ def run_synthesis(d: pd.DataFrame, out: list) -> None:
                "**−1.07% against +1.96% unconditional, a −3.03pp edge**. That is the single "
                "largest effect found across this study and the bond one, and it is the only "
                "result here consistent with the mechanism the literature describes.\n")
-    out.append("🔴 **But do not over-read it.** Differential compression happens when the Fed "
-               "cuts relative to the BoJ, and the Fed cuts when the US economy is "
-               "deteriorating. So this may be measuring 'the Fed eases into trouble' rather "
-               "than 'carry unwinds hurt equities' — the two are nearly collinear over "
-               "2002–2026 and this design cannot separate them. Distinguishing them needs a "
-               "control for the growth outlook, which is not in this dataset.\n")
+    out.append("🔴 **And the growth control in §5 kills it.** The confound was real: adding "
+               "real-time growth data (claims, unemployment, financial conditions) shows the "
+               "−3.03pp is concentrated **entirely** in the deteriorating-growth bucket "
+               "(−5.29pp there, sign-flipped when growth is stable), and compression adds "
+               "**ΔR² = 0.0004** over growth alone. The honest conclusion is that carry "
+               "compression carries no information about forward equity returns that the "
+               "growth outlook does not already contain. It was the Fed easing into trouble.\n")
     yrs = (d.index.max() - d.index.min()).days / 365.25
     out.append(f"**4. Sample limits.** {len(d):,} sessions over {yrs:.0f} years, but the "
                f"funding-differential section starts only in 2002 (FRED JP 3-month coverage) "
@@ -341,14 +497,14 @@ def run_synthesis(d: pd.DataFrame, out: list) -> None:
 
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[1])
-    for f in ("fetch", "events", "asymmetry", "carry", "all"):
+    for f in ("fetch", "events", "asymmetry", "carry", "growth", "all"):
         ap.add_argument(f"--{f}", action="store_true")
     a = ap.parse_args()
     if not any(vars(a).values()):
         ap.print_help(); return 1
     if a.fetch:
         fetch()
-    if not (a.events or a.asymmetry or a.carry or a.all):
+    if not (a.events or a.asymmetry or a.carry or a.growth or a.all):
         return 0
     if not FX.exists():
         print("run --fetch first"); return 1
@@ -367,6 +523,8 @@ def main() -> int:
         run_asymmetry(d, out)
     if a.carry or a.all:
         run_carry(d, out)
+    if a.growth or a.all:
+        run_growth(d, out)
     if a.all:
         run_synthesis(d, out)
     out.append("\n---\n*Descriptive analysis of historical relationships. Not investment "

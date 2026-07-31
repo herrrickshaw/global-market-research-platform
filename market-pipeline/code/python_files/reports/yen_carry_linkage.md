@@ -91,6 +91,41 @@ Carry incentive, 2002-04-01 .. 2026-08-01: median **0.92pp**, range -0.88 .. 5.6
 - corr(carry differential, forward 1y S&P) = **+0.009**
 - after a top-decile COMPRESSION of the differential (<-0.42pp/63d — the unwind trigger): mean fwd 63d S&P **-1.07%** vs unconditional +1.96%
 
+## 5. Growth control — is compression just 'the Fed eases into trouble'?
+
+Controls are real-time series only, each shifted by its publication lag (claims +7d, unemployment +35d, NFCI +10d). **NBER's recession flag is deliberately excluded** — it is dated retroactively, so conditioning on it would inject information nobody had and manufacture a clean result.
+
+Sample 2002-06-27 .. 2026-05-06 (6,182 days). Growth *deteriorating* = Sahm-style unemployment rise >0.20pp OR claims >10% above their 1-year mean (42% of days). Compression = 63-day differential change below -0.42pp.
+
+
+### Double sort — the decisive test
+
+| growth state | carry state | n days | mean fwd 63d S&P |
+|---|---|---|---|
+| stable | no compression | 3,476 | +2.06% |
+| stable | COMPRESSING | 88 | +4.20% |
+| deteriorating | no compression | 2,088 | +3.27% |
+| deteriorating | COMPRESSING | 530 | -2.02% |
+
+**Compression effect within each growth state:**
+
+- growth stable: **+2.14pp**
+- growth deteriorating: **-5.29pp**
+
+→ **The effect does NOT survive.** It is concentrated entirely in the deteriorating-growth bucket (−5.29pp there vs +2.14% when growth is stable). Carry compression carries **no independent information** about forward equity returns once the growth state is known — the headline −3.03pp was the growth channel wearing a carry costume.
+
+🔴 **But do not read the sign flip as a finding.** The growth-stable / compressing cell holds only **88 overlapping days** — on 63-day windows that is a couple of independent episodes, nowhere near enough to assert that compression is *good* for equities when growth is fine. The defensible claim is the weaker one: **no effect independent of growth**, not **a reversed effect**.
+
+### Regression — does compression add anything beyond growth?
+
+| specification | R² | coef on compression |
+|---|---|---|
+| compression only | 0.0009 | +0.0050 |
+| growth only | 0.0729 | — |
+| compression + growth | 0.0733 | +0.0039 |
+
+A compression coefficient that shrinks toward zero once growth enters means the two were measuring the same thing. Note R² on overlapping 63-day forward returns is not a goodness-of-fit anyone should trust — it is here only to compare specifications against each other.
+
 ## 4. What this establishes
 
 **1. The damage is CONTEMPORANEOUS, not forward — which is why every forward-looking test missed it.** Over the unwind window itself the Nikkei averages **−2.10%** (worst episode −49.37%) and the S&P **−0.71%** (worst −42.69%). But forward returns from either dating are flat-to-positive, and peak-dated they are clearly positive (+1.30pp edge, S&P 21d). Equities fall DURING a carry unwind and rebound after it. An event study that only looks forward from a date will therefore find nothing — which is exactly what the bond-selloff study did, and possibly for the same reason.
@@ -99,7 +134,7 @@ Carry incentive, 2002-04-01 .. 2026-08-01: median **0.92pp**, range -0.88 .. 5.6
 
 **3. The carry LEVEL predicts nothing; the carry COMPRESSION does.** The differential's level is useless (corr +0.009 with forward 1y S&P, non-monotonic quintiles). But after a top-decile 63-day COMPRESSION of the US−JP differential — the actual unwind trigger — forward 63-day S&P is **−1.07% against +1.96% unconditional, a −3.03pp edge**. That is the single largest effect found across this study and the bond one, and it is the only result here consistent with the mechanism the literature describes.
 
-🔴 **But do not over-read it.** Differential compression happens when the Fed cuts relative to the BoJ, and the Fed cuts when the US economy is deteriorating. So this may be measuring 'the Fed eases into trouble' rather than 'carry unwinds hurt equities' — the two are nearly collinear over 2002–2026 and this design cannot separate them. Distinguishing them needs a control for the growth outlook, which is not in this dataset.
+🔴 **And the growth control in §5 kills it.** The confound was real: adding real-time growth data (claims, unemployment, financial conditions) shows the −3.03pp is concentrated **entirely** in the deteriorating-growth bucket (−5.29pp there, sign-flipped when growth is stable), and compression adds **ΔR² = 0.0004** over growth alone. The honest conclusion is that carry compression carries no information about forward equity returns that the growth outlook does not already contain. It was the Fed easing into trouble.
 
 **4. Sample limits.** 7,703 sessions over 30 years, but the funding-differential section starts only in 2002 (FRED JP 3-month coverage) and uses overlapping 252-day windows — roughly **24 independent years**, so quintile means separated by a few pp are noise. 84 episodes is a reasonable event count; the 24 years behind the carry differential is not.
 
