@@ -77,6 +77,31 @@ Sum 100.0%.
 |---|---|---|
 | 2026-07-31 | +2,260 | +277 |
 
+## 🟢 India SIP contribution — COMPUTED (AMFI monthly notes)
+
+13 months parsed from AMFI Monthly Note PDFs, Jun 2024 .. Aug 2025. ₹ crore. This is the *household savings* leg of Indian equity demand — the sticky, payroll-linked flow that is NOT debt-financed.
+
+
+| month | SIP ₹ crore | % of industry AUM |
+|---|---|---|
+| Jun 2024 | 21,000 | — |
+| Jul 2024 | 23,000 | — |
+| Aug 2024 | 23,547 | — |
+| Sep 2024 | 24,509 | — |
+| Oct 2024 | 25,323 | — |
+| Dec 2024 | 26,459 | — |
+| Jan 2025 | 26,400 | — |
+| Mar 2025 | 24,113 | — |
+| Apr 2025 | 26,632 | — |
+| May 2025 | 26,688 | — |
+| Jun 2025 | 27,269 | — |
+| Jul 2025 | 28,464 | — |
+| Aug 2025 | 28,265 | 20.2% |
+
++34.6% over the window. Two figures are independently cross-checked: Aug 2025 = 28,265 appears verbatim in that note, and Aug 2024 = 23,547 matches the year-ago base quoted in the Aug 2025 note.
+
+🔴 Jun and Jul 2024 read as exactly 21,000 and 23,000 — those notes phrase the figure as a crossed THRESHOLD rather than an exact total, so treat them as approximate. Nov 2024 and Feb 2025 are absent: the parser returns nothing rather than guess when a note's wording is ambiguous.
+
 ## Stock vs flow — why both are here
 
 Japan is the clean illustration: foreigners own roughly 30% of the float but account for the majority of turnover, so they set the price while domestic institutions and the BoJ hold the shares. India ran the same divergence in reverse — DIIs became the marginal buyer well before they overtook FIIs on holdings. Reading an ownership table as if it described who moves the market is the standard error this page is arranged to prevent.

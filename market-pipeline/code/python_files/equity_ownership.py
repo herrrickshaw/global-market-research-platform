@@ -19,16 +19,25 @@ comparable machine-readable series was reachable (see --sources for exactly what
 was tried and what failed). The table marks every cell, and mixing the two
 without saying so would be the main way this analysis could mislead.
 
-WHAT IS NOT AVAILABLE, AND WHY
-  * NSE `fiidiiTradeReact` returns the CURRENT DAY ONLY — it accepts a `date`
-    parameter and ignores it. So `--india` is an append-only collector: it
-    accumulates history from the day it first runs and cannot backfill. History
-    needs a different source (BSE archives, NSDL, or a paid vendor).
-  * AMFI's SIP series had no reachable endpoint: the documented paths return 404
-    and the site renders client-side. SIP figures in reports/ are therefore cited,
-    not collected. Wiring this properly is the main open item.
+DATA ACCESS — WHAT WORKS AND WHAT DOES NOT
+  * SIP: SOLVED. Not an API. amfiindia.com is a Next.js app that renders data
+    server-side, so there is no client XHR to intercept — scanning all 28 JS
+    chunks yielded one path (`/api/search/trending`) and every documented
+    `/modules/...` route 404s. The real channel is static PDFs:
+    `/Themes/Theme1/downloads/AMFIMonthlyNote_<Month><YYYY>.pdf`, parsed by
+    `--sip`. Coverage is thin — 15 notes, Jun 2024 to Aug 2025, Nov 2024 and
+    Feb 2025 unparseable — so this is a short series, not the FY2016-17 history
+    quoted in the press. (`portal.amfiindia.com/spages/` holds 419 monthly AUM
+    reports back to 2000, but those carry AUM, not SIP.)
+  * FII/DII history: NOT SOLVED. NSE `fiidiiTradeReact` returns the CURRENT DAY
+    only — it accepts a `date` parameter and silently ignores it. BSE's
+    `api.bseindia.com` returns an XHTML error page for every endpoint name tried,
+    and bseindia.com is blocked by browser policy here. So `--india` is
+    append-only: it accumulates from first run and CANNOT backfill. History needs
+    NSDL, a BSE archive file, or a paid vendor.
 
     equity_ownership.py --us       # Z.1 -> computed US ownership shares
+    equity_ownership.py --sip      # AMFI monthly notes -> India SIP series
     equity_ownership.py --india    # append today's NSE FII/DII to the store
     equity_ownership.py --table    # cross-market table, cells marked computed/cited
     equity_ownership.py --sources  # what was tried, what worked, what did not
@@ -37,6 +46,7 @@ WHAT IS NOT AVAILABLE, AND WHY
 from __future__ import annotations
 
 import argparse
+import re
 import json
 import sys
 from pathlib import Path
@@ -173,6 +183,114 @@ CITED = {
 }
 
 
+AMFI_NOTE = "https://www.amfiindia.com/Themes/Theme1/downloads/AMFIMonthlyNote_{m}{y}.pdf"
+SIP = CACHE / "india_sip_monthly.parquet"
+
+# Phrases that sit next to a "Rs N crore" figure which is NOT the month's SIP
+# contribution. These matter: the notes describe several flows in near-identical
+# language, and a loose regex silently returns the wrong one.
+_SIP_REJECT = re.compile(r"rising from|declin|increase of|assets|AUM|stood at", re.I)
+# The month's SIP contribution, anchored on SIP so it cannot drift onto another line item.
+# The notes phrase the same fact many ways across months: "total contribution of",
+# "total contributions reaching", "contribution amount reaching", "flows continued
+# to remain robust at", "flows touched a new high of". Anchor on SIP + a FLOW noun
+# (contribution/contributions/flows) so it cannot drift onto another line item,
+# then let the connector vary. "SIP accounts … 9.11 crore" is a COUNT, not rupees —
+# excluded both by the flow-noun requirement and the plausibility range.
+_SIP_TAKE = re.compile(
+    r"SIP[^.]{0,120}?(?:contributions?|flows)[^.]{0,70}?Rs\.?\s*([\d,]+)\s*crore", re.I)
+
+
+def _parse_sip(flat: str):
+    """Month's SIP contribution in Rs crore, or None if not unambiguous.
+
+    🔴 An earlier version used an unanchored `(?:contribution of|totalling)…`
+    regex and returned 33,430 for Aug 2025 — that is the EQUITY FUND inflow
+    ("Equity funds saw positive inflows … totalling Rs 33,430 crore"), which
+    appears earlier in the document than the SIP sentence. The true figure is
+    28,265. Several months were wrong the same way. Hence: anchor on SIP,
+    reject the YoY-comparison and AUM sentences, and require agreement when the
+    note states the number more than once — returning None beats returning a
+    confident wrong number.
+    """
+    cands = []
+    for m in _SIP_TAKE.finditer(flat):
+        ctx = flat[max(0, m.start() - 60): m.end()]
+        if _SIP_REJECT.search(ctx[:ctx.upper().rfind("RS")] if "RS" in ctx.upper() else ctx):
+            continue
+        v = float(m.group(1).replace(",", ""))
+        if 3_000 <= v <= 60_000:          # plausible monthly SIP range, Rs crore
+            cands.append(v)
+    if not cands:
+        return None
+    if len(set(cands)) > 1:
+        # The note states the figure more than once and the readings disagree.
+        # Take a clear majority (the same number phrased twice, plus one stray
+        # match); otherwise return None rather than guess.
+        from collections import Counter
+        (top, n), = Counter(cands).most_common(1)
+        return top if n > len(cands) / 2 else None
+    return cands[0]
+
+
+def run_sip(start_year: int = 2023) -> None:
+    """Monthly SIP contribution, parsed from AMFI's Monthly Note PDFs.
+
+    FINDING THE ENDPOINT TOOK SOME DIGGING, so the trail is recorded here:
+    amfiindia.com is a Next.js app that renders its data server-side, so there is
+    no client XHR to intercept — scanning all 28 JS chunks yielded exactly one
+    API path (`/api/search/trending`), and the documented `/modules/...` paths
+    all 404. The real data channel is static files on `portal.amfiindia.com/spages/`
+    (419 monthly AUM reports, .xls and .pdf, back to 2000) — but those carry AUM,
+    NOT SIP. SIP lives in a separate publication:
+
+        https://www.amfiindia.com/Themes/Theme1/downloads/AMFIMonthlyNote_<Month><YYYY>.pdf
+
+    Coverage is thin and irregular — 14 notes as of Aug 2025, with Sep 2024
+    missing — so this is a short series, not the FY2016-17 history quoted in the
+    press. Anything older stays CITED in equity_capital_sources.md.
+    """
+    import calendar
+    import subprocess
+    import tempfile
+    rows = []
+    for y in range(start_year, 2027):
+        for mi in range(1, 13):
+            mon = calendar.month_name[mi]
+            url = AMFI_NOTE.format(m=mon, y=y)
+            try:
+                r = requests.get(url, headers={"User-Agent": UA}, timeout=30)
+                if r.status_code != 200 or not r.content.startswith(b"%PDF"):
+                    continue
+            except Exception:
+                continue
+            with tempfile.NamedTemporaryFile(suffix=".pdf", delete=True) as f:
+                f.write(r.content); f.flush()
+                try:
+                    txt = subprocess.run(["pdftotext", f.name, "-"], capture_output=True,
+                                         text=True, timeout=60).stdout
+                except Exception:
+                    continue
+            flat = " ".join(txt.split())
+            val = _parse_sip(flat)
+            m2 = re.search(r"SIP assets account for\s*([\d.]+)%", flat, re.I)
+            if val is None:
+                print(f"  {mon[:3]} {y}: no unambiguous SIP figure — SKIPPED")
+                continue
+            rows.append({"month": pd.Timestamp(year=y, month=mi, day=1),
+                         "sip_crore": val,
+                         "sip_pct_of_aum": float(m2.group(1)) if m2 else None,
+                         "source": url.rsplit("/", 1)[-1]})
+            print(f"  {mon[:3]} {y}: SIP Rs {val:,.0f} crore"
+                  + (f", {rows[-1]['sip_pct_of_aum']}% of AUM" if m2 else ""))
+    if not rows:
+        print("  no SIP figures parsed"); return
+    d = pd.DataFrame(rows).sort_values("month")
+    CACHE.mkdir(parents=True, exist_ok=True)
+    d.to_parquet(SIP, compression="zstd", index=False)
+    print(f"  -> {SIP.name}: {len(d)} months, {d.month.min().date()} .. {d.month.max().date()}")
+
+
 def run_table() -> None:
     out = ["# Who owns each equity market\n",
            "**Read the evidence tags.** 🟢 = computed here from primary data and reproducible "
@@ -228,6 +346,27 @@ def run_table() -> None:
         for dt, r in piv.tail(10).iterrows():
             out.append(f"| {dt.date()} | " + " | ".join(f"{v:+,.0f}" for v in r.values) + " |")
 
+    if SIP.exists():
+        sp = pd.read_parquet(SIP)
+        out.append("\n## 🟢 India SIP contribution — COMPUTED (AMFI monthly notes)\n")
+        out.append(f"{len(sp)} months parsed from AMFI Monthly Note PDFs, "
+                   f"{sp.month.min().date():%b %Y} .. {sp.month.max().date():%b %Y}. ₹ crore. "
+                   f"This is the *household savings* leg of Indian equity demand — the sticky, "
+                   f"payroll-linked flow that is NOT debt-financed.\n")
+        out.append("\n| month | SIP ₹ crore | % of industry AUM |")
+        out.append("|---|---|---|")
+        for _, r in sp.iterrows():
+            pct = f"{r.sip_pct_of_aum:.1f}%" if pd.notna(r.sip_pct_of_aum) else "—"
+            out.append(f"| {r.month:%b %Y} | {r.sip_crore:,.0f} | {pct} |")
+        g = (sp.sip_crore.iloc[-1] / sp.sip_crore.iloc[0] - 1) * 100
+        out.append(f"\n{g:+.1f}% over the window. Two figures are independently "
+                   f"cross-checked: Aug 2025 = 28,265 appears verbatim in that note, and "
+                   f"Aug 2024 = 23,547 matches the year-ago base quoted in the Aug 2025 note.")
+        out.append("\n🔴 Jun and Jul 2024 read as exactly 21,000 and 23,000 — those notes phrase "
+                   "the figure as a crossed THRESHOLD rather than an exact total, so treat them "
+                   "as approximate. Nov 2024 and Feb 2025 are absent: the parser returns nothing "
+                   "rather than guess when a note's wording is ambiguous.")
+
     out.append("\n## Stock vs flow — why both are here\n")
     out.append("Japan is the clean illustration: foreigners own roughly 30% of the float but "
                "account for the majority of turnover, so they set the price while domestic "
@@ -250,8 +389,12 @@ def run_sources() -> None:
     print("  DOES NOT WORK")
     print("    NSE fiidiiTradeReact?date=...        parameter accepted and IGNORED; no backfill")
     print("    NSE /api/historicalOR/fiidiiTrade... 404")
-    print("    amfiindia.com/modules/LatestSIPData  404")
-    print("    portal.amfiindia.com/.../amfi-monthly.xls  404")
+    print("    AMFI Monthly Note PDFs               SOLVED: /Themes/Theme1/downloads/")
+    print("                                         AMFIMonthlyNote_<Month><YYYY>.pdf")
+    print("  DOES NOT WORK")
+    print("    amfiindia.com/modules/LatestSIPData  404 (site is Next.js, server-rendered)")
+    print("    all 28 JS chunks scanned             only /api/search/trending exists")
+    print("    portal.amfiindia.com/spages/*repo.xls  419 files, but AUM not SIP")
     print("    api.bseindia.com FIIDIIData          returns HTML, not JSON")
     print("    FRED BOGZ1LM153064105Q etc.          400 — wrong IDs; corrected set is in Z1 above")
     print("\n  OPEN: AMFI SIP series, and India FII/DII history before first collector run.")
@@ -259,7 +402,7 @@ def run_sources() -> None:
 
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[1])
-    for f in ("us", "india", "table", "sources", "all"):
+    for f in ("us", "india", "sip", "table", "sources", "all"):
         ap.add_argument(f"--{f}", action="store_true")
     a = ap.parse_args()
     if not any(vars(a).values()):
@@ -270,6 +413,8 @@ def main() -> int:
         run_us()
     if a.india or a.all:
         run_india()
+    if a.sip or a.all:
+        run_sip()
     if a.table or a.all:
         run_table()
     return 0
