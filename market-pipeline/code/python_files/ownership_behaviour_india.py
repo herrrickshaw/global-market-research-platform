@@ -301,9 +301,23 @@ def study(source: str = "screener") -> int:
                 sp = piv.loc[ix, piv.columns[-1]] - piv.loc[ix, piv.columns[0]]
                 spreads.append(sp)
                 out.append(f"| {ix} | {cells} | **{sp:+.3f}** |")
-            same = all(s > 0 for s in spreads) or all(s < 0 for s in spreads)
-            out.append(f"\n→ spread sign is {'CONSISTENT across all three liquidity rows' if same else 'INCONSISTENT across liquidity rows'}"
-                       f" — {'survives the liquidity control' if same else 'does NOT survive; the raw correlation was liquidity'}.")
+            same = all(x > 0 for x in spreads) or all(x < 0 for x in spreads)
+            # Sign consistency alone is a weak test: three spreads of +0.014,
+            # +0.005, +0.001 share a sign while shrinking to nothing, and calling
+            # that "survives" would overstate it badly. Require the typical spread
+            # to be material relative to the metric's own cross-sectional spread.
+            typical = float(np.mean(np.abs(spreads)))
+            scale = float(d[metric].std())
+            material = scale > 0 and typical > 0.15 * scale
+            if same and material:
+                verdict = ("CONSISTENT in sign and MATERIAL "
+                           f"({typical:.3f} vs sd {scale:.3f}) — survives the liquidity control")
+            elif same:
+                verdict = (f"consistent in sign but NEGLIGIBLE ({typical:.3f} against a "
+                           f"cross-sectional sd of {scale:.3f}) — sign-only, not a real effect")
+            else:
+                verdict = "INCONSISTENT across liquidity rows — does NOT survive; the raw correlation was liquidity"
+            out.append(f"\n→ {verdict}.")
 
     # ── regression: ownership beyond size and liquidity ──────────────────────
     out.append("\n## 4. Regression — ownership beyond size and liquidity\n")
@@ -315,7 +329,16 @@ def study(source: str = "screener") -> int:
         for col, label, _ in AXES:
             if col not in d.columns:
                 continue
+            # NSE carries no market cap, so log_cap is all-NaN there and a naive
+            # dropna silently removed EVERY row — the controlled spec just vanished
+            # from the table rather than failing loudly. Keep only controls that
+            # actually have data, and name the spec after what was really fitted.
             for name, extra in (("alone", []), ("+ liquidity + size", ["log_turn", "log_cap"])):
+                extra = [c for c in extra if d[c].notna().any()]
+                if name != "alone":
+                    name = "+ " + " + ".join(c.replace("log_", "") for c in extra) if extra else None
+                    if name is None:
+                        continue
                 cols = [col] + extra
                 sub = d[cols + [dep]].replace([np.inf, -np.inf], np.nan).dropna()
                 if len(sub) < 30:
@@ -339,35 +362,59 @@ def study(source: str = "screener") -> int:
                "enters was measuring liquidity wearing an ownership label.")
 
     out.append("\n## 5. What this establishes\n")
-    out.append("**1. Institutional holding is associated with calmer prices, and it is NOT "
-               "just illiquidity.** DII holding predicts lower volatility and lower "
-               "autocorrelation, and the relationship barely moves when liquidity and size "
-               "enter: the volatility coefficient goes -0.476 (t=-11.2) to -0.345 (t=-9.9), "
-               "and autocorrelation -0.00094 (t=-3.5) to -0.00091 (t=-3.2). The double sort "
-               "agrees — the spread keeps its sign down all three liquidity terciles. This is "
-               "the finding the 5-market table pointed at and could not identify.\n")
-    out.append("**2. Retail float destabilises, but two-thirds of the raw effect WAS "
-               "liquidity.** Public float alone gives +0.404 on volatility (t=11.8); adding "
-               "liquidity and size cuts it to +0.136 (t=3.5). Still significant, still the "
-               "right sign — but anyone quoting the raw +0.516 correlation would be quoting "
-               "mostly small-illiquid-stocks-are-volatile.\n")
-    out.append("**3. My original axis was a null, and one part of it inverted.** Promoter "
-               "holding does nothing for autocorrelation (t=+0.45 alone, +1.51 controlled). "
-               "On volatility it is insignificant alone (t=+1.81) but becomes strongly "
-               "positive once liquidity and size are controlled (+0.139, t=+5.71) — a "
-               "SUPPRESSION effect: promoter-heavy stocks are also larger, and size masks the "
-               "relationship until it is held constant. Reported because it inverts the naive "
-               "reading, not because it was expected.\n")
-    out.append("\n### 🔴 The limit this design still does not clear: direction\n")
-    out.append("Everything above is association. **Institutions may be selecting stable "
-               "stocks rather than stabilising them** — a DII mandate that screens for "
-               "predictable earnings would produce exactly this cross-section with no "
-               "stabilising behaviour at all. Controlling for liquidity and size does not "
-               "touch that, because the selection runs on characteristics correlated with "
-               "both. Separating them needs variation in ownership that is not chosen by the "
-               "owner: index-inclusion events, mandate changes, or a panel exploiting "
-               "WITHIN-STOCK changes in DII holding over time — the quarterly history is "
-               "already collected and would support the last of those.\n")
+    if source == "nse":
+        out.append("**🔴 THE EFFECT DOES NOT REPLICATE IN THE FULL UNIVERSE. This is the "
+                   "headline, and it contradicts the screener.in run.**\n")
+        out.append("On 347 liquid large caps, public float correlated **+0.516** with "
+                   "volatility and +0.230 with autocorrelation. Across the full NSE universe "
+                   "it is **-0.04 and +0.02** — indistinguishable from zero. Every regression "
+                   "coefficient here has |t| < 0.6, with or without the liquidity control, and "
+                   "no double sort survives: the volatility sort flips sign across liquidity "
+                   "rows, and the autocorrelation sort holds its sign only at a magnitude of "
+                   "0.006 against a cross-sectional sd of 0.061 — sign-only, not an effect.\n")
+        out.append("**The most likely reading is that the original result was a large-cap "
+                   "phenomenon.** The screener sample floored at $20M/day turnover; this one "
+                   "reaches a median turnover of Rs 0.02 crore. Widening the universe by ~2x "
+                   "the companies and ~100x the liquidity range destroyed the relationship, "
+                   "which is what a size-restricted artifact looks like.\n")
+        out.append("**🔴 A structural caveat specific to this source.** NSE reports only "
+                   "promoter, public and employee trusts, and they sum to 100 — so Public is "
+                   "mechanically `100 - Promoters` and the two are the SAME variable with "
+                   "opposite sign. Their correlations here are exact mirrors (+0.040 / -0.040) "
+                   "because they must be. In the screener data, Public was a genuine residual "
+                   "after FII, DII and government, and therefore carried information that "
+                   "promoter holding did not. **These two runs are not measuring the same "
+                   "quantity**, and that alone could explain the divergence without any "
+                   "large-cap story at all. Distinguishing the two explanations needs the "
+                   "FII/DII split across the wide universe, which no free source provides.\n")
+        out.append("**What still stands from the screener run**: the DII result (volatility "
+                   "t=-9.9 with controls) is untouched by this, because NSE cannot measure DII "
+                   "holding. It stands on 347 companies and is not confirmed at scale.\n")
+    else:
+        out.append("**1. Institutional holding is associated with calmer prices, and it is NOT "
+                   "just illiquidity.** DII holding predicts lower volatility and lower "
+                   "autocorrelation, and the relationship barely moves when liquidity and size "
+                   "enter: the volatility coefficient goes -0.476 (t=-11.2) to -0.345 (t=-9.9), "
+                   "and autocorrelation -0.00094 (t=-3.5) to -0.00091 (t=-3.2). The double sort "
+                   "agrees — the spread keeps its sign down all three liquidity terciles.\n")
+        out.append("**2. Retail float destabilises, but two-thirds of the raw effect WAS "
+                   "liquidity.** Public float alone gives +0.404 on volatility (t=11.8); adding "
+                   "liquidity and size cuts it to +0.136 (t=3.5). 🔴 And the full-universe NSE "
+                   "run (`--source nse`) finds NOTHING — see ownership_behaviour_india_full.md. "
+                   "Treat this as a large-cap result until reconciled.\n")
+        out.append("**3. My original axis was a null, and one part of it inverted.** Promoter "
+                   "holding does nothing for autocorrelation (t=+0.45 alone, +1.51 controlled). "
+                   "On volatility it is insignificant alone (t=+1.81) but becomes strongly "
+                   "positive once liquidity and size are controlled (+0.139, t=+5.71) — a "
+                   "SUPPRESSION effect, since promoter-heavy stocks are also larger.\n")
+    out.append("\n### 🔴 The limit neither run clears: direction\n")
+    out.append("Everything here is association. **Institutions may be selecting stable stocks "
+               "rather than stabilising them** — a mandate screening for predictable earnings "
+               "produces exactly this cross-section with no stabilising behaviour at all. "
+               "Controlling for liquidity and size does not touch that. Separating them needs "
+               "ownership variation not chosen by the owner: index-inclusion events, mandate "
+               "changes, or a within-stock panel on holding over time — the quarterly history "
+               "for the last is already collected.\n")
     out.append("*Descriptive analysis of historical relationships. Not investment advice.*\n")
 
     REPORTS.mkdir(parents=True, exist_ok=True)
