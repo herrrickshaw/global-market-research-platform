@@ -33,9 +33,32 @@ recomputed**; every figure is tagged ⓟ primary (Fed Z.1, SEBI, AMFI, FINRA, Bo
   domestic, i.e. Korea's biggest institution is increasingly a buyer of *foreign* equities.
 - **Europe is the acknowledged gap** — the searches surfaced little, and no primary figure is
   cited rather than inventing one.
-- **Next build, not yet run**: the India FII/DII (NSE daily) + AMFI SIP (monthly) pair, which would
-  test the absorption claim against data instead of taking the press figure on trust. Retrievable
-  sources catalogued in §6 of the report.
+### `equity_ownership.py` — ownership table built; half of it is measured, half is not
+
+`reports/equity_ownership_table.md`. **Every cell is tagged 🟢 computed or 🟡 cited**, because
+mixing a measured share with a press figure in one table is the main way this could mislead.
+
+- **🟢 US ownership is genuinely COMPUTED** from Fed Z.1 (L.223 direct holders) via FRED, 145
+  quarters 1990–2026Q1, $106.9tn outstanding, shares summing to 100.0%: households (residual) 46.1%,
+  foreign 18.2%, mutual funds 15.4%, ETFs 10.1%, private pensions 4.8%, state/local pensions 3.4%.
+  Households are a residual — that is how the Financial Accounts derive the sector, not a shortcut.
+- **The ten-year drift is the real finding**: mutual funds **−7.1pp**, ETFs **+5.0pp** — the
+  active→passive shift, visible directly in ownership rather than inferred from fund-flow
+  commentary. Foreign +3.9pp, state/local pensions −2.4pp.
+- **🟡 India, Japan, Korea CITED not computed**, with the stock/flow distinction made explicit:
+  Japan's foreigners own ~30% of float but the majority of turnover; Korea's retail is 64% of
+  transaction value. Reading an ownership table as "who moves the market" is the standard error.
+- **Europe left blank rather than guessed** — no primary source reached.
+- **🔴 Data access, tested and recorded in `--sources`.** WORKS: FRED Z.1; NSE
+  `/api/fiidiiTradeReact` (needs a cookie handshake). DOES NOT: NSE's `date=` parameter is accepted
+  and **silently ignored**, so the FII/DII store is **append-only and cannot be backfilled**;
+  `historicalOR` 404s; every AMFI SIP endpoint tried 404s (site renders client-side);
+  `api.bseindia.com` returns HTML. Three FRED IDs from the first attempt (`BOGZ1LM153064105Q` and
+  others) 400'd — the corrected set is in the module.
+- **Rejected: scraping a number into the SIP column to complete the picture.** SIP figures stay
+  cited in `equity_capital_sources.md` until a real endpoint is wired. An unsourced cell in a table
+  like this is worse than an empty one.
+- **Still open**: AMFI SIP series, and India FII/DII history prior to the collector's first run.
 
 ## 2026-07-31 — Bond↔equity linkage measured; three of four hypotheses came back NULL
 
