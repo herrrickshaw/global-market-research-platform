@@ -66,6 +66,31 @@ def _latest_scan() -> str:
     return fs[-1] if fs else ""
 
 
+def _scan_staleness_note(path: str) -> str:
+    """'' if the workbook is today's, otherwise a line naming the real problem.
+
+    Without this, a workbook left over from a day the scan did not run shows up
+    here as ordinary price mismatches against screener.in — true, but it points
+    at the prices rather than at the missing run. On Sat 2026-08-01 that read as
+    '1 price mismatch beyond 2.0%' when the actual fact was that Friday's
+    workbook was still on disk because the 03:00 job never fired.
+    """
+    name = path.rsplit("/", 1)[-1]
+    m = re.search(r"_(\d{8})_\d{4}\.xlsx$", name)
+    if not m:
+        return ""
+    try:
+        stamp = _dt.datetime.strptime(m.group(1), "%Y%m%d").date()
+    except ValueError:
+        return ""
+    age = (_dt.date.today() - stamp).days
+    if age <= 0:
+        return ""
+    return (f"  ⚠ SCAN IS {age} DAY(S) OLD — {name}; expected "
+            f"{_dt.date.today():%Y-%m-%d}. The scan step did not run, so any mismatch "
+            f"below is stale data, not a bad pick.")
+
+
 def _fetch(sym: str) -> dict:
     """Parse screener.in's header: '<Name> Rs 1,099 -1.72% 14 Jul - close price'."""
     try:
@@ -102,6 +127,9 @@ def validate(sample: int, tol: float) -> dict:
     f = _latest_scan()
     if not f:
         return {"ok": False, "reason": "no India scan workbook found", "checks": []}
+    note = _scan_staleness_note(f)
+    if note:
+        print(note)
     d = pd.read_excel(f, "All_Stocks")
     if "Median_Turnover" in d.columns:
         d = d.sort_values("Median_Turnover", ascending=False)

@@ -2,6 +2,37 @@
 
 Decisions and material changes to the pipeline, newest first.
 
+## 2026-08-01 — Scan-freshness check: name the missing run, not the price drift
+
+The Sat 01 Aug run reported two failures — "reconcile: 2 market(s) stale scan prices" and
+"mailer: NOT SENT — brief failed screener.in validation". Both were TRUE POSITIVES reporting
+one underlying fact, and neither named it.
+
+- **What actually happened.** `mailer-data` (03:00, produces the IN/US scans) is scheduled
+  **Mon–Sat**, but `pmset` wakes **weekdays only**. 01 Aug was a **Saturday**, so the Mac slept
+  through 03:00 and the job never fired — `launchd_mailer_data.log` has no 2026-08-01 entries at
+  all. `mailer-send` at 06:30 then silently reused Friday's `20260731` workbook. Proof beyond the
+  filename: `RELIANCE ours=1292.9` is byte-identical to the previous day's run, as are HDFCBANK
+  753.95, BHARTIARTL 1956.8 and SBIN 1025.3, while screener.in had moved to 1308.0.
+- **The gates were right; their diagnosis was indirect.** Reconcile said "4/8 stale (worst
+  63MOONS 9.0%)" and validation said "1 price mismatch beyond 2.0%". Both true, both describing
+  a symptom several steps from the cause. Reading them, the natural conclusion is that the price
+  checks are flaky — which is the opposite of what is happening.
+- **Fix: check the workbook's own datestamp BEFORE comparing any price.**
+  `scan_price_reconcile.py` now fails fast with "STALE WORKBOOK — …_20260731_… is 1 day(s) old;
+  expected today's scan. The scan step did not run." No network calls, no price comparison, cause
+  stated directly. `validate_brief.py` prints the equivalent note before its screener.in fetches.
+- **Immediately useful**: running it today shows **JP, KR and EU passing on today's 20260801
+  workbooks while only IN and US are stale** — pinning the failure to the 03:00 job specifically,
+  since the 06:32 jobs clearly did fire.
+- **Rejected: removing the screener.in validation.** It was the only thing that stopped a brief
+  headed "01 Aug 2026" carrying 31 Jul prices from being sent — precisely the 2026-07-15 incident
+  it was built for (a GOLDEN_CROSS pick quoting a seven-week-old price). The gate is not the
+  repeating bug; the missing Saturday run is, and it recurs every Saturday until fixed.
+- **🔴 Still required, needs sudo (cannot be done from here)**: extend the wake schedule to
+  Saturday so the 03:00 job actually fires —
+  `sudo pmset repeat wakeorpoweron MTWRFS 00:10:00`
+
 ## 2026-08-01 — Who actually buys stocks: capital-source review by market
 
 `reports/equity_capital_sources.md` — literature review of public sources on where equity
