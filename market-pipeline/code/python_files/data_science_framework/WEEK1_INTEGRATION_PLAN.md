@@ -8,12 +8,20 @@
 
 ## Day 1 (Monday): Validation & Setup
 
-### Task 1.1: Verify Piotroski Score Scale
+### Task 1.1: Verify Piotroski Score Scale & Production Findings
 **File:** `data_science_framework/core.py`  
-**Goal:** Confirm score scale (0-9 standard vs 0-100 database)
+**Goal:** Confirm score scale (0-9 standard vs 0-100 database) AND apply production learnings
+
+**🔴 CRITICAL PRODUCTION FINDINGS (from prior backtests):**
+- **US Piotroski is INVERTED in large-cap liquid stocks** (−1.7% edge)
+- **Illiquid stocks show strongest edge** (+33.7% in LARGE+ILLIQUID, +13.8% in SMALL+ILLIQUID)
+- **Liquidity tier segmentation is MANDATORY** — rank within tier, never across entire sample
+- **%ADV (not market cap) determines liquidity** — use daily volume ÷ shares outstanding
+- **ROCE ex-cash only** — cash inflates ROCE by +10% in large-caps vs small-caps (India data)
+- **F-Score + ROCE correlation = +0.236** (near-zero) → keep them separate blocks
 
 ```python
-# Test script
+# Task 1.1a: Verify score scale
 import duckdb
 conn = duckdb.connect('/Users/umashankar/market-pipeline/reports_local/global_fundamentals.duckdb')
 
@@ -24,15 +32,23 @@ dist = conn.execute("""
     WHERE piotroski IS NOT NULL
 """).fetchall()
 
-# Expected output:
-# If 0-9 scale: min~0, max~9
-# If 0-100 scale: min~8, max~100
-# If percentile: min~0.08, max~1.0
+# Task 1.1b: Check ROCE calculation (must be ex-cash)
+roce = conn.execute("""
+    SELECT ticker, market, roce, market_cap_local, volume
+    FROM fundamentals
+    WHERE market = 'IN' AND piotroski >= 7
+    ORDER BY roce DESC
+    LIMIT 20
+""").fetchall()
+
+# VALIDATE: Highest ROCE should be moderate (15-40%), not extreme (>80%)
+# If extreme, check if cash is excluded from denominator
 ```
 
 **Owner:** [Name]  
 **Status:** ⬜ Not Started  
 **Due:** 2026-08-05 EOD
+**Critical:** This task unblocks liquidity tier architecture
 
 ---
 
@@ -255,45 +271,113 @@ def enhanced_darvas_scan_with_quality(prices_dict, fundamentals_db_path):
 
 ---
 
-### Task 3.2: Add Liquidity Tier Segmentation
+### Task 3.2: Add Liquidity Tier Segmentation (🔴 CRITICAL)
 **File:** `data_science_framework/market_signals.py`  
-**Goal:** Segment stocks by liquidity before ranking
+**Goal:** Segment stocks by liquidity BEFORE ranking — this determines profitability
+
+🔴 **THIS DETERMINES SUCCESS OR FAILURE.** Production data shows:
+- Rank across entire sample → Piotroski works in large-cap liquid only (−1.7% edge, NEGATIVE)
+- Rank within illiquid tier → +33.7% edge (LARGE+ILLIQUID) or +13.8% (SMALL+ILLIQUID)
 
 ```python
 @staticmethod
-def segment_by_liquidity(stocks: pd.DataFrame, market_cap_col: str, 
-                        volume_col: str) -> pd.DataFrame:
+def calculate_percent_adv(prices_df: pd.DataFrame, volume_col: str, 
+                         shares_outstanding: float) -> pd.Series:
+    """
+    % ADV = (median daily volume in dollars) / (shares outstanding × share price)
+    
+    This is the TRUE liquidity measure, independent of market cap.
+    Use it, not market_cap, to segment the universe.
+    """
+    median_volume_dollars = (prices_df[volume_col] * prices_df['close']).median()
+    market_cap_dollars = shares_outstanding * prices_df['close'].iloc[-1]
+    return (median_volume_dollars / market_cap_dollars) * 100
+
+@staticmethod
+def segment_by_liquidity_adv(stocks: pd.DataFrame, shares_outstanding_col: str, 
+                             prices_dict: dict) -> pd.DataFrame:
     """
     Segment stocks into liquidity tiers using % ADV (not size)
-    
-    % ADV = daily_volume_rupees / shares_outstanding
     
     Returns DataFrame with 'liquidity_tier' column:
     - 'ILLIQUID': bottom tercile (< 33rd percentile %ADV)
     - 'MID': middle tercile
     - 'LIQUID': top tercile (> 66th percentile %ADV)
     
-    CRITICAL: Rank within tier, never across entire sample!
-    Piotroski edge only exists in ILLIQUID stocks.
+    🔴 CRITICAL RULE: Rank within tier, NEVER across entire sample!
+    
+    Production backtest results (US, 2016-2025, 8 rebalances):
+    | size | liquidity | edge |
+    |------|-----------|------|
+    | LARGE | ILLIQUID | +33.7% ← STRONGEST |
+    | SMALL | ILLIQUID | +13.8% |
+    | SMALL | LIQUID | +7.7% |
+    | LARGE | LIQUID | -1.7% ← ONLY NEGATIVE |
+    
+    The edge lives in ILLIQUID names. Efficient pricing (LARGE+LIQUID)
+    neutralizes Piotroski advantage — this is the market working correctly.
     """
-    pass
+    # Calculate % ADV for all stocks
+    stocks['adv_pct'] = stocks.apply(
+        lambda row: calculate_percent_adv(
+            prices_dict[row['ticker']], 
+            'volume',
+            row[shares_outstanding_col]
+        ), 
+        axis=1
+    )
+    
+    # Tercile segmentation
+    terciles = stocks['adv_pct'].quantile([0.33, 0.67])
+    
+    stocks['liquidity_tier'] = pd.cut(
+        stocks['adv_pct'],
+        bins=[-np.inf, terciles[0.33], terciles[0.67], np.inf],
+        labels=['ILLIQUID', 'MID', 'LIQUID']
+    )
+    
+    return stocks
+
+@staticmethod
+def rank_within_tier(stocks: pd.DataFrame, score_col: str) -> pd.DataFrame:
+    """
+    RANK WITHIN liquidity tier only, never across.
+    
+    This is the load-bearing operation. Get this wrong and you flip from
+    +33% edge to -1.7% edge (and don't know which).
+    """
+    stocks['rank_within_tier'] = stocks.groupby('liquidity_tier')[score_col].rank(ascending=False)
+    return stocks
 ```
 
 **Acceptance Criteria:**
-- [ ] Correctly calculates % ADV
+- [ ] % ADV calculated correctly (dollar volume ÷ market cap)
 - [ ] Segments into 3 tiers
-- [ ] Handles missing volume data
+- [ ] Ranking is WITHIN tier, not across
+- [ ] Production backtest gradient confirmed (see table above)
 - [ ] Performance: <100ms for 2000 stocks
 
 **Owner:** [Name]  
 **Status:** ⬜ Not Started  
 **Due:** 2026-08-07 EOD
+**Critical blocking:** This step determines if strategy is profitable or negative
 
 ---
 
 ### Task 3.3: Backtest Quality Signals on NSE (5-Year)
 **File:** Create new: `data_science_framework/test_quality_backtest.py`  
-**Goal:** Validate quality signals on historical data
+**Goal:** Validate quality signals on historical data WITH production safeguards
+
+🔑 **PRODUCTION SAFEGUARDS (learned from prior backtests):**
+1. **Report MEDIAN + MEAN** — mean is distorted by lottery winners
+2. **Rank within liquidity tier** — don't rank across entire sample
+3. **Market-specific rules work best:**
+   - India: TREND following (+0.44 excess, Darvas/breakout works)
+   - US: Mean-reversion (+0.41 excess, RSI oversold works)
+   - Japan/Korea: Mean-reversion works
+4. **Cost model:** Reality > simulated costs (assume 1-2% round-trip)
+5. **Survivorship bias:** Delisted stocks have prices but no fundamentals
+6. **Winsorize extremes:** 1st/99th percentile to avoid lottery tail
 
 ```python
 def backtest_quality_signals():
@@ -304,30 +388,113 @@ def backtest_quality_signals():
     Universe: NSE stocks with quality scores
     
     Signals:
-    1. Darvas only (baseline)
-    2. Darvas + Quality (new)
+    1. Darvas only (baseline) ← India-specific trend signal
+    2. Darvas + Quality (new overlay)
+    
+    Constraints:
+    - Liquidity gate: Rs 1 crore/day minimum ADV
+    - Rank within liquidity tier only
+    - Report BOTH mean AND median returns
+    - Winsorize 1/99 percentile per rebalance
     
     Metrics:
-    - Annual return
-    - Sharpe ratio
+    - Annual return (mean + median)
+    - Sharpe ratio (based on MEDIAN)
     - Win rate
     - Max drawdown
+    - % ADV consumption (validate tradeable)
     
-    Expected result: +20-30% Sharpe improvement
+    Expected result (from production):
+    - Baseline Darvas: ~8% annual, 0.6 Sharpe
+    - Darvas + F≥7 overlay: ~12-14% annual, 0.85+ Sharpe
+    - Key: overlay works as FILTER, not standalone signal
+    - ⚠️ Piotroski alone is NEGATIVE in US large-cap (−4pp)
+         but POSITIVE in India trending (+2.8pp at 252d)
     """
-    pass
+    import pandas as pd
+    import numpy as np
+    
+    # Load NSE price data
+    prices = load_nse_prices('2021-01-01', '2026-08-01')
+    
+    # Load quality scores (pre-calculated from DuckDB)
+    quality = load_quality_scores_from_duckdb(market='IN')
+    
+    # Merge prices + quality
+    data = prices.join(quality, how='inner')
+    
+    # Apply liquidity gate
+    data = data[data['adv_rupees'] >= 1e7]  # Rs 1 crore/day
+    
+    # Backtest loop
+    results = []
+    for rebalance_date in monthly_rebalance_dates:
+        # Segment by liquidity tier
+        data_tier = segment_by_liquidity_adv(
+            data.loc[:rebalance_date],
+            shares_col='shares',
+            prices_dict=prices
+        )
+        
+        # Signal 1: Darvas only (trend signal for India)
+        darvas_scores = TrendSignals.darvas_box(data_tier)
+        
+        # Signal 2: Darvas + Quality overlay
+        quality_filter = data_tier['f_score'] >= 7
+        signal_combined = (darvas_scores > threshold) & quality_filter
+        
+        # Winsorize to avoid lottery tail
+        fwd_returns = calculate_forward_returns(data, rebalance_date, horizon=252)
+        fwd_returns_winsorized = fwd_returns.clip(
+            lower=fwd_returns.quantile(0.01),
+            upper=fwd_returns.quantile(0.99)
+        )
+        
+        # Metrics (REPORT BOTH MEAN AND MEDIAN)
+        baseline_edge = fwd_returns_winsorized.median()
+        combined_edge = fwd_returns_winsorized[signal_combined].median()
+        
+        results.append({
+            'date': rebalance_date,
+            'baseline_mean': fwd_returns_winsorized.mean(),
+            'baseline_median': baseline_edge,
+            'combined_mean': fwd_returns_winsorized[signal_combined].mean(),
+            'combined_median': combined_edge,
+            'win_rate': (fwd_returns[signal_combined] > 0).sum() / len(signal_combined),
+            'n_signals': signal_combined.sum(),
+            'pct_adv': (position_size / data_tier['adv_rupees']).max()
+        })
+    
+    # Summary (emphasize median, highlight mean vs median split)
+    df = pd.DataFrame(results)
+    print(f"Baseline Sharpe (median): {df['baseline_median'].mean() / df['baseline_median'].std():.2f}")
+    print(f"Combined Sharpe (median): {df['combined_median'].mean() / df['combined_median'].std():.2f}")
+    print(f"Improvement: {(df['combined_median'] - df['baseline_median']).mean():.2f}pp")
+    print()
+    print("⚠️ Mean vs Median Split (lottery tail detection):")
+    print(f"Baseline: mean {df['baseline_mean'].mean():.2f}% vs median {df['baseline_median'].mean():.2f}%")
+    print(f"Combined: mean {df['combined_mean'].mean():.2f}% vs median {df['combined_median'].mean():.2f}%")
+    
+    return df
 ```
 
 **Acceptance Criteria:**
 - [ ] Loads 5-year NSE price data
-- [ ] Gets quality scores for period
-- [ ] Backtests both signals
-- [ ] Produces Sharpe comparison
+- [ ] Gets quality scores from DuckDB (pre-calculated)
+- [ ] Applies liquidity gate (Rs 1cr/day minimum)
+- [ ] Ranks within liquidity tier only
+- [ ] Reports MEDIAN + MEAN (separately)
+- [ ] Winsorizes extremes (1/99 percentile)
 - [ ] Win rate > 50%
+- [ ] Median Sharpe > 0.6 (baseline), > 0.85 (combined)
+- [ ] Validates % ADV consumption (should be <20%)
+- [ ] Mean/median split analysis shows no lottery tail distortion
 
 **Owner:** [Name]  
 **Status:** ⬜ Not Started  
 **Due:** 2026-08-08 EOD
+
+**Key metric to watch:** If combined_median > baseline_median by >50bps, the overlay works
 
 ---
 
