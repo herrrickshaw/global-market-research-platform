@@ -36,14 +36,26 @@ Sum 100.0%.
 | Federal govt retirement | 0.6% | 0.7% | +0.0pp |
 | Property-casualty insurance | 0.9% | 0.6% | -0.3pp |
 
-## 🟡 India — CITED, not computed
+## 🟢 India ownership — COMPUTED (screener.in, cap-weighted)
 
-| holder | share | note |
-|---|---|---|
-| FII / FPI | ~17% | FII:DII ownership ratio fell below 1 to 0.98 at 31 Mar 2025; FII ownership reported at multi-year lows |
-| DII (MF + insurance + pension) | ~17% | DII holdings ₹71.76 lakh crore, ~2% above FII |
-| Promoters | ~50% | Promoter holding is the dominant Indian block; widely reported |
-| Retail direct + others | balance | Residual of the above |
+Market-cap-weighted shareholding across **52 liquid large caps** (>$20M/day turnover), 12 quarters. **This is the liquid large-cap segment, not the whole market** — excluding the long illiquid tail biases promoter share DOWN and institutional share UP versus a true all-market figure.
+
+
+| quarter | n | Promoters | FIIs | DIIs | Government | Public |
+|---|---|---|---|---|---|---|
+| Jun 2024 | 49 | 54.0% | 19.4% | 15.3% | 0.4% | 10.9% |
+| Sep 2024 | 49 | 53.8% | 19.5% | 15.6% | 0.4% | 10.7% |
+| Dec 2024 | 49 | 53.6% | 18.8% | 16.3% | 0.4% | 10.9% |
+| Mar 2025 | 51 | 48.1% | 21.5% | 18.7% | 0.4% | 11.3% |
+| Jun 2025 | 49 | 53.1% | 18.6% | 17.1% | 0.7% | 10.5% |
+| Sep 2025 | 49 | 52.9% | 18.5% | 17.4% | 0.7% | 10.4% |
+| Dec 2025 | 50 | 52.5% | 18.4% | 17.4% | 0.7% | 10.8% |
+| Mar 2026 | 52 | 47.2% | 20.6% | 20.2% | 0.7% | 11.2% |
+| Jun 2026 | 52 | 47.2% | 20.0% | 20.6% | 0.7% | 11.4% |
+
+**The FII→DII crossover, measured:** FIIs 19.2% → 20.0% (+0.8pp), DIIs 15.6% → 20.6% (+5.0pp) over Sep 2023 .. Jun 2026. The press figure this was meant to test is a ratio crossing 1.0; here the gap closes and reverses on a cap-weighted large-cap basis.
+
+🔴 Quarter-to-quarter moves partly reflect a CHANGING company panel, not only ownership shifting. Quarters backed by fewer than 30 companies are dropped for that reason.
 
 ## 🟡 Japan — CITED, not computed
 
