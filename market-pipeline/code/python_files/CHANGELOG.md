@@ -58,7 +58,28 @@ mixing a measured share with a press figure in one table is the main way this co
 - **Rejected: scraping a number into the SIP column to complete the picture.** SIP figures stay
   cited in `equity_capital_sources.md` until a real endpoint is wired. An unsourced cell in a table
   like this is worse than an empty one.
-- **Still open**: AMFI SIP series, and India FII/DII history prior to the collector's first run.
+### Follow-up: SIP endpoint found, India ownership computed, flow history exhausted
+
+- **AMFI SIP: SOLVED.** Not an API — `amfiindia.com` is Next.js server-rendered (28 JS chunks
+  scanned, one path found, all `/modules/...` 404). Real channel is static PDFs at
+  `/Themes/Theme1/downloads/AMFIMonthlyNote_<Month><YYYY>.pdf`. 13 months parsed, ₹21,000 →
+  ₹28,265 crore. **The first parser was wrong**: an unanchored regex returned 33,430 for Aug 2025,
+  which is the EQUITY FUND inflow appearing earlier in the document. Now SIP-anchored with a
+  plausibility range; returns None rather than a wrong number. Validated twice — Aug 2025 verbatim,
+  and Aug 2024 = 23,547 matching the year-ago base quoted inside the Aug 2025 note.
+- **India OWNERSHIP: SOLVED via screener.in** (`--inown`). Cap-weighted over 52 liquid large caps,
+  12 quarters: promoters 54.0→47.2%, FIIs 19.4→20.0%, **DIIs 15.3→20.6%**. The crossover measured
+  independently rather than taken from the press. Scope stated: liquid large-cap segment only, so
+  promoter share is biased down; quarters under 30 companies dropped (Jul 2026 arrived as n=1,
+  reporting one company's 72% promoter stake as the market's).
+- **FII/DII FLOW history: NOT SOLVED, routes exhausted.** NSE ignores its `date` param; BSE's API
+  returns XHTML errors and the host is browser-blocked; NSDL `Latest.aspx` is richer than NSE
+  (equity/debt-VRR/debt-FAR/hybrid, INR+USD) but current-day only with all date params ignored;
+  `ReportDetail.aspx` renders `ddlSubReports` as an empty `<select></select>` with the list injected
+  client-side, and `ReportsListing.aspx` has no ReportDetail links to copy; `fpi.nsdl.co.in` is
+  denied by browser policy. **Next option, not built**: derive quarterly flow from the ownership
+  series — Δ(FII% × market cap) with a market-return adjustment to strip the price effect. Quarterly
+  proxy, not a daily series.
 
 ## 2026-07-31 — Bond↔equity linkage measured; three of four hypotheses came back NULL
 

@@ -35,7 +35,18 @@ DATA ACCESS — WHAT WORKS AND WHAT DOES NOT
     vs hybrid, INR and USD) but only for the current day — its date parameters
     are ignored, and ReportDetail.aspx is an ASP.NET postback with
     JS-populated dropdowns.
-  * FII/DII FLOW history: NOT SOLVED. NSE `fiidiiTradeReact` returns the CURRENT DAY
+  * FII/DII FLOW history: NOT SOLVED, after exhausting the plausible routes.
+    NSDL ReportDetail.aspx renders `ddlSubReports` as a literally EMPTY
+    `<select></select>` — the report list is injected client-side — so an
+    ASP.NET postback with a guessed value returns the same empty tables it
+    started with. ReportsListing.aspx contains no ReportDetail links at all
+    (JS-driven), so there is no parameterised URL to copy. Browser automation
+    would resolve it, but fpi.nsdl.co.in is denied by browser policy here.
+    NEXT BEST OPTION, not built: derive quarterly flow from the ownership series
+    this module already computes — d(FII% x market cap), adjusted for the market
+    return over the quarter to strip the price effect. That yields a quarterly
+    flow proxy rather than a daily series, and it conflates price and flow
+    unless the return adjustment is done carefully. NSE `fiidiiTradeReact` returns the CURRENT DAY
     only — it accepts a `date` parameter and silently ignores it. BSE's
     `api.bseindia.com` returns an XHTML error page for every endpoint name tried,
     and bseindia.com is blocked by browser policy here. So `--india` is
