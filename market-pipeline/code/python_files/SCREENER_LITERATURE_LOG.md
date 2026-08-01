@@ -421,6 +421,51 @@ repo today:
 
 ---
 
+## Backtest & methodology sources — resolved by the 2026-08-01 literature audit
+
+The backtest/scan scripts cite several applied papers that originally appeared only as
+bare author-year labels. All were resolved at source (SSRN, jier.org, arXiv, EconStor,
+thesai.org, publisher pages); full audit trail in `LITERATURE_AUDIT.md`. Canonical
+entries (also in `references.bib`, enforced by `cite_check.py`):
+
+- **Preet, S., Gulati, A., Gupta, A., & Aggarwal, A. (2021).** *Back Testing Magic
+  Formula on Indian Stock Markets: An Analysis of Magic Formula Strategy.* SGGSCC,
+  University of Delhi. SSRN 3945468. — July-1 signal date, financials exclusion, and
+  the combined-rank-not-thresholds caveat in `backtest_screeners.py`.
+- **Bhute, A., Tripathi, M. M., Jadav, D., Kasar, A., & Bathia, A. (2024).**
+  *Backtesting Brilliance: Leveraging Analytics for Comparing Buy & Hold Vs. Trading
+  Strategies based on Technical Indicators.* J. Informatics Education and Research
+  4(3). doi:10.52783/jier.v4i3.1785 — transaction-cost inclusion and Sortino metric.
+- **Liu, B., & Zhu, H. (2024).** *Analysis of market efficiency in main stock markets:
+  using Karman-Filter as an approach.* arXiv:2404.16449 — TWAP/VWAP execution realism.
+- **Dhanus, S., & Amutha, G. (2025).** *Back-Testing Super Trend in 15 Mins Time Frame
+  among Top Five NIFTY-50 Stocks.* IJARCMSS 8(2-II), 10–14 — volume-confirmation
+  overlay on breakouts.
+- **AlQahtani, H. S., Alhaddad, M. J., & Jarrah, M. (2025).** *Comprehensive Analysis
+  of Machine and Deep Learning Models for Stock Market Prediction.* IJACSA 16(8),
+  455–463. 🔴 Cite only for what it shows: simple linear baselines beat RNN/LSTM on
+  daily prices + retrain for nonstationarity. It does NOT recommend Ridge regression
+  or a 5-year window (repo claims corrected in `full_us_market_scan.py`).
+- **Krauss, C., Krüger, T., & Beerstecher, D. (2015).** *The Piotroski F-Score: A
+  fundamental value strategy revisited from an investor's perspective.* IWQW
+  Discussion Paper 13/2015, FAU Erlangen-Nürnberg (EconStor). 🔴 Previously
+  misattributed repo-wide to "Walkshäusl et al." — Walkshäusl's own paper is
+  *Piotroski's FSCORE: international evidence* (J. Asset Management 21, 2020).
+- **Chaudhuri, K., & Wu, Y. (2003).** *Random walk versus breaking trend in stock
+  prices: Evidence from emerging markets.* J. Banking & Finance 27(4), 575–592 —
+  the emerging-markets mean-reversion basis for per-market zone rules.
+  (The "TEDE study" once cited alongside it — Palwasha et al. 2018, TEDE 24(4),
+  1435–1452 — covers Pakistani indices only and cannot carry the
+  emerging-vs-developed comparison.)
+- **Gomber, P., Arndt, B., Lutat, M., & Uhle, T. (2011).** *High-Frequency Trading.*
+  SSRN 1858626, Goethe University Frankfurt — microstructure/cost-realism background.
+- **Bailey, D. H., Borwein, J., López de Prado, M., & Zhu, Q. J. (2014).** *The
+  Probability of Backtest Overfitting.* J. Computational Finance (SSRN 2326253) —
+  minimum-signal thresholds; and **Bailey, D. H., & López de Prado, M. (2014).**
+  *The Deflated Sharpe Ratio.* J. Portfolio Management 40(5) — the DSR>0.95 bar.
+
+---
+
 ## Summary of fixes applied this session
 
 | File | Fix |
