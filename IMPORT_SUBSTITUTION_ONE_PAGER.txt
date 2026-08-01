@@ -1,0 +1,192 @@
+================================================================================
+INDIA'S IMPORT SUBSTITUTION ROADMAP: ONE-PAGE SUMMARY
+================================================================================
+
+QUANTUM OF YOY SAVINGS BY FY30
+────────────────────────────────────────────────────────────────────────────
+
+    ✓ REALISTIC BASE CASE (70% execution)    ₹75,000–90,000 crores/year
+                                             ($9.0–10.8 billion/year)
+
+    ✓ OPTIMISTIC (all capex on-time)         ₹98,000–130,000 crores/year
+                                             ($11.8–15.7 billion/year)
+
+    ✓ CONSERVATIVE (1-2 delays)              ₹50,000–65,000 crores/year
+                                             ($6.0–7.8 billion/year)
+
+────────────────────────────────────────────────────────────────────────────
+
+THREE PATHWAYS
+────────────────────────────────────────────────────────────────────────────
+
+1. PETROCHEMICAL FEEDSTOCKS (Textiles) ————————— ₹50,000–95,000 cr/year
+
+   Problem: $20.4bn annual import deficit (polymers + chemicals)
+   Solution: $38.5bn government capex (BPCL AP ₹1L cr, RIL O2C ₹75k cr, etc.)
+
+   Results by FY30:
+   • Polypropylene: Zero import dependency (capacity 2.3→4.1 MMTPA)
+   • Polyethylene: 70-80% import substitution (2.1→4.2 MMTPA)
+   • Polyester: 30-40% domestic sourcing
+   • Export competitiveness: +2-4% cost advantage vs Bangladesh/Vietnam
+
+   Segment Savings:
+   ├─ INDUTECH:  ₹19,920 cr (BPCL Bina LLDPE ₹150-200/MT savings)
+   ├─ HOMETECH:  ₹5,478 cr (PE/PET cost reduction)
+   ├─ MOBILTECH: ₹5,395 cr (Specialty polymers)
+   ├─ BUILDTECH: ₹3,984 cr (Geotextiles)
+   ├─ PACKTECH:  ₹2,241 cr (Export-led growth)
+   └─ Specialty: ₹13,280 cr (Diversified segments)
+   ────────────────────────
+   Subtotal:    ₹50,298–95,450 cr/year
+
+2. ETHANOL BLENDING & PETROL EXPORT —————————— ₹12,000–18,000 cr/year
+
+   Mechanism: Ethanol displaces domestic petrol (E20→E30 ramp FY26-FY30)
+   Vehicles buy more litres for same km → freed petrol exports
+
+   FY30 Benefits (E27 scenario, recommended):
+   ├─ Freed petrol export value:      ₹62,300 cr ($7.3bn)
+   ├─ OMC pump margin (extra volume): ₹1,000 cr
+   ├─ Tax revenue (excise + VAT):     ₹11,500 cr
+   └─ State SGST (5%, price-neutral): ₹4,787 cr ← NEW POLICY LEVER
+   ────────────────────────
+   Subtotal:    ₹79,587 cr/year total (₹12-18k cr/yr average FY26-30)
+
+   Supply: 4,530 cr L/year capacity exists (overcapacity)
+   Constraint: Feedstock availability (maize, FCI rice, molasses)
+
+3. RENEWABLE FUELS & GAS SUBSTITUTION ———————— ₹10,000–14,000 cr/year
+
+   CBG (Compressed Biogas) via SATAT: 5 MMTPA by FY30
+   Displaces LNG imports (₹80,000 cr/year market)
+
+   Benefits:
+   ├─ LNG import substitution (10-15%):       ₹8,000–12,000 cr/year
+   ├─ Bio-isobutanol (SAF route, niche):      ₹2,000–3,000 cr/year
+   └─ Distillery conversion (grain ethanol):  ₹500–1,000 cr/year
+   ────────────────────────
+   Subtotal:    ₹10,000–14,000 cr/year
+
+────────────────────────────────────────────────────────────────────────────
+
+CONSOLIDATED SAVINGS TABLE
+────────────────────────────────────────────────────────────────────────────
+
+                        CONSERVATIVE    BASE CASE       OPTIMISTIC
+                        (Downside)      (REALISTIC)     (All On-Time)
+                        ────────────    ──────────────  ──────────────
+Petrochemical           ₹50,000 cr      ₹64,600 cr      ₹95,450 cr
+Ethanol                 ₹12,000 cr      ₹15,000 cr      ₹18,000 cr
+Renewable Fuels         ₹8,000 cr       ₹10,500 cr      ₹14,000 cr
+────────────────────────────────────────────────────────────────────────
+TOTAL FY30              ₹70,000 cr      ₹90,100 cr      ₹127,450 cr
+                        ($8.4bn)        ($10.8bn)       ($15.3bn)
+
+REALISTIC MID-POINT ESTIMATE: ₹75,000–95,000 cr/year by FY30 (~$9.0–11.5bn)
+
+────────────────────────────────────────────────────────────────────────────
+
+GOVERNMENT INVESTMENT REQUIRED
+────────────────────────────────────────────────────────────────────────────
+
+Total Capex (Government + Private): ₹1,38,514 crores (~$16.6bn)
+
+├─ BPCL Andhra Pradesh:           ₹1,00,000 cr (greenfield 1.8 MMTPA)
+├─ RIL Oil-to-Chemicals:          ₹75,000 cr (2.0 MMTPA integrated)
+├─ L&T BPCL Bina:                 ₹5,000-10,000 cr (1.0 MMTPA swing)
+├─ BPCL Kochi PP:                 ₹5,514 cr (0.15 MMTPA, commissioned)
+├─ BHAVYA Chemical Parks:         ₹3,030 cr (3 parks, FY26-31)
+└─ Private Sector + Others:       ₹2,000–5,000 cr
+────────────────────────
+TOTAL:                            ₹1,38,514–43,514 crores
+
+Expected Payback: 4-6 years (post-FY30 operational ramp)
+ROI: 15-25% (net of feedstock and market headwinds)
+
+────────────────────────────────────────────────────────────────────────────
+
+CRITICAL PATH DEPENDENCIES
+────────────────────────────────────────────────────────────────────────────
+
+✓ BPCL Andhra Pradesh cracker (Q3-FY27 start) — 40-50% of savings hinge here
+✓ RIL O2C ramp-up (FY28-29) — Additional 25% polymer capacity
+✓ L&T Bina commissioning (FY28-29) — Enables INDUTECH margin recovery
+✓ Ethanol feedstock management — Scaling from 2,000→2,100 cr L/year
+✓ SATAT CBG deployment — 500+ plants operational by FY30
+✓ State SGST policy coordination — Ethanol @ 5% (price-neutral, ₹4,787 cr/yr new revenue)
+
+────────────────────────────────────────────────────────────────────────────
+
+TOP 5 RISKS & MITIGATION
+────────────────────────────────────────────────────────────────────────────
+
+RISK 1: Refinery capex delays (BPCL/RIL)
+→ MITIGATION: Allocate ₹5,000 cr risk capital; phase capex; fast-track approvals
+
+RISK 2: Crude price < $60/bbl (substitution uneconomical)
+→ MITIGATION: Hedging instruments; floor pricing; policy anchor blend levels
+
+RISK 3: Ethanol feedstock scarcity (maize/FCI rice limited)
+→ MITIGATION: Diversify feedstock (molasses → stalk → waste); bio-refinery pathway
+
+RISK 4: China's polyester dumping (ultra-low cost)
+→ MITIGATION: Monitor 2027-28; anti-dumping duties if domestic capacity idles
+
+RISK 5: State government revenue resistance (SGST coordination)
+→ MITIGATION: Price-neutral design (₹4,787 cr new state revenue, no consumer impact)
+
+────────────────────────────────────────────────────────────────────────────
+
+POLICY ANCHORS (FY26-FY30)
+────────────────────────────────────────────────────────────────────────────
+
+IMMEDIATE (FY26-27):
+  □ BHAVYA Parks site finalization + ₹500 cr release
+  □ BPCL AP environmental clearance + construction start
+  □ PM Mitra 5-site selection + textile hub linkage
+  □ Draft state SGST @ 5% for ethanol (price-neutral model)
+  □ SATAT offtake guarantee (500+ plants fast-track)
+
+MID-TERM (FY27-29):
+  □ BPCL Kochi PP commissioning (trials → commercial production)
+  □ L&T Bina full construction (supplier contracts live)
+  □ RIL O2C construction launch
+  □ Ethanol feedstock diversification plan
+  □ CBG network 300-400 plants online
+
+FINAL (FY29-30):
+  □ BPCL AP crackers online (Q3-FY30)
+  □ RIL O2C full capacity operational
+  □ Import duty escalation (10%→20% on polymers, gradual)
+  □ Anti-dumping framework ready (if China dumping continues)
+
+────────────────────────────────────────────────────────────────────────────
+
+CONFIDENCE & EXECUTION LIKELIHOOD
+────────────────────────────────────────────────────────────────────────────
+
+Base Case (₹75-90k cr/year):     70% execution expected → HIGH confidence
+Optimistic (₹98-130k cr/year):   All capex on-time + policy aligned → MEDIUM
+Conservative (₹50-65k cr/year):  1-2 major delays → MEDIUM downside
+
+Overall Assessment: REALISTIC = ₹75,000–95,000 crores/year by FY30
+
+────────────────────────────────────────────────────────────────────────────
+
+NEXT STEPS
+────────────────────────────────────────────────────────────────────────────
+
+1. Stakeholder Briefing: Share synthesis with Ministry of Textiles, DPIIT, DGFT
+2. Industry Coordination: Quarterly round-tables (RIL, BPCL, L&T, Indutech processors)
+3. State Engagement: BHAVYA park site finalization + SGST policy design
+4. Policy Drafting: State SGST rules, import duty schedule, anti-dumping framework
+5. Monitoring: Monthly capex tracking, quarterly savings realization dashboard
+
+────────────────────────────────────────────────────────────────────────────
+
+Generated: August 2026 | Data sources: omc-retail-profitability-model, textile-data/research,
+government capex registers, trade ministry datasets | Ready for: Policy briefing,
+industry planning, investment appraisal
+
+================================================================================
