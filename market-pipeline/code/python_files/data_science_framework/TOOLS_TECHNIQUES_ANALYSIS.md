@@ -926,7 +926,9 @@ else:
 #### 4.1 The Data-Ink Ratio
 
 **What It Is:**  
-Maximize the proportion of ink (pixels) used for data vs decoration.
+Maximize the proportion of ink (pixels) used for data vs decoration. (The term
+originates with Edward Tufte, *The Visual Display of Quantitative Information*,
+1983; Knaflic applies the same decluttering principle.)
 
 **Bad Practice (High Ink Waste):**
 ```

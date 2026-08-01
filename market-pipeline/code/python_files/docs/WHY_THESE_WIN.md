@@ -11,8 +11,9 @@ evaluated it on, and the literature the reasoning rests on. Read it with
 ## 1. Value-reversion (cheap-vs-peers) — the widest edge (IN, US, KR, JP)
 
 **Background.** Buy stocks trading cheap relative to peers or the market (low P/E, low P/B),
-betting the discount narrows. This is Graham-&-Dodd value, formalised as the HML factor by
-Fama & French (1992) and the P/E effect by Basu (1977).
+betting the discount narrows. This is Graham-&-Dodd value — the cross-sectional value effect
+documented by Fama & French (1992), formalised as the HML factor in Fama & French (1993),
+and the P/E effect by Basu (1977).
 
 **Why it wins (mechanism).** The edge is **behavioural mispricing, not risk compensation.**
 Investors *over-extrapolate*: they project recent bad news too far into the future and punish
@@ -109,8 +110,9 @@ Everywhere*.
 
 - **China value fails** — retail/momentum market, weak fundamental anchoring: the multiple
   converges but prices don't reward it (tested null, t 0.04). Mechanism above.
-- **US Piotroski is *inverted*** — the F-score premium lives in "small, illiquid, low-analyst-
-  coverage value stocks" (Piotroski 2000). In the liquid US large-cap slice we tested it
+- **US Piotroski is *inverted*** — the F-score premium lives in small, illiquid, low-analyst-
+  coverage value stocks (per Piotroski 2000, who concentrates the benefit in small/medium
+  firms with low share turnover and no analyst following). In the liquid US large-cap slice we tested it
   reverses, consistent with our own finding that **the edge is illiquidity, not size** — screen
   the liquid tail and the quality premium isn't there to harvest.
 - **Japan momentum / India shorts fail** — *market character*. A factor run against a market's

@@ -256,7 +256,6 @@ data_science_framework/
 ├── README.md                         (50+ pages)
 ├── INTEGRATION_GUIDE.md              (30+ pages)
 ├── TOOLS_TECHNIQUES_ANALYSIS.md      (100+ pages)
-├── MIT_COURSES_ALIGNMENT.md          (20+ pages)
 ├── DROPBOX_TESTING_GUIDE.md          (this file)
 │
 └── examples/
@@ -381,7 +380,7 @@ backtest = SignalBacktest.walk_forward(
    - Japan/Korea: Adjust regime thresholds
 
 4. **Continuous Learning**
-   - Start MIT 18.050 (Statistics) for deeper validation
+   - Deepen statistics fundamentals (e.g. MIT OCW 18.05 Introduction to Probability and Statistics)
    - Implement bootstrap CI for Sharpe ratios
    - Add causal analysis (what REALLY drives returns)
 

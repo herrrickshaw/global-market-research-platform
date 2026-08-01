@@ -37,10 +37,12 @@ A comprehensive, production-ready data science framework has been built, tested,
 1. **README.md** (50 pages) - Quick-start, performance baselines, troubleshooting
 2. **INTEGRATION_GUIDE.md** (30 pages) - Market-specific setups (IN/US/EU/JP/KR)
 3. **TOOLS_TECHNIQUES_ANALYSIS.md** (100 pages) - Deep reference for 4 books
-4. **MIT_COURSES_ALIGNMENT.md** (20 pages) - 15 MIT free courses mapping
-5. **GLOBAL_UNIVERSITY_COURSES.md** (50 pages) - 50+ courses from 15 universities
-6. **DROPBOX_TESTING_GUIDE.md** (Complete) - 3-week testing roadmap
-7. **DEPLOYMENT_GUIDE.md** (Complete) - 4-week production deployment plan
+4. **DROPBOX_TESTING_GUIDE.md** (Complete) - 3-week testing roadmap
+5. **DEPLOYMENT_GUIDE.md** (Complete) - 4-week production deployment plan
+
+> Note: two earlier docs (MIT_COURSES_ALIGNMENT.md, GLOBAL_UNIVERSITY_COURSES.md) were
+> removed by the 2026-08-01 literature audit — their course numbers/titles failed
+> verification against the sources they cited.
 
 ### 3. Testing & Validation
 
@@ -193,19 +195,9 @@ Trading Signals (BUY/WATCH/HOLD with confidence)
 
 ## Learning Path Integration
 
-### MIT Courses (Free & Auditable)
-- **MIT 18.050** (Statistics) - Hypothesis testing framework ✓
-- **MIT 6.419** (ML) - Classification for signals ✓
-- **MIT 6.420** (Advanced Algorithms) - Ensemble methods ✓
-- **MIT 6.431** (Probability) - Distribution assumptions ✓
-- **MIT 6.008** (Inference) - Bayesian regime estimation ✓
-
-### University Courses (50+ Analyzed)
-- **Stanford CS229** - SVM, EM algorithms for clustering
-- **CMU 36-759** - LASSO for auto feature selection
-- **Berkeley STAT110** - Markov chains for regime transitions
-- **UW CSE547** - Online learning for daily updates
-- **Toronto CSC413** - Transformers for time series
+> The specific course-number listings previously here were removed by the 2026-08-01
+> literature audit (unverifiable/incorrect course numbers). The techniques themselves
+> remain valid and are listed below.
 
 ### 10 Unique Tools Identified
 1. Support Vector Machines (classification)

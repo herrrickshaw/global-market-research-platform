@@ -49,8 +49,9 @@ mean and median disagreed on **every** headline result, with the median correct 
 
 ## 1. Introduction
 
-Piotroski (2000) locates the F-score premium in "small, illiquid, low-analyst-coverage
-value stocks." Three attributes, routinely compressed into one — usually *size*, because
+Piotroski (2000) locates the F-score premium in "small and medium-sized firms, companies
+with low share turnover, and firms with no analyst following" — small, illiquid,
+low-coverage value stocks. Three attributes, routinely compressed into one — usually *size*, because
 size is the conventional risk factor and the easiest to measure.
 
 This note asks which attribute is doing the work. The question is not academic: size and

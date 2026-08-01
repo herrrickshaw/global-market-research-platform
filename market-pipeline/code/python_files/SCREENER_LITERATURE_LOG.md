@@ -74,8 +74,10 @@ add("NoDilution", (sh <= sh_p) if (sh is not None and sh_p is not None) else Tru
 
 ## 2. Coffee Can Portfolio
 
-**Literature:** Saurabh Mukherjea, Rakshit Ranjan, Pranab Uniyal, *"Coffee Can
-Investing: The Low Risk Road to Stupendous Wealth"* (2018). Buy-and-hold-10-years
+**Literature:** the term originates with Robert G. Kirby, *"The Coffee Can
+Portfolio"* (Journal of Portfolio Management, Fall 1984); popularized for India by
+Saurabh Mukherjea, Rakshit Ranjan, Pranab Uniyal, *"Coffee Can Investing: The Low
+Risk Road to Stupendous Wealth"* (2018). Buy-and-hold-10-years
 philosophy for quality compounders: consistent high ROE, steady revenue growth, low
 leverage, large enough to be liquid. The original screen is explicitly
 **valuation-agnostic** — no P/E or DCF gate, since the philosophy is "never sell,"
@@ -259,9 +261,10 @@ only difference across markets is currency-scale localization, which is intentio
 
 ## 7. Cash Conversion Cycle (CCC)
 
-**Literature:** Richard Lawrence, working-capital efficiency concept popularized in
-corporate finance textbooks (e.g. Brealey/Myers/Allen, *"Principles of Corporate
-Finance"*). `CCC = DIO + DSO − DPO` where DIO = Inventory/COGS×365, DSO =
+**Literature:** Verlyn D. Richards & Eugene J. Laughlin, *"A Cash Conversion Cycle
+Approach to Liquidity Analysis"* (Financial Management, Vol. 9 No. 1, 1980) — the
+paper that introduced the CCC; since popularized in corporate finance textbooks
+(e.g. Brealey/Myers/Allen, *"Principles of Corporate Finance"*). `CCC = DIO + DSO − DPO` where DIO = Inventory/COGS×365, DSO =
 Receivables/Revenue×365, DPO = Payables/COGS×365. Lower/negative CCC = the company
 collects from customers before it has to pay suppliers (funds growth with float).
 
@@ -315,8 +318,9 @@ passed = growth >= GROWTH_MIN and reasonable and pe <= PE_MAX
 
 ## 9. Dividend Yield / "Dogs of the Dow" family
 
-**Literature:** John Slatter / Michael O'Higgins, *"Beating the Dow"* (1991) — the
-"Dogs of the Dow" strategy of buying the highest-yielding blue chips. This codebase
+**Literature:** John Slatter originated the "Dogs of the Dow" idea (Wall Street
+Journal column, 1988); Michael O'Higgins with John Downes popularized it in
+*"Beating the Dow"* (1991) — the strategy of buying the highest-yielding blue chips. This codebase
 implements a simplified, single-market version (highest current yield among
 consistent payers), not the full annual-rebalance-within-one-index strategy.
 

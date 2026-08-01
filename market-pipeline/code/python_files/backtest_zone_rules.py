@@ -6,8 +6,8 @@
 # The digest uses ONE zone rule everywhere: BUY = close>EMA20>EMA50,
 # SELL = close<EMA50 (trend-following). The literature says that is wrong to
 # apply uniformly:
-#   * Balvers & Wu (2005), 18 developed markets: momentum AND mean-reversion
-#     coexist; the winning combination differs by market.
+#   * Balvers & Wu (2006, J. Empirical Finance 13:24-48), 18 developed markets:
+#     momentum AND mean-reversion coexist; the winning combination differs by market.
 #   * Emerging markets mean-revert FASTER than developed (Chaudhuri/Wu; the
 #     TEDE emerging-vs-developed study) — short-horizon reversal dominates.
 #   * Korea/KOSDAQ: retail-driven, documented short-term REVERSAL and

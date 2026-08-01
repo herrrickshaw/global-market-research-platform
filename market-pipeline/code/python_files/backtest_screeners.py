@@ -155,7 +155,7 @@ DISCLAIMER = (
     "For educational/research use only — NOT investment advice."
 )
 
-# ── Research-backed improvements (applied from 7 papers) ─────────────────────
+# ── Research-backed improvements (applied from 5 papers) ─────────────────────
 # Source: Preet et al. (2021) — Magic Formula India; Bhute et al. (2024) — JIER;
 #         Liu & Zhu (2024) — Kalman Filter market efficiency;
 #         Dhanus & Amutha (2025) — Super Trend Nifty backtest

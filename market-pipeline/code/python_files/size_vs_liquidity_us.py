@@ -26,9 +26,11 @@ that are ILLIQUID (+33.7pp) — not small caps at all.
 
 SO THE 2026-07-15 HEADLINE WAS WRONG. "The F-score edge is in SMALL CAPS" should read
 "the edge is in ILLIQUID names, regardless of size". Turnover tiers conflated the two
-and the wrong variable was named. This is also a BETTER match to Piotroski (2000), who
-specified "small, ILLIQUID, low-analyst-coverage value stocks" — illiquidity was always
-in the claim; three attributes were collapsed into one and the wrong one was picked.
+and the wrong variable was named. This is also a BETTER match to Piotroski (2000), whose
+paper concentrates the benefit in small and medium-sized firms, companies with low share
+turnover, and firms with no analyst following (i.e. small, illiquid, low-coverage value
+stocks) — illiquidity was always in the claim; three attributes were collapsed into one
+and the wrong one was picked.
 
 MECHANISM, legible in the strongest cell: illiquid large-caps with weak fundamentals
 CRASH (F<40 median -25.6%) — value traps, low float, distressed names institutions
