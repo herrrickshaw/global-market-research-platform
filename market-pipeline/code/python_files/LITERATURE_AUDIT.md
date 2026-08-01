@@ -57,12 +57,18 @@ audit — it verifies formulas field-by-field against the papers.
 
 ### Tier 3 — Unverifiable offline / incomplete (left as-is, flagged)
 
-Cited with quotes in code comments but **no full reference anywhere in market-pipeline**
-(BazaarTalks' reference sections partially cover them — copy those entries over if these
-files are ever published):
+Cited with quotes in code comments but originally **no full reference anywhere in
+market-pipeline**. Two were **RESOLVED at source on 2026-08-01** (full citations now in
+`backtest_screeners.py`'s source block and both twins' reference sections):
 
-- **Preet et al. (2021)** Magic Formula India — BazaarTalks has it as SSRN 3945468, SGGSCC/University of Delhi, but **undated** there
-- **Bhute et al. (2024) "JIER"** — BazaarTalks' matching entry ("Backtesting Brilliance…", *JIER* 4(3), 2024) has **no authors**; the two repos disagree on whether "Bhute" is an author
+- ✅ **Preet et al. (2021)** — resolved via SSRN search: Preet, S., Gulati, A., Gupta, A.,
+  & Aggarwal, A. (2021). *Back Testing Magic Formula on Indian Stock Markets: An Analysis
+  of Magic Formula Strategy.* SGGSCC, University of Delhi. SSRN 3945468.
+- ✅ **Bhute et al. (2024)** — resolved at jier.org: Bhute, A., Tripathi, M. M., Jadav, D.,
+  Kasar, A., & Bathia, A. (2024). *Backtesting Brilliance: Leveraging Analytics for
+  Comparing Buy & Hold Vs. Trading Strategies based on Technical Indicators.* *JIER* 4(3).
+  doi:10.52783/jier.v4i3.1785 — the "Bhute et al." attribution was **correct**; it was
+  BazaarTalks' anonymous entry that was incomplete.
 - **Dhanus & Amutha (2025)** — *IJARCMSS* 8(2-II), 10–14 per BazaarTalks
 - **AlQahtani et al. (2025)** Ridge regression — no title, venue, or ID anywhere
 - **Walkshäusl et al.** F-score critique — "EconStor", no year, no journal; the in-text quote in `cost_vs_edge.py` is not traceable to a specific paper
