@@ -2,6 +2,41 @@
 
 Decisions and material changes to the pipeline, newest first.
 
+## 2026-08-01 — Who actually buys stocks: capital-source review by market
+
+`reports/equity_capital_sources.md` — literature review of public sources on where equity
+demand originates per market, and how much is debt-financed. **Literature only, nothing
+recomputed**; every figure is tagged ⓟ primary (Fed Z.1, SEBI, AMFI, FINRA, BoJ, NPS) or
+ⓢ secondary (press reporting those figures), so the evidence grade is visible per claim.
+
+- **The framing correction that matters.** "DII money is sourced via debt" is only partly right.
+  The bulk of Indian DII inflow is **intermediated household savings** — SIPs, EPFO/NPS, insurance
+  premiums — which is *sticky* and payroll-linked. Debt sits **on top** as a leveraged retail
+  overlay (MTF, F&O). The distinction is the whole point: the savings layer is why drawdowns get
+  absorbed, the leverage layer is why they sometimes accelerate.
+- **India — the crossover happened.** DII holdings ₹71.76 lakh crore, FII:DII ownership ratio
+  below 1 at 0.98 (31 Mar 2025); DII net ₹6 trillion in CY2025, highest since the series began in
+  2007. Apr 2025–Apr 2026: **₹3.8 lakh crore FII selling absorbed by ₹8.85 lakh crore DII buying**
+  with the Nifty holding. SIP flows ₹3,17,502 crore FY2025-26, ~7× the FY2016-17 level.
+- **The debt overlay, quantified where public**: SEBI caps MTF at 50% funding, ~14–18% annualised
+  interest, 4–5× marketed buying power. SEBI's own F&O profit/loss study (25 Jan 2023) is the
+  authoritative source on retail derivatives outcomes.
+- **US — the buyer is the issuer.** Buybacks are the largest single source of net equity demand,
+  with some analysis arguing they are effectively the *entire* net demand over two decades.
+  Leverage: FINRA margin debt (Rule 4521) ~$1.502tn Jun 2026, reported 102.8% above long-term
+  average and +49% YoY — the rate of change matters more than the level for forced-selling risk.
+- **Japan — the central bank is a shareholder.** BoJ overtook GPIF as the largest owner of Japanese
+  stocks (¥45.1tn vs ¥44.8tn) via ETF purchases. Retail back to ~25% of trading value, a 12-year
+  high. Note turnover ≠ ownership: foreigners dominate trading while owning a minority of float.
+- **Korea — the most retail-driven major market.** Retail is **64% of transaction value** vs ~30%
+  in US/Japan. NPS equities passed 50% of assets for the first time — but 36.8% overseas vs 14.8%
+  domestic, i.e. Korea's biggest institution is increasingly a buyer of *foreign* equities.
+- **Europe is the acknowledged gap** — the searches surfaced little, and no primary figure is
+  cited rather than inventing one.
+- **Next build, not yet run**: the India FII/DII (NSE daily) + AMFI SIP (monthly) pair, which would
+  test the absorption claim against data instead of taking the press figure on trust. Retrievable
+  sources catalogued in §6 of the report.
+
 ## 2026-07-31 — Bond↔equity linkage measured; three of four hypotheses came back NULL
 
 `bond_equity_entropy.py` runs the two entropy directions the literature actually supports, plus
