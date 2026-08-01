@@ -41,8 +41,10 @@ import pandas as pd
 HERE = Path(__file__).resolve().parent
 CACHE = HERE / "cache_seed"
 REPORTS = HERE / "reports"
-PANEL = CACHE / "india_ownership_wide.parquet"
+PANEL = CACHE / "india_ownership_wide.parquet"          # screener.in: has FII/DII
+NSE_PANEL = CACHE / "india_shareholding_nse.parquet"    # NSE: promoter/public only
 REPORT = REPORTS / "ownership_behaviour_india.md"
+REPORT_NSE = REPORTS / "ownership_behaviour_india_full.md"
 WAREHOUSE = Path("/Users/umashankar/repos/global-market-data/warehouse/ohlcv_adj/IN")
 
 # Default floor. --floor widens it: $5M -> 335 names, $1M -> 794, i.e. essentially
@@ -144,11 +146,55 @@ def _metrics_per_stock(symbols: set) -> pd.DataFrame:
     return pd.DataFrame(out).set_index("symbol")
 
 
-def study() -> int:
-    if not PANEL.exists():
-        print("run --collect first"); return 1
-    own = pd.read_parquet(PANEL)
-    own["qd"] = pd.to_datetime(own["quarter"], format="%b %Y", errors="coerce")
+def _load_nse() -> pd.DataFrame:
+    """NSE panel reshaped to match the screener.in schema.
+
+    NSE carries promoter/public/employee-trusts only — no FII/DII — so a study
+    run on it can speak to PUBLIC FLOAT and PROMOTER holding across the whole
+    universe, and cannot speak to institutional holding at all. That is the
+    trade: 13x the companies for one fewer variable, and the missing variable is
+    the one with the strongest result. Both runs are kept rather than one
+    replacing the other.
+    """
+    d = pd.read_parquet(NSE_PANEL)
+    d["qd"] = pd.to_datetime(d["date"], format="%d-%b-%Y", errors="coerce")
+    d = d.dropna(subset=["qd"])
+    # 🔴 VALIDATE THE ACCOUNTING IDENTITY. The components must sum to 100 — that
+    # is what a shareholding pattern IS — so a row that does not is a filing or
+    # parsing error, not a small company. ANTGRAPHIC 31-Mar-2026 arrives as
+    # promoter 96.0 + public 9904.0 = 10000, i.e. basis points where percent was
+    # expected; unfiltered it put the Public column's max at 9904% and its sd at
+    # 940, which would have silently dominated every correlation and quantile in
+    # the study. One row in 3,395 — and every other row totals 99.98-100.01, so
+    # the check costs almost nothing and catches exactly the failure that matters.
+    tot = (d["promoter_pct"].fillna(0) + d["public_pct"].fillna(0)
+           + d["employee_trusts_pct"].fillna(0))
+    bad = (tot < 99) | (tot > 101)
+    if bad.any():
+        print(f"  dropped {int(bad.sum())} row(s) failing the sum-to-100 check "
+              f"({', '.join(sorted(d.loc[bad, 'symbol'].unique())[:5])})")
+        d = d[~bad]
+    long = []
+    for col, holder in (("promoter_pct", "Promoters"), ("public_pct", "Public")):
+        t = d[["symbol", "qd", col]].dropna().rename(columns={col: "pct"})
+        t["holder"] = holder
+        long.append(t)
+    out = pd.concat(long, ignore_index=True)
+    out["mcap_cr"] = float("nan")      # NSE does not carry market cap
+    return out
+
+
+def study(source: str = "screener") -> int:
+    if source == "nse":
+        if not NSE_PANEL.exists():
+            print("run nse_shareholding.py --collect first"); return 1
+        own = _load_nse()
+    else:
+        if not PANEL.exists():
+            print("run --collect first"); return 1
+        own = pd.read_parquet(PANEL)
+    if "qd" not in own.columns:
+        own["qd"] = pd.to_datetime(own["quarter"], format="%b %Y", errors="coerce")
     own = own.dropna(subset=["qd"])
     # 🔴 NOT own["qd"].max(). A handful of companies report on an off-cycle date,
     # so the newest quarter present is not the newest quarter most companies have:
@@ -175,11 +221,14 @@ def study() -> int:
     out = ["# Ownership and behaviour, WITHIN India\n",
            f"{len(d)} companies with both a shareholding pattern (as of "
            f"{latest:%b %Y}) and ≥{MIN_BARS} daily bars in the last ~3 years. "
-           f"Universe: NSE equities identified via ticker_exchange_reference. Collection "
-           f"targeted all 4,692 India equities but screener.in rate-limited after ~800; "
-           f"what survives here is what was retrieved before the block, skewed toward the "
-           f"more liquid names since collection walks the universe alphabetically from a "
-           f"turnover-sorted seed.\n",
+           + (f"Source: **NSE corporate-share-holdings-master** — the exchange's own filing, "
+            f"covering the full equity universe. Carries promoter/public only, so this run "
+            f"says nothing about FII/DII holding; see ownership_behaviour_india.md for the "
+            f"screener.in run that does.\n"
+            if source == "nse" else
+            f"Source: **screener.in**, which carries the FII/DII split. Collection targeted "
+            f"all 4,692 India equities but was rate-limited after ~800, so this is what was "
+            f"retrieved before the block — skewed toward more liquid names.\n"),
            "\nThis is the test `ownership_behaviour.md` argued for and could not run: "
            "sector, currency, calendar and index construction are held constant, and "
            "**liquidity can be controlled for directly** — which is the whole reason the "
@@ -322,9 +371,10 @@ def study() -> int:
     out.append("*Descriptive analysis of historical relationships. Not investment advice.*\n")
 
     REPORTS.mkdir(parents=True, exist_ok=True)
-    REPORT.write_text("\n".join(out) + "\n")
+    target = REPORT_NSE if source == "nse" else REPORT
+    target.write_text("\n".join(out) + "\n")
     print("\n".join(out))
-    print(f"\n  -> {REPORT}")
+    print(f"\n  -> {target}")
     return 0
 
 
@@ -332,6 +382,8 @@ def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[1])
     ap.add_argument("--collect", action="store_true")
     ap.add_argument("--study", action="store_true")
+    ap.add_argument("--source", choices=("screener", "nse"), default="screener",
+                    help="screener = has FII/DII, ~350 cos; nse = promoter/public only, full universe")
     ap.add_argument("--limit", type=int, default=260)
     ap.add_argument("--floor", type=float, default=TURNOVER_FLOOR,
                     help="min USD/day turnover for the universe")
@@ -341,7 +393,7 @@ def main() -> int:
     if a.collect:
         collect(limit=a.limit, floor=a.floor)
     if a.study:
-        return study()
+        return study(source=a.source)
     return 0
 
 
