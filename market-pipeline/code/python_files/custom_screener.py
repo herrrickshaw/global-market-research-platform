@@ -185,10 +185,33 @@ def screen(stocks: Iterable[StockData], criteria: Criteria,
 
 if __name__ == "__main__":
     # demo on real cached data: oversold-but-uptrend momentum screen
-    import bhavcopy_store as store
-    syms = store.symbols()[:800]
-    stocks = [StockData(s, "IN", ohlcv=d) for s, d in store.get_many(syms).items()]
-    print(f"loaded {len(stocks)} stocks")
+    #
+    # 🔴 Universe comes from the MARKET SEED, never from bhavcopy_store. That
+    # store is shared: build() with no `hist` globs every cleaned_long_<MKT>.parquet
+    # into ONE key namespace, so symbols() returns ~24k tickers across 16 markets
+    # after any screener_kit rebuild. This block used to call symbols()[:800] and
+    # label every row "IN" — and symbols() is ordered lexicographically, so the
+    # first 800 are numeric Chinese codes (000001.SZ …). The demo would have
+    # screened Shenzhen stocks and printed them as Indian, with nothing to show
+    # for it but plausible-looking output.
+    #
+    # kit.load() reads the seed for the market actually asked for, so the label
+    # below cannot drift from the data it describes.
+    import sys
+    import screener_kit as kit
+
+    # Sample by LIQUIDITY, not by however the symbols happen to sort. The old
+    # [:800] slice was lexicographic, and India's bhavcopy leads with bond and
+    # debenture codes — 0ANSPL28, 0APL26, 0KFL25 … — so the demo screened 800
+    # debt instruments and printed an empty table. kit.load's own liquidity
+    # pre-filter is the documented way to cut the illiquid tail, and it returns
+    # ~794 actual equities here.
+    market = (sys.argv[1].upper() if len(sys.argv) > 1 else "IN")
+    data = kit.load(market, min_turnover_usd=1_000_000)
+    if not data:
+        raise SystemExit(f"no cached seed for {market} — try one of {kit.MARKETS}")
+    stocks = [StockData(s, market, ohlcv=d) for s, d in sorted(data.items())]
+    print(f"loaded {len(stocks)} liquid {market} stocks (>$1M/day turnover)")
     rules = {"above_200dma": ("==", True), "rsi14": ("<", 60),
              "dist_52w_high": ("<", 12), "ret_126": (">", 5)}
     out = screen(stocks, rules, rank_by="ret_126", top=15,

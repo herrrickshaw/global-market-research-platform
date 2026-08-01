@@ -79,17 +79,34 @@ def _equity_only(df: Optional["pd.DataFrame"]) -> Optional["pd.DataFrame"]:
     return df[df["ISIN"].astype(str).str.startswith("INE")]
 
 
-def _lmdb_max_date() -> Optional["pd.Timestamp"]:
+def _lmdb_max_date(only: Optional[set] = None) -> Optional["pd.Timestamp"]:
     """Newest bar in the LMDB, by MEDIAN symbol — never by max.
 
     Anchoring on the newest symbol would let one recently-updated name mask a
     store-wide lag; anchoring on the oldest would let a handful of delisted
     names force a needless rebuild every run. The median moves only when the
     bulk of the store moves, which is the question being asked.
+
+    🔴 `only` RESTRICTS THE MEDIAN TO ONE MARKET, and the caller must pass it.
+    The LMDB is NOT an India store: bhavcopy_store.build() with no `hist` globs
+    every cleaned_long_<MKT>.parquet into one store, so after any screener_kit
+    rebuild it holds ~24k symbols across 16 markets. Those foreign seeds are
+    STATIC snapshots refreshed only when the weekly extended scan runs, while
+    India advances daily — so a median taken across all of them freezes at the
+    seeds' collection date and this guard reads "behind" every single day.
+
+    Measured 2026-07-31: with India and the seeds both at 07-31 the global
+    median agrees. From 08-01 onward the global median stays pinned at 07-31
+    while India advances, so the unfiltered guard returns True forever — a
+    destructive 94MB rebuild per call, and worse, a guard that can no longer
+    tell a genuinely stale India store from foreign seeds simply being old.
+    That distinction is the entire reason this function exists.
     """
     try:
         import bhavcopy_store as bs
         syms = bs.symbols()
+        if only is not None:
+            syms = [s for s in syms if str(s).upper() in only]
         if not syms:
             return None
         # A sample is enough to place the median and keeps this guard cheap
@@ -133,11 +150,18 @@ def _lmdb_behind_cleaned() -> bool:
     if not CLEANED.exists():
         return False
     try:
-        cl = pd.read_parquet(CLEANED, columns=["Date"])["Date"]
-        cl_max = pd.Timestamp(pd.to_datetime(cl).max())
+        # Read Symbol too, and score the store on EXACTLY the symbols this
+        # parquet contains. CLEANED is India by construction (screener_kit's
+        # seed name for "IN" is literally cleaned_long.parquet), so this makes
+        # the comparison apples-to-apples — "is the store behind the file that
+        # feeds it" — instead of comparing India's dates against a median
+        # dragged around by 16 other markets on their own calendars.
+        cl = pd.read_parquet(CLEANED, columns=["Date", "Symbol"])
+        cl_max = pd.Timestamp(pd.to_datetime(cl["Date"]).max())
+        india = set(cl["Symbol"].astype(str).str.upper())
     except Exception:
         return False
-    lm = _lmdb_max_date()
+    lm = _lmdb_max_date(only=india)
     if lm is None:
         return True          # no store at all → build it
     return pd.Timestamp(lm).normalize() < cl_max.normalize()

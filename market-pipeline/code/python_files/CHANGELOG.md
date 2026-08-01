@@ -2,6 +2,226 @@
 
 Decisions and material changes to the pipeline, newest first.
 
+## 2026-07-31 — Entropic yield curve tested and REJECTED; ticker→exchange reference built
+
+**`entropic_yield_curve.py`** implements Parker (2017, *Entropy* 19:292) — a yield curve
+derived from information loss, whose "implied information processing ratio" R/C is claimed to
+have exploding variance just before bear markets. Built as a measured quantity and tested, not
+adopted. **Verdict: rejected. Do not wire into the brief.** Full result in
+`reports/entropic_rc_test.md`, literature boundary in `reports/entropic_rc_literature.md`.
+
+- **The reconstruction is faithful, and that is what makes the negative result stick.** Parker's
+  Table 1 says only "(Time starts at t = 1)" — ambiguous between years, months, and a maturity
+  index. `--sensitivity` fits all three. Months reproduces his published Table 2 in the BULL
+  zones (I: 3.47/0.40 vs his 3.41/0.41; V: 4.11/0.05 vs 4.07/0.10); years does not (0.21/0.34).
+  So the estimator is right — and it still fails to reproduce the two CRISIS zones the whole
+  thesis rests on: he reports mean R/C −56.78 and −24.35 with variances 1097 and 1302; the same
+  dates and the same Treasury series give 3.38/1.06 and 3.52/1.62. Mean R/C is flat (3.33–4.11)
+  across all five zones, and zone III — a *bull* period — has higher variance (1.85) than either
+  crisis zone.
+- **It is a reparameterisation of the term spread.** corr(R/C, 10Y−3M) = **+0.821**. In an
+  expanding-window event study over 1990–2026 (4 bear onsets, no lookahead), Var(R/C) fires 11
+  times, catches 1 of 4 at precision 0.09. Plain 10Y−3M inversion fires the same 11 times,
+  catches 2, at precision 0.27. **Strictly dominated by the simplest possible baseline.**
+- **Mechanism.** Under Parker's own settings (σ=1 kills the second term entirely) the model
+  collapses to one parameter, and R/C = 1 + ln(1−a) has a log singularity at a=1. Values like
+  −56.78 are what a fit wandering near that singularity prints. Corroboration: Parker's own
+  later work (Entropy 2020) reports **no** negative R/C and triggers on a *bounded* R/C < 1.02.
+  **Rejected: declaring the paper wrong outright** — the 2020 variant solves for σ over 1M–30Y
+  maturities and was NOT tested here; the claim is scoped to the 2017 specification.
+- **Fit quality**: the fixed-shape one-parameter curve misses the real Treasury curve by a median
+  67bp (p95 210bp), and R/C is undefined (a ≥ 1) on 8.7% of days.
+- **The 2020 variant (Entropy 20:662) was then tested too, and fails the same way**
+  (`--variant2020`, `reports/entropic_rc_2020.md`). It differs substantively: first term
+  `ln(t)/t`, maturities 1M–30Y, and **σ free** rather than pinned at 1. With `A = 1−p` and
+  `B = −p·ln σ` it reduces to ordinary OLS in `{ln(t)/t, 1/t}` — no solver needed. Freeing σ
+  **improves the curve fit a lot (67 → 34 bp median RMSE) and the signal not at all.** His 2020
+  trigger is a LOW-LEVEL one (R/C < 1.02), so that shape was tested directly: 8 fires, 1 of 4
+  bears, 0.12 precision, against inversion's 2 of 4 at 0.27. corr(R/C, 10Y−3M) = **+0.811**,
+  still the term spread. **C₁ is unknown and cannot rescue it**: R/C = 1 + ln(p)/C₁ is monotone
+  in p for any C₁>0 and Var(R/C) = Var(ln p)/C₁², so every percentile-breach signal is invariant
+  to C₁ — only printed levels move. One honest positive: σ is uncorrelated with the spread
+  (−0.014), so it is genuinely new information, but it still scores below the baseline (0.17 vs
+  0.27) and n=4 onsets cannot distinguish those.
+- **Correction to a widely repeated claim**: entropy does *not* spike in crises. Olbryś & Majewska
+  (36 EU+US indices, GFC and COVID) find sequential entropy **falls** — crises make indices more
+  regular. Distribution entropy rises, sequential entropy falls; summaries conflate them.
+
+**`ticker_exchange_map.py`** — every ticker must be exchange-qualified, so
+`cache_seed/ticker_exchange_reference.parquet` is now the ready reference: **74,239 symbols, 42
+exchanges, 34 countries**, with MIC codes, 0.4% unresolved.
+- Exchange is re-derived from the yfinance suffix, because `global-ticker-universe`'s own
+  `exchange` column is coarse — "NSE/BSE", "SSE+SZSE", "Xetra + Frankfurt" each cover 2–3 venues.
+- US symbols are bare and unresolvable from a suffix, so the NASDAQ Trader directory supplies the
+  real listing venue plus an ETF flag. yfinance and NASDAQ spell classes, preferreds and warrants
+  differently (`BRK-B`↔`BRK.B`, `ABR-PD`↔`ABR$D`, `ACHR-WT`↔`ACHR.W`); indexing on all three
+  published symbol columns and trying each spelling cut unresolved from 733 to 272 (the remainder
+  are rights, units and delisted names genuinely absent from the live directory).
+- Distinct from `build_ticker_reference.py`, which builds the Postgres name/liquidity/earnings
+  dictionary and has no exchange column. That file is untouched.
+
+## 2026-07-31 — A backup file inside the dataset directory doubled every 2026 bar
+
+Ingest `[7/7]` had been refusing to fold fresh bars into the deep panels since 2026-07-27, so
+`warehouse/ohlcv/IN` was frozen at 2026-07-29 and `US` at 2026-07-27 while the daily brief kept
+shipping. The refusal was the guard working — but it was guarding against its own writer.
+
+- **Root cause: `_write_years` wrote its pre-write backup NEXT TO the partition it backed up.**
+  `year=2026.parquet.bak` sat inside `warehouse/ohlcv/<MKT>/`, and `pd.read_parquet(<dir>)` loads
+  every file it discovers there, not just `year=*.parquet` — a `.bak` is itself valid parquet. So
+  each read returned the 2026 partition twice: **IN 338,851 and US 1,207,003 duplicate
+  (Symbol, Date) keys, every one byte-identical, zero conflicting values, and confined to 2026** —
+  the only year the writer had ever backed up. The merge's `drop_duplicates` then correctly
+  collapsed them, the row-count check read the collapse as lost history, and the write was refused.
+  Self-sustaining: the guard could never pass, because reading the panel re-created the condition.
+- **Fixes.** Backups now go to `warehouse/_backup/ohlcv/<MKT>/`, outside the dataset root. Panels
+  are read through `_read_panel()`, which globs `year=*.parquet` explicitly, so a stray `.bak` or a
+  `.tmp` from an interrupted run can never be counted as data. The guard's baseline is now the
+  DEDUPED panel: the invariant that matters is *no bar disappears*, not *no row disappears* — only
+  the former is history loss. Years touched by a dedup are added to the rewrite set, and a dedup
+  repair now writes even when there are no new bars, so cleanup no longer depends on fresh bars
+  happening to land in the same year.
+- **Rejected: relaxing the guard to a tolerance** (e.g. allow ≤15% row loss). It would have let this
+  write through while leaving the panel corrupt, and would have masked genuine truncation — the
+  exact failure the guard exists to catch. The guard was right; its baseline was wrong.
+- **Rejected: deleting the `.bak` files.** They are the only copy of the pre-merge partitions, and
+  the corruption they caused was positional, not intrinsic. Moved, not removed.
+- **Verified.** Against a pre-image of the deduped panels: 0 pre-existing bars missing, 0 values
+  changed, 0 duplicate keys remaining, and two consecutive runs are a clean no-op. IN now current
+  to 2026-07-31 (4,493,072 rows), US to 2026-07-30 (16,326,906).
+- **Blast radius.** ~15 modules read the warehouse; all but one glob `year=*.parquet` and were
+  unaffected. `signal_tracker.py` read the directory and was consuming doubled 2026 bars — hardened
+  to the same `_panel()` pattern.
+
+### Uncovered by the above: the India LMDB was serving a GLOBAL universe
+
+Unfreezing the merge immediately exposed a second fault the four-day freeze had been hiding. The
+first successful fold took the IN panel from 7,043 to 15,845 symbols — the new arrivals were
+**2,874 `.SZ`, 2,297 `.SS`, 992 `.TW`, 962 `.AX`, 421 `.HK`, 223 `.SI`**: Shenzhen, Shanghai,
+Taiwan, Sydney, Hong Kong and Singapore tickers written into the *India* panel. `_fresh_in()` reads
+`bhavcopy_store.symbols()`, and that LMDB was holding a global universe rather than NSE/BSE.
+
+This is the nastiest failure mode in the repo: the IN and US panels hold **bare** tickers, so a
+foreign ticker sitting in one is not visibly wrong — it reads as an unfamiliar Indian smallcap, and
+every India-wide statistic silently widens to include six other markets.
+
+- **Contained.** 8,802 contaminant bars, all a single date (2026-07-31), all year 2026, removed;
+  pre-cleanup partition preserved at `_backup/ohlcv/IN/year=2026.parquet.precleanup`. The panel now
+  holds 7,078 symbols — the original 7,043 plus 35 genuine new Indian names.
+- **Guard added** (`_drop_foreign`). Fresh tickers carrying an exchange suffix are dropped from
+  IN/US merges with a loud line. Above 20% foreign the merge is REFUSED outright: at that share the
+  source is not dirty but the wrong market, and drop-and-continue would quietly rebuild the panel
+  from another country's data. **Rejected: refuse on any foreign ticker at all** — one stray symbol
+  would re-freeze the panel, which is the failure this release exists to end.
+### Root cause found: nothing polluted the LMDB — it was never India-only
+
+The earlier note here ("a subsequent `ingest.sh` rebuild restored it") was wrong. That run did not
+restore anything; it simply **won the last write**. `bhavcopy_store.build()` has two entry paths
+that rebuild the SAME store with DIFFERENT universes, and each `shutil.rmtree`s it first, so the
+store's contents are whoever ran most recently:
+
+| caller | call | resulting store |
+|---|---|---|
+| `bhavcopy_history.py:365,451` | `_build_store(out_all)` — India dict passed | India-only, 7,837 |
+| `screener_kit.py:69,181` | `store.build()` — no `hist` | **global, 23,868** |
+
+With no `hist`, `build()` takes its glob branch, and the intent is explicit in its own comment:
+*"ingest every market seed present … into one store."* That is working as designed. The defect was
+that `warehouse_update._fresh_in()` read that shared store as though it were the India bhavcopy
+store — its docstring said exactly that — and folded whatever it found into the India panel.
+
+- **Why it stayed hidden until now.** The glob had nothing else to find: no `cleaned_long_<MKT>.parquet`
+  existed, so the "global" path coincidentally produced India-only. The new
+  `com.umashankar.weekly-extended-scan` job (plist created 2026-07-31 05:02) calls
+  `screener_kit.update()` per market, which materialised 15 seeds (`TW` 05:09, then `DK AU BR CA CH
+  CN DE FI HK SA SE SG UK ZA` 06:06–06:27) and rebuilt the store global. Smoking gun in its own log:
+  `weekly_extended_scan_20260731.log:514  update TW: 0 symbols got new bars; store rebuilt`.
+- **Fix**: `_fresh_in()` now reads the INDIA SEED (`bs.CLEANED` = `cleaned_long.parquet`) directly
+  and never touches the shared LMDB. That seed is India by construction —
+  `screener_kit._seed_name("IN")` returns exactly that filename — so the ambiguity is removed at
+  source instead of filtered afterwards. Verified byte-identical to the LMDB path when the store
+  happens to be India-only (1,242,325 rows / 7,837 symbols / 0 suffixed, same symbol set), and
+  **immune to the store's universe**: re-running with a simulated global store returns the same
+  7,837 India symbols. It is also cheaper — the function scans every symbol anyway, so the LMDB's
+  keyed access never bought anything here.
+- **Rejected: intersecting the LMDB against the ticker reference.** The reference holds 5,981
+  Indian tickers against the bhavcopy's 7,837, so that would have silently dropped ~1,850
+  legitimate names — trading one invisible data error for another.
+- The LMDB fallback (seed missing/unusable) is retained but now passes through the same exchange
+  allowlist, and refuses outright on a global store (75% foreign ≫ 20%) rather than corrupting.
+
+### Consumer audit: one more consumer was due to break on 2026-08-01
+
+Every reader of the shared store was then audited for the same assumption. Five call sites:
+
+| consumer | pattern | verdict |
+|---|---|---|
+| `warehouse_update._fresh_in` | `symbols()`+`get()` | was broken; fixed above |
+| `bhavcopy_history._lmdb_max_date` | `symbols()` sample → median | **broken from 2026-08-01** — fixed here |
+| `watchlist_pnl.py:164` | `symbols()`+`get()` | latent collision — fixed below |
+| `custom_screener.py:189` | `symbols()[:800]`, labels `"IN"` | demo block (`__main__`) only |
+| `screener_kit.get` | `get(symbol)` keyed | **safe by design** — screener_kit is the multi-market layer and *wants* the global store |
+
+`_lmdb_behind_cleaned()` is the guard added 2026-07-21, after the LMDB sat 5 days behind while
+watchlist_pnl marked India positions to stale closes. It medians ~200 sampled symbols against
+`cleaned_long.parquet`. On a global store that median spans 16 markets, and the foreign seeds are
+STATIC snapshots (written once when the weekly extended scan runs) while India advances daily.
+Measured: with both at 2026-07-31 the medians agree and the guard is correct — but from 08-01 the
+global median stays pinned at 07-31 and the guard returns **True forever**. That means a
+destructive 94MB rebuild per call, and worse, a guard that can no longer distinguish a genuinely
+stale India store from foreign seeds merely being old. An alarm that always fires is as useless as
+one that never does, and this one protects P&L from stale prices.
+
+- **Fix**: `_lmdb_max_date(only=…)` restricts the median to a symbol set, and
+  `_lmdb_behind_cleaned()` passes the symbols of `cleaned_long.parquet` itself — making the
+  comparison apples-to-apples ("is the store behind the file that feeds it") rather than scoring
+  India's dates against a median dragged by other calendars.
+- **Verified both directions.** On a simulated global store with India advancing and seeds frozen,
+  the old guard fires on 08-01/03/07 and the new one does not. Critically, it still fires when
+  India is genuinely stale by 3 and by 5 days — the 2026-07-21 scenario — so the false positive
+  was removed without introducing a false negative.
+### watchlist_pnl hardened — and the first attempt at it was wrong
+
+`watchlist_pnl._current_prices("IN")` marks India positions off the shared store. The obvious fix
+was to filter its iteration to the India seed's symbol set. **That was implemented, tested, and
+found insufficient**, which is worth recording because the reasoning looked sound:
+
+The collision is not in the consumer, it is **inside the LMDB's key namespace**. `build()` merges
+seeds with `hist[str(sym)] = …` — a plain dict write over one namespace — so when two markets carry
+the same bare ticker the LAST SEED WINS and the other market's series is *gone from the store*.
+Filtering afterwards cannot repair that: the India key is still present, it just holds foreign
+prices. Simulated with a US seed loaded, `INFY` (listed on both NSE and NASDAQ) priced at the US
+close of 1234.50 instead of 1130.10 while passing the India-membership filter untouched.
+
+- **Actual fix**: read `cleaned_long.parquet` directly, as `_fresh_in` now does. It has its own
+  namespace, so it is immune by construction, and it is the fresher source anyway — the LMDB is
+  built *from* it, which is precisely what `_lmdb_behind_cleaned()` polices.
+- **Verified equivalent**: all 7,837 symbols agree with the old path, keys identical. Only 2,746
+  matched to 1e-9 at first glance — the remainder differ solely by **float32 round-trip**, since
+  `bhavcopy_store._ser()` downcasts OHLC to float32 for storage. Max relative difference 5.7e-08
+  (worst case 1028.69 vs 1028.68994140625), i.e. the new path is marginally MORE precise. `asof`
+  capping preserved (2026-07-28 → 7,825 prices, max date 07-28).
+- **Verified protective**: under a simulated US seed, `INFY` holds 1130.10 and `AAPL` does not leak
+  into the India price map.
+- The LMDB loop is retained as a fallback for a missing seed. It remains exposed to the collision,
+  which is why it is the fallback and not the path.
+
+- **`custom_screener.py` demo fixed too — it was broken twice over.** The `__main__` block is off
+  every pipeline path, but was wrong in two independent ways. (1) `store.symbols()[:800]` reads the
+  shared store and hard-labels every row `"IN"`; `symbols()` sorts lexicographically, so on a global
+  store the first 800 are numeric Chinese codes and the demo would have screened Shenzhen stocks
+  and printed them as Indian. (2) Even on an India-only store the slice was useless: India's
+  bhavcopy leads with bond/debenture codes (`0ANSPL28`, `0APL26`, `0KFL25` …), so it screened 800
+  debt instruments and printed an **empty table**. Now takes its universe from `kit.load(market,
+  min_turnover_usd=1e6)` — the seed for the market actually requested, with the documented
+  liquidity pre-filter — and the market is a CLI arg, so the label cannot drift from the data.
+  Verified: `IN` → 794 liquid equities with a populated result; `TW` → 735, correctly labelled;
+  unknown market exits with the list of seeded markets.
+- **Why `watchlist_pnl` was worth fixing before the US seed lands rather than after**: all 15
+  foreign seeds are currently exchange-qualified (verified: **zero** bare symbols), so nothing
+  collides today. The failure only appears when a `cleaned_long_US.parquet` arrives — and it
+  appears silently, as a plausible number on a P&L line, with no error anywhere.
+
 ## 2026-07-29 — Claims audited against their own evidence; three locks; a stale-price near-miss
 
 An end-to-end pipeline run at 22:36 (off the usual 00:30 schedule) exposed a class of failure the

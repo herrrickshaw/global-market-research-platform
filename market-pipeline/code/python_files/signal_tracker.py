@@ -50,14 +50,25 @@ import pandas as pd
 
 HERE = Path(__file__).resolve().parent
 LEDGER = HERE / "cache_seed" / "signal_ledger.parquet"
-# Warehouse dirs (year-partitioned parquet) — pd.read_parquet reads a directory
-# natively. Replaces the monolithic ltm panels and the per-market folklore of
-# which repo held the good copy (the other US.parquet is the broken
-# alphabetical collection).
+# Warehouse dirs (year-partitioned parquet). Replaces the monolithic ltm panels
+# and the per-market folklore of which repo held the good copy (the other
+# US.parquet is the broken alphabetical collection).
+# Read via _panel() and NOT by handing the directory to read_parquet: directory
+# reads pull in every file present, so a stray year=YYYY.parquet.bak or .tmp is
+# loaded as a second copy of that year and every bar in it silently doubles.
+# That is exactly what happened to 2026 (fixed in warehouse_update.py 2026-07-31).
 PANELS = {
     "IN": Path("/Users/umashankar/repos/global-market-data/warehouse/ohlcv/IN"),
     "US": Path("/Users/umashankar/repos/global-market-data/warehouse/ohlcv/US"),
 }
+
+
+def _panel(p: Path, columns=None) -> pd.DataFrame:
+    """Read a warehouse panel from its year partitions only."""
+    return pd.concat(
+        [pd.read_parquet(f, columns=columns) for f in sorted(p.glob("year=*.parquet"))],
+        ignore_index=True,
+    )
 BENCH = {"IN": "NIFTYBEES", "US": "SPY"}
 GOOD_GRADES = {"A", "B"}
 
@@ -224,7 +235,7 @@ def record() -> int:
         p = PANELS.get(mkt)
         if not p or not p.exists():
             continue
-        px = pd.read_parquet(p, columns=["Date", "Symbol", "Close"])
+        px = _panel(p, columns=["Date", "Symbol", "Close"])
         px["Symbol"] = px["Symbol"].astype(str).str.upper()
         last = px.sort_values("Date").groupby("Symbol")["Close"].last()
         miss = new["price_at_signal"].isna() & (new["market"] == mkt)
@@ -359,7 +370,7 @@ def report(min_days: int, fetch_missing: bool = False) -> int:
             else:
                 skipped["no_panel"] += len(grp)
             continue
-        px = pd.read_parquet(p, columns=["Date", "Symbol", "Close"])
+        px = _panel(p, columns=["Date", "Symbol", "Close"])
         px["Symbol"] = px["Symbol"].astype(str).str.upper()
         wide = px.pivot_table(index="Date", columns="Symbol", values="Close",
                               aggfunc="last").sort_index()
