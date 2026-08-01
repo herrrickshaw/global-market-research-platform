@@ -1,0 +1,723 @@
+#!/usr/bin/env python3
+"""
+equity_ownership.py — who owns each equity market, and who is buying it.
+
+TWO THINGS, KEPT SEPARATE ON PURPOSE
+  OWNERSHIP  static %-of-market-held, by holder type, per geography (--table)
+  FLOW       who is buying/selling right now (--india, NSE daily FII/DII)
+
+Ownership and flow answer different questions and are constantly conflated in
+market commentary: Japan's foreigners dominate TURNOVER while owning a minority
+of the float, and India's DIIs became the marginal buyer years before they passed
+FIIs on holdings. A stock and a flow are not the same statistic.
+
+🔴 EVIDENCE GRADE IS PART OF THE OUTPUT
+The US column is COMPUTED here from the Federal Reserve's Z.1 Financial Accounts
+via FRED — it is a real measurement and reproducible by re-running this file.
+India ownership is ALSO computed, from screener.in shareholding patterns,
+cap-weighted over the liquid large-cap universe. Japan, Korea and Europe remain
+CITED — no comparable machine-readable series was reachable (see --sources). The table marks every cell, and mixing the two
+without saying so would be the main way this analysis could mislead.
+
+DATA ACCESS — WHAT WORKS AND WHAT DOES NOT
+  * SIP: SOLVED. Not an API. amfiindia.com is a Next.js app that renders data
+    server-side, so there is no client XHR to intercept — scanning all 28 JS
+    chunks yielded one path (`/api/search/trending`) and every documented
+    `/modules/...` route 404s. The real channel is static PDFs:
+    `/Themes/Theme1/downloads/AMFIMonthlyNote_<Month><YYYY>.pdf`, parsed by
+    `--sip`. Coverage is thin — 15 notes, Jun 2024 to Aug 2025, Nov 2024 and
+    Feb 2025 unparseable — so this is a short series, not the FY2016-17 history
+    quoted in the press. (`portal.amfiindia.com/spages/` holds 419 monthly AUM
+    reports back to 2000, but those carry AUM, not SIP.)
+  * India OWNERSHIP: SOLVED via screener.in company pages (`--inown`), which
+    carry a quarterly Promoters/FIIs/DIIs/Government/Public table per company.
+    NSDL's Latest.aspx serves richer daily FPI detail than NSE (equity vs debt
+    vs hybrid, INR and USD) but only for the current day — its date parameters
+    are ignored, and ReportDetail.aspx is an ASP.NET postback with
+    JS-populated dropdowns.
+  * FII/DII FLOW history: NOT SOLVED, after exhausting the plausible routes.
+    NSDL ReportDetail.aspx renders `ddlSubReports` as a literally EMPTY
+    `<select></select>` — the report list is injected client-side — so an
+    ASP.NET postback with a guessed value returns the same empty tables it
+    started with. ReportsListing.aspx contains no ReportDetail links at all
+    (JS-driven), so there is no parameterised URL to copy. Browser automation
+    would resolve it, but fpi.nsdl.co.in is denied by browser policy here.
+    NEXT BEST OPTION, not built: derive quarterly flow from the ownership series
+    this module already computes — d(FII% x market cap), adjusted for the market
+    return over the quarter to strip the price effect. That yields a quarterly
+    flow proxy rather than a daily series, and it conflates price and flow
+    unless the return adjustment is done carefully. NSE `fiidiiTradeReact` returns the CURRENT DAY
+    only — it accepts a `date` parameter and silently ignores it. BSE's
+    `api.bseindia.com` returns an XHTML error page for every endpoint name tried,
+    and bseindia.com is blocked by browser policy here. So `--india` is
+    append-only: it accumulates from first run and CANNOT backfill. History needs
+    NSDL, a BSE archive file, or a paid vendor.
+
+    equity_ownership.py --us       # Z.1 -> computed US ownership shares
+    equity_ownership.py --sip      # AMFI monthly notes -> India SIP series
+    equity_ownership.py --india    # append today's NSE FII/DII to the store
+    equity_ownership.py --table    # cross-market table, cells marked computed/cited
+    equity_ownership.py --sources  # what was tried, what worked, what did not
+"""
+
+from __future__ import annotations
+
+import argparse
+import re
+import json
+import sys
+from pathlib import Path
+
+import pandas as pd
+import requests
+
+HERE = Path(__file__).resolve().parent
+CACHE = HERE / "cache_seed"
+REPORTS = HERE / "reports"
+US_OWN = CACHE / "us_equity_ownership.parquet"
+IN_FLOW = CACHE / "india_fii_dii_daily.parquet"
+REPORT = REPORTS / "equity_ownership_table.md"
+
+# Z.1 table L.223, DIRECT holders of corporate equities, quarterly market value ($mn).
+# Households are derived as the RESIDUAL, which is how the Financial Accounts
+# themselves treat the household sector — it is not independently surveyed.
+Z1 = {
+    "Rest of world (foreign)":       "BOGZ1LM263064105Q",
+    "Mutual funds":                  "BOGZ1LM653064100Q",
+    "ETFs":                          "BOGZ1LM563064100Q",
+    "Private pension funds":         "BOGZ1LM573064105Q",
+    "State/local govt pensions":     "BOGZ1LM223064145Q",
+    "Federal govt retirement":       "BOGZ1LM343064105Q",
+    "Life insurance":                "BOGZ1LM543064105Q",
+    "Property-casualty insurance":   "BOGZ1LM513064105Q",
+}
+Z1_TOTAL = "BOGZ1LM893064105Q"
+
+NSE_FIIDII = "https://www.nseindia.com/api/fiidiiTradeReact"
+UA = ("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 "
+      "(KHTML, like Gecko) Chrome/120 Safari/537.36")
+
+
+def _key():
+    import yen_carry_test as Y
+    return Y._fred_key()
+
+
+def _fred(series: str, key: str) -> pd.Series:
+    r = requests.get("https://api.stlouisfed.org/fred/series/observations",
+                     params={"series_id": series, "api_key": key, "file_type": "json",
+                             "observation_start": "1990-01-01"}, timeout=60)
+    r.raise_for_status()
+    o = pd.DataFrame(r.json()["observations"])
+    o["Date"] = pd.to_datetime(o["date"])
+    o["v"] = pd.to_numeric(o["value"], errors="coerce")
+    return o.dropna(subset=["v"]).set_index("Date")["v"]
+
+
+def run_us() -> pd.DataFrame:
+    key = _key()
+    if not key:
+        print("no FRED key"); return pd.DataFrame()
+    cols = {}
+    for name, sid in Z1.items():
+        try:
+            cols[name] = _fred(sid, key)
+            print(f"  {name:30s} {sid} ok")
+        except Exception as e:
+            print(f"  {name:30s} {sid} FAILED ({type(e).__name__})")
+    total = _fred(Z1_TOTAL, key)
+    d = pd.DataFrame(cols).dropna(how="all")
+    d["TOTAL"] = total
+    d = d.dropna(subset=["TOTAL"])
+    inst = d[list(cols)].sum(axis=1)
+    d["Households (residual)"] = d["TOTAL"] - inst
+    CACHE.mkdir(parents=True, exist_ok=True)
+    d.reset_index().to_parquet(US_OWN, compression="zstd", index=False)
+    print(f"  -> {US_OWN.name}: {len(d):,} quarters, "
+          f"{d.index.min().date()} .. {d.index.max().date()}")
+    return d
+
+
+def us_shares(d: pd.DataFrame) -> pd.Series:
+    last = d.iloc[-1]
+    holders = [c for c in d.columns if c != "TOTAL"]
+    return (last[holders] / last["TOTAL"] * 100).sort_values(ascending=False)
+
+
+def run_india() -> None:
+    """Append TODAY's FII/DII figures. Cannot backfill — see module docstring."""
+    s = requests.Session()
+    s.headers.update({"User-Agent": UA, "Accept": "application/json",
+                      "Accept-Language": "en-US,en;q=0.9"})
+    try:
+        s.get("https://www.nseindia.com", timeout=20)      # cookie handshake
+        r = s.get(NSE_FIIDII, timeout=25); r.raise_for_status()
+        rows = r.json()
+    except Exception as e:
+        print(f"  NSE fetch failed ({type(e).__name__})"); return
+    n = pd.DataFrame(rows)
+    for c in ("buyValue", "sellValue", "netValue"):
+        n[c] = pd.to_numeric(n[c], errors="coerce")
+    n["Date"] = pd.to_datetime(n["date"], format="%d-%b-%Y", errors="coerce")
+    n = n.dropna(subset=["Date"])[["Date", "category", "buyValue", "sellValue", "netValue"]]
+
+    if IN_FLOW.exists():
+        old = pd.read_parquet(IN_FLOW)
+        n = (pd.concat([old, n], ignore_index=True)
+               .drop_duplicates(subset=["Date", "category"], keep="last")
+               .sort_values(["Date", "category"]))
+    CACHE.mkdir(parents=True, exist_ok=True)
+    n.to_parquet(IN_FLOW, compression="zstd", index=False)
+    print(f"  -> {IN_FLOW.name}: {len(n)} rows, "
+          f"{n.Date.min().date()} .. {n.Date.max().date()} (append-only, no backfill)")
+    print(n.tail(4).to_string(index=False))
+
+
+# Cited figures. Every one carries its source; none is computed here.
+CITED = {
+    "India": [
+        ("FII / FPI", "~17%", "FII:DII ownership ratio fell below 1 to 0.98 at 31 Mar 2025; "
+                              "FII ownership reported at multi-year lows"),
+        ("DII (MF + insurance + pension)", "~17%", "DII holdings ₹71.76 lakh crore, ~2% above FII"),
+        ("Promoters", "~50%", "Promoter holding is the dominant Indian block; widely reported"),
+        ("Retail direct + others", "balance", "Residual of the above"),
+    ],
+    "Japan": [
+        ("Foreign investors", "~30% owned", "but ~60-70% of TURNOVER — the stock/flow gap"),
+        ("BoJ (via ETFs)", "largest single owner", "¥45.1tn vs GPIF ¥44.8tn at the reported date"),
+        ("Individuals", "~17%", "individual holdings ~¥170.5tn FY2023; ~25% of trading value FY2025"),
+        ("Banks/insurers/corporates", "balance", "cross-shareholdings, long-term declining"),
+    ],
+    "Korea": [
+        ("Retail", "64% of TRANSACTION VALUE", "highest of any major market; vs ~30% US/Japan"),
+        ("NPS", "~8% of KOSPI", "equities >50% of assets but 36.8% overseas vs 14.8% domestic"),
+        ("Foreign", "~30%", "long-run range"),
+    ],
+    "Europe": [
+        ("—", "not established", "no primary source reached; pension/insurance-led with low "
+                                 "direct retail participation is the usual characterisation"),
+    ],
+}
+
+
+AMFI_NOTE = "https://www.amfiindia.com/Themes/Theme1/downloads/AMFIMonthlyNote_{m}{y}.pdf"
+SIP = CACHE / "india_sip_monthly.parquet"
+
+# Phrases that sit next to a "Rs N crore" figure which is NOT the month's SIP
+# contribution. These matter: the notes describe several flows in near-identical
+# language, and a loose regex silently returns the wrong one.
+_SIP_REJECT = re.compile(r"rising from|declin|increase of|assets|AUM|stood at", re.I)
+# The month's SIP contribution, anchored on SIP so it cannot drift onto another line item.
+# The notes phrase the same fact many ways across months: "total contribution of",
+# "total contributions reaching", "contribution amount reaching", "flows continued
+# to remain robust at", "flows touched a new high of". Anchor on SIP + a FLOW noun
+# (contribution/contributions/flows) so it cannot drift onto another line item,
+# then let the connector vary. "SIP accounts … 9.11 crore" is a COUNT, not rupees —
+# excluded both by the flow-noun requirement and the plausibility range.
+_SIP_TAKE = re.compile(
+    r"SIP[^.]{0,120}?(?:contributions?|flows)[^.]{0,70}?Rs\.?\s*([\d,]+)\s*crore", re.I)
+
+
+def _parse_sip(flat: str):
+    """Month's SIP contribution in Rs crore, or None if not unambiguous.
+
+    🔴 An earlier version used an unanchored `(?:contribution of|totalling)…`
+    regex and returned 33,430 for Aug 2025 — that is the EQUITY FUND inflow
+    ("Equity funds saw positive inflows … totalling Rs 33,430 crore"), which
+    appears earlier in the document than the SIP sentence. The true figure is
+    28,265. Several months were wrong the same way. Hence: anchor on SIP,
+    reject the YoY-comparison and AUM sentences, and require agreement when the
+    note states the number more than once — returning None beats returning a
+    confident wrong number.
+    """
+    cands = []
+    for m in _SIP_TAKE.finditer(flat):
+        ctx = flat[max(0, m.start() - 60): m.end()]
+        if _SIP_REJECT.search(ctx[:ctx.upper().rfind("RS")] if "RS" in ctx.upper() else ctx):
+            continue
+        v = float(m.group(1).replace(",", ""))
+        if 3_000 <= v <= 60_000:          # plausible monthly SIP range, Rs crore
+            cands.append(v)
+    if not cands:
+        return None
+    if len(set(cands)) > 1:
+        # The note states the figure more than once and the readings disagree.
+        # Take a clear majority (the same number phrased twice, plus one stray
+        # match); otherwise return None rather than guess.
+        from collections import Counter
+        (top, n), = Counter(cands).most_common(1)
+        return top if n > len(cands) / 2 else None
+    return cands[0]
+
+
+def run_sip(start_year: int = 2023) -> None:
+    """Monthly SIP contribution, parsed from AMFI's Monthly Note PDFs.
+
+    FINDING THE ENDPOINT TOOK SOME DIGGING, so the trail is recorded here:
+    amfiindia.com is a Next.js app that renders its data server-side, so there is
+    no client XHR to intercept — scanning all 28 JS chunks yielded exactly one
+    API path (`/api/search/trending`), and the documented `/modules/...` paths
+    all 404. The real data channel is static files on `portal.amfiindia.com/spages/`
+    (419 monthly AUM reports, .xls and .pdf, back to 2000) — but those carry AUM,
+    NOT SIP. SIP lives in a separate publication:
+
+        https://www.amfiindia.com/Themes/Theme1/downloads/AMFIMonthlyNote_<Month><YYYY>.pdf
+
+    Coverage is thin and irregular — 14 notes as of Aug 2025, with Sep 2024
+    missing — so this is a short series, not the FY2016-17 history quoted in the
+    press. Anything older stays CITED in equity_capital_sources.md.
+    """
+    import calendar
+    import subprocess
+    import tempfile
+    rows = []
+    for y in range(start_year, 2027):
+        for mi in range(1, 13):
+            mon = calendar.month_name[mi]
+            url = AMFI_NOTE.format(m=mon, y=y)
+            try:
+                r = requests.get(url, headers={"User-Agent": UA}, timeout=30)
+                if r.status_code != 200 or not r.content.startswith(b"%PDF"):
+                    continue
+            except Exception:
+                continue
+            with tempfile.NamedTemporaryFile(suffix=".pdf", delete=True) as f:
+                f.write(r.content); f.flush()
+                try:
+                    txt = subprocess.run(["pdftotext", f.name, "-"], capture_output=True,
+                                         text=True, timeout=60).stdout
+                except Exception:
+                    continue
+            flat = " ".join(txt.split())
+            val = _parse_sip(flat)
+            m2 = re.search(r"SIP assets account for\s*([\d.]+)%", flat, re.I)
+            if val is None:
+                print(f"  {mon[:3]} {y}: no unambiguous SIP figure — SKIPPED")
+                continue
+            rows.append({"month": pd.Timestamp(year=y, month=mi, day=1),
+                         "sip_crore": val,
+                         "sip_pct_of_aum": float(m2.group(1)) if m2 else None,
+                         "source": url.rsplit("/", 1)[-1]})
+            print(f"  {mon[:3]} {y}: SIP Rs {val:,.0f} crore"
+                  + (f", {rows[-1]['sip_pct_of_aum']}% of AUM" if m2 else ""))
+    if not rows:
+        print("  no SIP figures parsed"); return
+    d = pd.DataFrame(rows).sort_values("month")
+    CACHE.mkdir(parents=True, exist_ok=True)
+    d.to_parquet(SIP, compression="zstd", index=False)
+    print(f"  -> {SIP.name}: {len(d)} months, {d.month.min().date()} .. {d.month.max().date()}")
+
+
+IN_OWN = CACHE / "india_ownership_quarterly.parquet"
+IN_OWN_LONG = CACHE / "india_ownership_by_company.parquet"
+IN_PROXY = CACHE / "india_flow_proxy_quarterly.parquet"
+SCREENER = "https://www.screener.in/company/{sym}/"
+_HOLDER = re.compile(r"promoter|FII|DII|government|public", re.I)
+
+
+def _screener_company(sym: str):
+    """(shareholding DataFrame, market cap Rs crore) for one NSE symbol."""
+    import io
+    for path in (SCREENER.format(sym=sym) + "consolidated/", SCREENER.format(sym=sym)):
+        try:
+            r = requests.get(path, headers={"User-Agent": UA}, timeout=30)
+            if r.status_code != 200:
+                continue
+        except Exception:
+            continue
+        # Market Cap and its value are ~120 chars apart in the markup, the number
+        # living in its own <span class="number">, in Indian digit grouping
+        # ("17,69,785" = Rs 17.7 lakh crore). A short [^0-9]{0,40} window misses it.
+        mc = None
+        m = re.search(r"Market Cap.{0,200}?<span class=\"number\">([\d,]+)</span>",
+                      r.text, re.S)
+        if m:
+            mc = float(m.group(1).replace(",", ""))
+        try:
+            tabs = pd.read_html(io.StringIO(r.text))
+        except Exception:
+            continue
+        for t in tabs:
+            c0 = t.iloc[:, 0].astype(str)
+            if c0.str.contains("Promoter", case=False).any() and \
+               c0.str.contains("FII", case=False).any():
+                return t, mc
+    return None, None
+
+
+def run_india_ownership(limit: int = 60, sleep: float = 1.0) -> None:
+    """Market-cap-weighted FII/DII/promoter/retail split, from screener.in.
+
+    This is what makes the India row COMPUTED rather than cited. NSE and BSE
+    publish no aggregate ownership series that was reachable here, but
+    screener.in exposes each company's quarterly shareholding pattern, and a
+    cap-weighted aggregate over the liquid universe is a defensible market-level
+    estimate.
+
+    🔴 It is an ESTIMATE OF THE LIQUID LARGE-CAP SEGMENT, not the whole market.
+    Weighting by market cap over the most liquid names deliberately tracks where
+    institutional money actually sits; the long illiquid tail — thousands of
+    small caps with high promoter and retail ownership — is excluded, which
+    biases promoter share DOWN and institutional share UP versus a true
+    all-market figure. Stated here rather than discovered later.
+    """
+    import time
+    import screener_kit as kit
+    universe = sorted(kit.load("IN", min_turnover_usd=20_000_000))[:limit]
+    print(f"  universe: {len(universe)} liquid India names")
+    frames, caps, failed = {}, {}, []
+    for i, sym in enumerate(universe, 1):
+        t, mc = _screener_company(sym)
+        if t is None or mc is None:
+            failed.append(sym); continue
+        t = t.set_index(t.columns[0])
+        t.index = t.index.astype(str).str.replace(r"[+\s]+$", "", regex=True).str.strip()
+        keep = [ix for ix in t.index if _HOLDER.search(ix)]
+        vals = {}
+        for ix in keep:
+            row = t.loc[ix]
+            if isinstance(row, pd.DataFrame):
+                row = row.iloc[0]
+            vals[ix] = pd.to_numeric(row.astype(str).str.rstrip("%"), errors="coerce")
+        frames[sym] = pd.DataFrame(vals).T
+        caps[sym] = mc
+        if i % 15 == 0:
+            print(f"    {i}/{len(universe)} …")
+        time.sleep(sleep)
+    if not frames:
+        print("  nothing collected"); return
+
+    quarters = sorted({c for f in frames.values() for c in f.columns},
+                      key=lambda c: pd.to_datetime(c, format="%b %Y", errors="coerce")
+                      if pd.notna(pd.to_datetime(c, format="%b %Y", errors="coerce")) else pd.Timestamp.min)
+    rows = []
+    for q in quarters:
+        num, den = {}, 0.0
+        for sym, f in frames.items():
+            if q not in f.columns:
+                continue
+            w = caps[sym]
+            den += w
+            for h in f.index:
+                v = f.loc[h, q]
+                if pd.notna(v):
+                    num[h] = num.get(h, 0.0) + v * w
+        n_q = sum(1 for f in frames.values() if q in f.columns)
+        # Drop thin quarters. A handful of companies report on an off-cycle date,
+        # producing a "quarter" backed by one or two names whose cap-weighted
+        # split is that company's own, not the market's — Jul 2026 came through
+        # as n=1 with promoters at 72%. Cross-quarter comparison also needs a
+        # roughly stable panel, since a changing company set moves the aggregate
+        # for reasons that have nothing to do with ownership shifting.
+        if den > 0 and n_q >= 30:
+            rec = {"quarter": q, "n_companies": n_q}
+            rec.update({h: v / den for h, v in num.items()})
+            rows.append(rec)
+    d = pd.DataFrame(rows)
+    CACHE.mkdir(parents=True, exist_ok=True)
+    d.to_parquet(IN_OWN, compression="zstd", index=False)
+    # Also persist the PER-COMPANY panel. The aggregate alone cannot support a
+    # flow proxy: implied flow needs each company's own share and its own price
+    # path to backcast market cap, and collapsing to a market average throws
+    # both away.
+    long = []
+    for sym, f in frames.items():
+        for h in f.index:
+            for q in f.columns:
+                v = f.loc[h, q]
+                if pd.notna(v):
+                    long.append({"symbol": sym, "quarter": q, "holder": h,
+                                 "pct": float(v), "mcap_now_cr": caps[sym]})
+    pd.DataFrame(long).to_parquet(IN_OWN_LONG, compression="zstd", index=False)
+    print(f"  -> {IN_OWN_LONG.name}: {len(long):,} company-quarter-holder rows")
+    print(f"  -> {IN_OWN.name}: {len(d)} quarters, {len(frames)} companies"
+          + (f", {len(failed)} failed" if failed else ""))
+    print(d.tail(4).to_string(index=False))
+
+
+# 🔴 ohlcv_adj, NOT ohlcv. The raw India panel carries unadjusted closes, so a
+# split or bonus reads as a price collapse — backcasting market cap off it
+# produced quarterly "market returns" of -24.7% and +15.9% for a large-cap
+# panel, which is a corporate-action artifact, not the market. ohlcv_adj/IN is
+# the split/bonus-adjusted build (price_adjuster.py).
+WAREHOUSE_IN = Path("/Users/umashankar/repos/global-market-data/warehouse/ohlcv_adj/IN")
+
+
+def run_flow_proxy() -> None:
+    """Implied quarterly FII/DII flow, from ownership shares + prices.
+
+    THE IDENTITY. A holder's rupee position changes for two reasons: the price
+    moved, or they traded. Strip the first to isolate the second —
+
+        implied_flow_h(t) = V_h(t) - V_h(t-1) * (1 + r_t)
+
+    where V_h(t) is that holder's value held and r_t the cap-weighted return of
+    the same panel over the quarter. Without the (1 + r_t) term a holder who did
+    nothing in a rising market shows a large fake inflow, which is the single
+    easiest way to get this wrong.
+
+    Market cap is backcast per company as mcap_now * P(t) / P(now) from the deep
+    price panel, so each name is discounted by its OWN path rather than an index.
+
+    🔴 WHAT THIS IS NOT. It is an IMPLIED flow, not observed cash. Four gaps,
+    none of them small:
+      * Share COUNT is assumed constant. Buybacks, QIPs, promoter pledges and
+        fresh issuance all move ownership percentages with no trading by the
+        holder, and are indistinguishable here from flow.
+      * Quarterly, not daily. Everything inside a quarter nets out — the very
+        thing the FII/DII daily series would have shown.
+      * The panel is 52 liquid large caps, so this is not market-wide.
+      * A changing panel moves the aggregate on its own; quarters are compared
+        only where both ends carry the same company.
+    Directionally useful. Not a substitute for the real flow series.
+    """
+    if not IN_OWN_LONG.exists():
+        print("  run --inown first"); return
+    d = pd.read_parquet(IN_OWN_LONG)
+    d["qdate"] = pd.to_datetime(d["quarter"], format="%b %Y", errors="coerce")
+    d = d.dropna(subset=["qdate"])
+    # quarter-end price per company from the deep panel
+    parts = sorted(WAREHOUSE_IN.glob("year=*.parquet"))
+    if not parts:
+        print("  India price panel not found"); return
+    px = pd.concat([pd.read_parquet(p, columns=["Date", "Symbol", "Close"]) for p in parts],
+                   ignore_index=True)
+    px["Date"] = pd.to_datetime(px["Date"]); px["Symbol"] = px["Symbol"].astype(str).str.upper()
+    px = px[px["Symbol"].isin(d["symbol"].unique())]
+    qp = (px.set_index("Date").groupby("Symbol")["Close"].resample("QE").last()
+            .reset_index().rename(columns={"Date": "qend", "Close": "px"}))
+    latest = qp.sort_values("qend").groupby("Symbol")["px"].last().rename("px_now")
+
+    d["qend"] = d["qdate"] + pd.offsets.QuarterEnd(0)
+    m = d.merge(qp, left_on=["symbol", "qend"], right_on=["Symbol", "qend"], how="left") \
+         .merge(latest, left_on="symbol", right_index=True, how="left")
+    m = m.dropna(subset=["px", "px_now"])
+    m["mcap_t"] = m["mcap_now_cr"] * m["px"] / m["px_now"]     # backcast, constant share count
+    m["value_cr"] = m["pct"] / 100.0 * m["mcap_t"]
+
+    # PER-COMPANY, which collapses to something much simpler and strictly better.
+    # For company i, applying the identity with that company's OWN return r_i:
+    #     flow = pct_i(t)/100 * mcap_i(t) - pct_i(t-1)/100 * mcap_i(t-1) * (1+r_i)
+    # and since mcap_i(t) = mcap_i(t-1) * (1+r_i) by construction, the price term
+    # cancels exactly, leaving
+    #     flow_i = [pct_i(t) - pct_i(t-1)] / 100 * mcap_i(t)
+    #
+    # Using a single PANEL return instead leaves a composition artifact: if the
+    # stocks a holder is overweight outperform, their value rises faster than the
+    # index and the difference is misread as buying. That is what produced a
+    # +Rs 158,147 crore promoter "inflow" in Jun 2026 while the promoter SHARE
+    # was flat at 47.2% — differential performance, not a single share purchased.
+    rows = []
+    quarters = sorted(m["qend"].unique())
+    for a, b in zip(quarters, quarters[1:]):
+        A = m[m.qend == a].set_index(["symbol", "holder"])["pct"]
+        B = m[m.qend == b].set_index(["symbol", "holder"])["pct"]
+        capB = m[m.qend == b].drop_duplicates("symbol").set_index("symbol")["mcap_t"]
+        capA = m[m.qend == a].drop_duplicates("symbol").set_index("symbol")["mcap_t"]
+        common = sorted(set(capA.index) & set(capB.index))
+        if len(common) < 30:
+            continue
+        r = capB[common].sum() / capA[common].sum() - 1.0
+        both = A.index.intersection(B.index)
+        both = [(s, h) for s, h in both if s in set(common)]
+        dpct = (B.loc[both] - A.loc[both])
+        flow = dpct / 100.0 * pd.Series({k: capB[k[0]] for k in both})
+        agg = flow.groupby(level=1).sum()
+        val = (B.loc[both] / 100.0 * pd.Series({k: capB[k[0]] for k in both})).groupby(level=1).sum()
+        for h in agg.index:
+            rows.append({"quarter": pd.Timestamp(b).strftime("%b %Y"), "holder": h,
+                         "n": len(common), "mkt_return_pct": r * 100,
+                         "value_cr": val.get(h, float("nan")),
+                         "implied_flow_cr": agg[h]})
+    if not rows:
+        print("  no comparable quarter pairs"); return
+    f = pd.DataFrame(rows)
+    f.to_parquet(IN_PROXY, compression="zstd", index=False)
+    piv = f.pivot_table(index="quarter", columns="holder", values="implied_flow_cr")
+    piv = piv.reindex(sorted(piv.index, key=lambda q: pd.to_datetime(q, format="%b %Y")))
+    ret = f.drop_duplicates("quarter").set_index("quarter")["mkt_return_pct"]
+    print(f"  -> {IN_PROXY.name}: {len(f)} rows, {piv.shape[0]} quarter pairs\n")
+    print("  implied net flow, Rs crore (panel of ~50 liquid large caps)")
+    cols = [c for c in ("FIIs", "DIIs", "Promoters", "Public") if c in piv.columns]
+    print(f"  {'quarter':10s} {'mkt ret':>8s} " + " ".join(f"{c:>12s}" for c in cols))
+    for q in piv.index:
+        print(f"  {q:10s} {ret.get(q, float('nan')):7.1f}% "
+              + " ".join(f"{piv.loc[q, c]:12,.0f}" for c in cols))
+    tot = piv[cols].sum()
+    print("\n  cumulative: " + "  ".join(f"{c} {tot[c]:+,.0f}" for c in cols))
+    # Is the domestic bid COUNTERCYCLICAL? That is the absorption claim, and it
+    # is testable here even though the levels are only a proxy.
+    rr = ret.reindex(piv.index).astype(float)
+    print("\n  quarters with positive flow, and correlation with the market return:")
+    for c in cols:
+        pos = int((piv[c] > 0).sum())
+        cr = piv[c].astype(float).corr(rr)
+        print(f"    {c:10s} positive in {pos:>2}/{len(piv):<2} quarters   "
+              f"corr(flow, mkt return) = {cr:+.2f}")
+    print("  Negative correlation = buys weakness. This is the absorption behaviour "
+          "the press describes, measured rather than asserted.")
+
+
+def run_table() -> None:
+    out = ["# Who owns each equity market\n",
+           "**Read the evidence tags.** 🟢 = computed here from primary data and reproducible "
+           "by re-running `equity_ownership.py`. 🟡 = cited from public reporting, not "
+           "recomputed. The two are not interchangeable and the difference is the most "
+           "important thing on this page.\n"]
+
+    if US_OWN.exists():
+        d = pd.read_parquet(US_OWN).set_index("Date")
+        sh = us_shares(d)
+        asof = d.index.max().date()
+        tot = d["TOTAL"].iloc[-1] / 1e6
+        out.append(f"\n## 🟢 United States — COMPUTED (Fed Z.1 via FRED, as of {asof})\n")
+        out.append(f"Total corporate equity outstanding **${tot:,.1f} trillion**. Holders are "
+                   f"DIRECT holders; the household line is a residual, which is how the "
+                   f"Financial Accounts themselves derive that sector.\n")
+        out.append("\n| holder | % of US corporate equity |")
+        out.append("|---|---|")
+        for k, v in sh.items():
+            out.append(f"| {k} | **{v:.1f}%** |")
+        out.append(f"\nSum {sh.sum():.1f}%.")
+        # a decade of drift is more informative than a single snapshot
+        try:
+            past = d.loc[:str(d.index.max().year - 10)].iloc[-1]
+            holders = [c for c in d.columns if c != "TOTAL"]
+            then = (past[holders] / past["TOTAL"] * 100)
+            out.append(f"\n**Ten-year drift** (vs {past.name.date()}):\n")
+            out.append("| holder | then | now | change |")
+            out.append("|---|---|---|---|")
+            for k in sh.index:
+                out.append(f"| {k} | {then[k]:.1f}% | {sh[k]:.1f}% | {sh[k]-then[k]:+.1f}pp |")
+        except Exception:
+            pass
+    else:
+        out.append("\n## United States\n\nRun `--us` first.\n")
+
+    if IN_OWN.exists():
+        io_ = pd.read_parquet(IN_OWN)
+        cols = [c for c in ("Promoters","FIIs","DIIs","Government","Public") if c in io_.columns]
+        out.append("\n## 🟢 India ownership — COMPUTED (screener.in, cap-weighted)\n")
+        out.append(f"Market-cap-weighted shareholding across **{int(io_.n_companies.max())} liquid "
+                   f"large caps** (>$20M/day turnover), {len(io_)} quarters. "
+                   f"**This is the liquid large-cap segment, not the whole market** — excluding the "
+                   f"long illiquid tail biases promoter share DOWN and institutional share UP "
+                   f"versus a true all-market figure.\n")
+        out.append("\n| quarter | n | " + " | ".join(cols) + " |")
+        out.append("|---" * (len(cols) + 2) + "|")
+        for _, r in io_.tail(9).iterrows():
+            out.append(f"| {r.quarter} | {int(r.n_companies)} | "
+                       + " | ".join(f"{r[c]:.1f}%" if pd.notna(r[c]) else "—" for c in cols) + " |")
+        if len(io_) > 4 and {"FIIs","DIIs"} <= set(cols):
+            f0, f1 = io_.FIIs.iloc[0], io_.FIIs.iloc[-1]
+            d0, d1 = io_.DIIs.iloc[0], io_.DIIs.iloc[-1]
+            out.append(f"\n**The FII→DII crossover, measured:** FIIs {f0:.1f}% → {f1:.1f}% "
+                       f"({f1-f0:+.1f}pp), DIIs {d0:.1f}% → {d1:.1f}% ({d1-d0:+.1f}pp) over "
+                       f"{io_.quarter.iloc[0]} .. {io_.quarter.iloc[-1]}. The press figure this "
+                       f"was meant to test is a ratio crossing 1.0; here the gap closes and "
+                       f"reverses on a cap-weighted large-cap basis.")
+        out.append("\n🔴 Quarter-to-quarter moves partly reflect a CHANGING company panel, not "
+                   "only ownership shifting. Quarters backed by fewer than 30 companies are "
+                   "dropped for that reason.")
+
+    for geo, rows in CITED.items():
+        if geo == "India" and IN_OWN.exists():
+            continue          # superseded by the computed section above
+        out.append(f"\n## 🟡 {geo} — CITED, not computed\n")
+        out.append("| holder | share | note |")
+        out.append("|---|---|---|")
+        for h, s, n in rows:
+            out.append(f"| {h} | {s} | {n} |")
+
+    if IN_FLOW.exists():
+        f = pd.read_parquet(IN_FLOW)
+        out.append(f"\n## 🟢 India FLOW — COMPUTED (NSE daily, append-only)\n")
+        out.append(f"{len(f)} rows, {f.Date.min().date()} .. {f.Date.max().date()}. "
+                   f"Values ₹ crore. **This store cannot be backfilled** — NSE's endpoint "
+                   f"serves the current day only — so it accumulates from first run.\n")
+        piv = f.pivot_table(index="Date", columns="category", values="netValue")
+        out.append("\n| date | " + " | ".join(piv.columns) + " |")
+        out.append("|---" * (len(piv.columns) + 1) + "|")
+        for dt, r in piv.tail(10).iterrows():
+            out.append(f"| {dt.date()} | " + " | ".join(f"{v:+,.0f}" for v in r.values) + " |")
+
+    if SIP.exists():
+        sp = pd.read_parquet(SIP)
+        out.append("\n## 🟢 India SIP contribution — COMPUTED (AMFI monthly notes)\n")
+        out.append(f"{len(sp)} months parsed from AMFI Monthly Note PDFs, "
+                   f"{sp.month.min().date():%b %Y} .. {sp.month.max().date():%b %Y}. ₹ crore. "
+                   f"This is the *household savings* leg of Indian equity demand — the sticky, "
+                   f"payroll-linked flow that is NOT debt-financed.\n")
+        out.append("\n| month | SIP ₹ crore | % of industry AUM |")
+        out.append("|---|---|---|")
+        for _, r in sp.iterrows():
+            pct = f"{r.sip_pct_of_aum:.1f}%" if pd.notna(r.sip_pct_of_aum) else "—"
+            out.append(f"| {r.month:%b %Y} | {r.sip_crore:,.0f} | {pct} |")
+        g = (sp.sip_crore.iloc[-1] / sp.sip_crore.iloc[0] - 1) * 100
+        out.append(f"\n{g:+.1f}% over the window. Two figures are independently "
+                   f"cross-checked: Aug 2025 = 28,265 appears verbatim in that note, and "
+                   f"Aug 2024 = 23,547 matches the year-ago base quoted in the Aug 2025 note.")
+        out.append("\n🔴 Jun and Jul 2024 read as exactly 21,000 and 23,000 — those notes phrase "
+                   "the figure as a crossed THRESHOLD rather than an exact total, so treat them "
+                   "as approximate. Nov 2024 and Feb 2025 are absent: the parser returns nothing "
+                   "rather than guess when a note's wording is ambiguous.")
+
+    out.append("\n## Stock vs flow — why both are here\n")
+    out.append("Japan is the clean illustration: foreigners own roughly 30% of the float but "
+               "account for the majority of turnover, so they set the price while domestic "
+               "institutions and the BoJ hold the shares. India ran the same divergence in "
+               "reverse — DIIs became the marginal buyer well before they overtook FIIs on "
+               "holdings. Reading an ownership table as if it described who moves the market "
+               "is the standard error this page is arranged to prevent.\n")
+
+    REPORTS.mkdir(parents=True, exist_ok=True)
+    REPORT.write_text("\n".join(out) + "\n")
+    print("\n".join(out))
+    print(f"\n  -> {REPORT}")
+
+
+def run_sources() -> None:
+    print("Data access, tested 2026-08-01:\n")
+    print("  WORKS")
+    print("    FRED Z.1 (L.223 holders + total)     computed US ownership, quarterly to 2026Q1")
+    print("    NSE /api/fiidiiTradeReact            current day only, needs cookie handshake")
+    print("  DOES NOT WORK")
+    print("    NSE fiidiiTradeReact?date=...        parameter accepted and IGNORED; no backfill")
+    print("    NSE /api/historicalOR/fiidiiTrade... 404")
+    print("    AMFI Monthly Note PDFs               SOLVED: /Themes/Theme1/downloads/")
+    print("                                         AMFIMonthlyNote_<Month><YYYY>.pdf")
+    print("  DOES NOT WORK")
+    print("    amfiindia.com/modules/LatestSIPData  404 (site is Next.js, server-rendered)")
+    print("    all 28 JS chunks scanned             only /api/search/trending exists")
+    print("    portal.amfiindia.com/spages/*repo.xls  419 files, but AUM not SIP")
+    print("    api.bseindia.com FIIDIIData          returns HTML, not JSON")
+    print("    FRED BOGZ1LM153064105Q etc.          400 — wrong IDs; corrected set is in Z1 above")
+    print("\n  OPEN: AMFI SIP series, and India FII/DII history before first collector run.")
+
+
+def main() -> int:
+    ap = argparse.ArgumentParser(description=__doc__.split("\n")[1])
+    for f in ("us", "india", "sip", "inown", "flow", "table", "sources", "all"):
+        ap.add_argument(f"--{f}", action="store_true")
+    a = ap.parse_args()
+    if not any(vars(a).values()):
+        ap.print_help(); return 1
+    if a.sources:
+        run_sources(); return 0
+    if a.us or a.all:
+        run_us()
+    if a.india or a.all:
+        run_india()
+    if a.sip or a.all:
+        run_sip()
+    if a.inown or a.all:
+        run_india_ownership()
+    if a.flow or a.all:
+        run_flow_proxy()
+    if a.table or a.all:
+        run_table()
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

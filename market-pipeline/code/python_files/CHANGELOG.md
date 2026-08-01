@@ -2,6 +2,238 @@
 
 Decisions and material changes to the pipeline, newest first.
 
+## 2026-08-01 — Who actually buys stocks: capital-source review by market
+
+`reports/equity_capital_sources.md` — literature review of public sources on where equity
+demand originates per market, and how much is debt-financed. **Literature only, nothing
+recomputed**; every figure is tagged ⓟ primary (Fed Z.1, SEBI, AMFI, FINRA, BoJ, NPS) or
+ⓢ secondary (press reporting those figures), so the evidence grade is visible per claim.
+
+- **The framing correction that matters.** "DII money is sourced via debt" is only partly right.
+  The bulk of Indian DII inflow is **intermediated household savings** — SIPs, EPFO/NPS, insurance
+  premiums — which is *sticky* and payroll-linked. Debt sits **on top** as a leveraged retail
+  overlay (MTF, F&O). The distinction is the whole point: the savings layer is why drawdowns get
+  absorbed, the leverage layer is why they sometimes accelerate.
+- **India — the crossover happened.** DII holdings ₹71.76 lakh crore, FII:DII ownership ratio
+  below 1 at 0.98 (31 Mar 2025); DII net ₹6 trillion in CY2025, highest since the series began in
+  2007. Apr 2025–Apr 2026: **₹3.8 lakh crore FII selling absorbed by ₹8.85 lakh crore DII buying**
+  with the Nifty holding. SIP flows ₹3,17,502 crore FY2025-26, ~7× the FY2016-17 level.
+- **The debt overlay, quantified where public**: SEBI caps MTF at 50% funding, ~14–18% annualised
+  interest, 4–5× marketed buying power. SEBI's own F&O profit/loss study (25 Jan 2023) is the
+  authoritative source on retail derivatives outcomes.
+- **US — the buyer is the issuer.** Buybacks are the largest single source of net equity demand,
+  with some analysis arguing they are effectively the *entire* net demand over two decades.
+  Leverage: FINRA margin debt (Rule 4521) ~$1.502tn Jun 2026, reported 102.8% above long-term
+  average and +49% YoY — the rate of change matters more than the level for forced-selling risk.
+- **Japan — the central bank is a shareholder.** BoJ overtook GPIF as the largest owner of Japanese
+  stocks (¥45.1tn vs ¥44.8tn) via ETF purchases. Retail back to ~25% of trading value, a 12-year
+  high. Note turnover ≠ ownership: foreigners dominate trading while owning a minority of float.
+- **Korea — the most retail-driven major market.** Retail is **64% of transaction value** vs ~30%
+  in US/Japan. NPS equities passed 50% of assets for the first time — but 36.8% overseas vs 14.8%
+  domestic, i.e. Korea's biggest institution is increasingly a buyer of *foreign* equities.
+- **Europe is the acknowledged gap** — the searches surfaced little, and no primary figure is
+  cited rather than inventing one.
+### `equity_ownership.py` — ownership table built; half of it is measured, half is not
+
+`reports/equity_ownership_table.md`. **Every cell is tagged 🟢 computed or 🟡 cited**, because
+mixing a measured share with a press figure in one table is the main way this could mislead.
+
+- **🟢 US ownership is genuinely COMPUTED** from Fed Z.1 (L.223 direct holders) via FRED, 145
+  quarters 1990–2026Q1, $106.9tn outstanding, shares summing to 100.0%: households (residual) 46.1%,
+  foreign 18.2%, mutual funds 15.4%, ETFs 10.1%, private pensions 4.8%, state/local pensions 3.4%.
+  Households are a residual — that is how the Financial Accounts derive the sector, not a shortcut.
+- **The ten-year drift is the real finding**: mutual funds **−7.1pp**, ETFs **+5.0pp** — the
+  active→passive shift, visible directly in ownership rather than inferred from fund-flow
+  commentary. Foreign +3.9pp, state/local pensions −2.4pp.
+- **🟡 India, Japan, Korea CITED not computed**, with the stock/flow distinction made explicit:
+  Japan's foreigners own ~30% of float but the majority of turnover; Korea's retail is 64% of
+  transaction value. Reading an ownership table as "who moves the market" is the standard error.
+- **Europe left blank rather than guessed** — no primary source reached.
+- **🔴 Data access, tested and recorded in `--sources`.** WORKS: FRED Z.1; NSE
+  `/api/fiidiiTradeReact` (needs a cookie handshake). DOES NOT: NSE's `date=` parameter is accepted
+  and **silently ignored**, so the FII/DII store is **append-only and cannot be backfilled**;
+  `historicalOR` 404s; every AMFI SIP endpoint tried 404s (site renders client-side);
+  `api.bseindia.com` returns HTML. Three FRED IDs from the first attempt (`BOGZ1LM153064105Q` and
+  others) 400'd — the corrected set is in the module.
+- **Rejected: scraping a number into the SIP column to complete the picture.** SIP figures stay
+  cited in `equity_capital_sources.md` until a real endpoint is wired. An unsourced cell in a table
+  like this is worse than an empty one.
+### Quarterly flow proxy built — the absorption claim now has a measured direction
+
+`--flow`. Implied flow from the ownership series + the price panel, since no free source serves
+historical daily FII/DII (routes exhausted, below).
+
+- **Two bugs found and fixed while building it, both material.**
+  1. **Raw vs adjusted prices.** Backcasting market cap off `warehouse/ohlcv/IN` produced quarterly
+     "market returns" of −24.7% and +15.9% for a large-cap panel — corporate-action artifacts, since
+     that panel carries UNADJUSTED closes and a split reads as a price collapse. Switched to
+     `ohlcv_adj/IN` (the `price_adjuster.py` build); returns became a plausible −13.3%..+15.7%.
+  2. **A single panel return leaves a composition artifact.** It reported a **+₹158,147 crore
+     promoter "inflow" in Jun 2026 while the promoter SHARE was flat at 47.2%** — differential
+     performance of promoter-heavy names, not a single share bought. Fixed by applying the identity
+     PER COMPANY with its own return, which collapses algebraically to
+     `flow_i = Δpct_i × mcap_i(t)` because the price term cancels exactly. Same figure became
+     +₹3,104 crore.
+- **Result, 11 quarter pairs, ~50 liquid large caps (₹ crore):** cumulative **FIIs −155,420,
+  DIIs +334,423**, promoters −124,141, public −58,413.
+- **The absorption behaviour is measurable, not just asserted**: DIIs positive in **10 of 11
+  quarters** with **corr(flow, market return) = −0.50** — they buy weakness. FIIs are the mirror at
+  **+0.38** — they buy strength. That is the mechanism behind the press narrative, independently
+  measured.
+- **What it is NOT**: implied flow, not observed cash. Share COUNT is assumed constant, so buybacks,
+  QIPs and fresh issuance are indistinguishable from trading; quarterly, so everything intra-quarter
+  nets out; ~50 large caps, not market-wide. Directionally useful; not a substitute for the real
+  daily series.
+
+### Follow-up: SIP endpoint found, India ownership computed, flow history exhausted
+
+- **AMFI SIP: SOLVED.** Not an API — `amfiindia.com` is Next.js server-rendered (28 JS chunks
+  scanned, one path found, all `/modules/...` 404). Real channel is static PDFs at
+  `/Themes/Theme1/downloads/AMFIMonthlyNote_<Month><YYYY>.pdf`. 13 months parsed, ₹21,000 →
+  ₹28,265 crore. **The first parser was wrong**: an unanchored regex returned 33,430 for Aug 2025,
+  which is the EQUITY FUND inflow appearing earlier in the document. Now SIP-anchored with a
+  plausibility range; returns None rather than a wrong number. Validated twice — Aug 2025 verbatim,
+  and Aug 2024 = 23,547 matching the year-ago base quoted inside the Aug 2025 note.
+- **India OWNERSHIP: SOLVED via screener.in** (`--inown`). Cap-weighted over 52 liquid large caps,
+  12 quarters: promoters 54.0→47.2%, FIIs 19.4→20.0%, **DIIs 15.3→20.6%**. The crossover measured
+  independently rather than taken from the press. Scope stated: liquid large-cap segment only, so
+  promoter share is biased down; quarters under 30 companies dropped (Jul 2026 arrived as n=1,
+  reporting one company's 72% promoter stake as the market's).
+- **FII/DII FLOW history: NOT SOLVED, routes exhausted.** NSE ignores its `date` param; BSE's API
+  returns XHTML errors and the host is browser-blocked; NSDL `Latest.aspx` is richer than NSE
+  (equity/debt-VRR/debt-FAR/hybrid, INR+USD) but current-day only with all date params ignored;
+  `ReportDetail.aspx` renders `ddlSubReports` as an empty `<select></select>` with the list injected
+  client-side, and `ReportsListing.aspx` has no ReportDetail links to copy; `fpi.nsdl.co.in` is
+  denied by browser policy. **Next option, not built**: derive quarterly flow from the ownership
+  series — Δ(FII% × market cap) with a market-return adjustment to strip the price effect. Quarterly
+  proxy, not a daily series.
+
+## 2026-07-31 — Bond↔equity linkage measured; three of four hypotheses came back NULL
+
+`bond_equity_entropy.py` runs the two entropy directions the literature actually supports, plus
+the two practical questions behind them, on S&P 500 + the full Treasury curve, 1990–2026 (9,135
+days). Report: `reports/bond_equity_linkage.md`. **Most results are null, and that is the finding.**
+
+- **Estimator validated before use.** On synthetic data with a known 1-lag coupling, effective TE
+  recovers it at p=0.007, correctly rejects the reverse direction (p=0.64) and an independent
+  series (p=0.42). Raw TE on independent series reads 0.0015 — the finite-sample upward bias —
+  which the surrogate correction removes to 0.00008. Reporting raw TE without this correction
+  would have manufactured "information flow" between unrelated series.
+- **Transfer entropy found essentially nothing.** One of ten direction/period cells reached p<0.05
+  (equity→bond 2000-09, p=0.020), about what ten tests give by chance; several effective values are
+  NEGATIVE. At a 1-day lag there is no reliable directional flow. The plain contemporaneous
+  correlation (−0.165) carries more than any lead-lag measured. **Same shape as the entropic yield
+  curve rejection** — an elaborate method that does not beat the boring number.
+- **A bond selloff does not predict equity weakness.** 49 de-clustered episodes (20-session 10y
+  rise > 95th pct, +43bp): edge over unconditional is +0.24pp at 21d and NEGATIVE at 63/126/252d.
+- **No borrow-and-trade carry channel.** The opposite, if anything: dearest-funding quintile has the
+  HIGHEST forward 1y return (+12.47% vs +10.42% cheapest), and a funding shock correlates
+  POSITIVELY with forward equity returns (+0.213) — the procyclical reading, not a carry unwind.
+  The Q3 outlier (−2.20%) is period clustering (2000-02, 2007-08), not a rate effect.
+- **Crisis entropy: weakly supported, one event carrying it.** SampEn fell in GFC (−0.03), COVID
+  (−0.63) and 2022 (−0.06) but ROSE in dot-com (+0.14). Only COVID is a large move. Not merely
+  inverted volatility (corr −0.352), so it does measure something distinct — but on this data the
+  published claim rests almost entirely on one crisis.
+- **The one durable finding: the stock–bond correlation is not constant and has flipped twice.**
+  +0.34 in the 1990s (fell together), −0.23 to −0.41 across 2000–2021 (bonds hedged), +0.05 in
+  2022–2026 (hedge broke). So "what happens to equities in a bond selloff" has no era-independent
+  answer, because whether bonds hedge is itself regime-dependent. **Any allocation rule assuming
+  the 2010s negative correlation is assuming a regime that ended.**
+- **🔴 Effective sample size governs section 4.** Forward returns use OVERLAPPING windows: 9,135
+  rows over 37 years is ~37 independent observations at the 252-day horizon, not 9,135. A quintile
+  holding 1,800 "days" holds ~7 independent years. Stated at the top of the report, not in a
+  footnote, because the row counts otherwise imply precision that is not there.
+- **Rejected: reporting TE as a finding because the method is fashionable.** Held to the same bar
+  as Parker — measured against a baseline, bias-corrected, permutation-tested. It failed that bar.
+
+### Literature check, and a limitation it exposed (`reports/bond_equity_literature.md`)
+
+- **The correlation flip has a theory that matches our numbers.** Campbell, Pflueger & Viceira:
+  the stock–bond correlation sign tracks the **inflation/output-gap** correlation. Demand-shock
+  world (≈2001–2021) → recession brings disinflation and cuts, bonds rally as stocks fall →
+  negative correlation. Supply-shock world (1980s–90s, 2022–) → inflation scare means higher
+  yields *and* weaker growth, tightening into weakness → positive correlation, both fall. This is
+  why the selloff study found no era-independent answer: the question is underdetermined until you
+  know the shock regime.
+- **🔴 Our carry null is scoped, and the scope matters.** `--carry` used the **US 3-month bill**,
+  i.e. DOMESTIC funding. The carry trade that actually moves equities is **cross-currency** — a
+  yen-funded trade borrows at the BoJ's rate, not the Fed's, so our proxy moves with the wrong
+  central bank and the test was **structurally blind** to it. Absence of evidence, not evidence of
+  absence.
+- **August 2024 is the counter-example our method could not see.** BoJ hiked 0.1%→0.25% on 31 Jul;
+  weak US payrolls on 2 Aug compressed the differential from the other side; the yen rose ~6.15%
+  over 29 Jul–5 Aug; Topix/Nikkei fell **>12%** on 5 Aug (steepest since 1987), S&P −3%. The
+  equity drawdown was **not** caused by a bond selloff — it was a funding-rate convergence in
+  another currency, invisible to a US-yield analysis.
+- **Why the option re-emerged post-recovery**: carry is a function of policy DIVERGENCE, and
+  post-pandemic normalisation produced it directly — the Fed hiking into the 2022 inflation shock
+  while the BoJ held ultra-easy far longer. Reported mid-2026 as regaining momentum on renewed
+  divergence.
+- **Second reason section 4 found nothing**: carry unwinds are **convex** — quiet accumulation,
+  violent liquidation, self-reinforcing through margin calls (close position → buy back yen → yen
+  appreciates → more margin calls). A linear correlation on daily data averages the asymmetry to
+  approximately zero.
+### The cross-currency test, now run (`yen_carry_test.py`, `reports/yen_carry_linkage.md`)
+
+USD/JPY + Nikkei + S&P, 1996–2026 (7,703 sessions), with the real US−JP funding differential from
+FRED (`IR3TIB01JPM156N`, 2002+). Key read from the FRED key in the canonical credential store,
+never printed.
+
+- **Validation caught a false alarm in my own check.** The first run reported "August 2024 NOT
+  flagged". It was flagged — the episode spans 2024-07-18 .. 2024-09-10 with peak 2024-08-05
+  (+5.71% 5-day yen move). My validation window (25 Jul – 15 Aug) was simply too narrow, because
+  30-day clustering dates the episode at its ONSET (18 Jul), 18 days before the crash. Fixed to
+  test episode COVERAGE, and both datings are now reported since they answer different questions.
+- **🔴 The damage is CONTEMPORANEOUS, not forward — which is why every forward-looking test found
+  nothing.** Over the unwind window the Nikkei averages **−2.10%** (worst episode −49.37%) and the
+  S&P **−0.71%** (worst −42.69%). Forward returns from either dating are flat-to-positive
+  (peak-dated: +1.30pp edge, S&P 21d). Equities fall DURING an unwind and rebound after. **This
+  likely explains the bond-selloff null too** — that study only looked forward.
+- **My convexity hypothesis was WRONG, and the data says so plainly.** I predicted a hard fall on
+  yen appreciation with no matching rise on depreciation. Deciles reject it: strongest-appreciation
+  D10 has the BEST forward 5-day S&P (+0.51%), depreciation D1 the worst (−0.10%) — +0.61pp the
+  OPPOSITE way. The linear corr of +0.069 was not hiding an asymmetry.
+- **Carry LEVEL predicts nothing (corr +0.009); carry COMPRESSION does.** After a top-decile 63-day
+  compression of the US−JP differential — the unwind trigger — forward 63-day S&P is **−1.07% vs
+  +1.96% unconditional, a −3.03pp edge**. Largest effect found across both studies.
+### Growth control added — and it KILLS the one surviving result (`--growth`)
+
+The −3.03pp compression effect had an obvious alternative explanation: the differential narrows
+when the Fed cuts relative to the BoJ, and the Fed cuts when the US is deteriorating. Controls
+added from FRED — initial claims, unemployment, Chicago Fed NFCI — each shifted by its publication
+lag so it is knowable on the day applied.
+
+- **NBER's `USREC` deliberately EXCLUDED.** It is dated retroactively, often a year later, so
+  conditioning on it injects information nobody had and would have manufactured a clean result.
+- **🔴 A silent alignment bug nearly produced a fake "no data" answer.** `ICSA` is stamped on
+  Saturdays (week-ending); reindexing straight onto a trading-day index dropped 1,907 of 1,908
+  observations *before* `ffill` could carry them, while `NFCI`/`UNRATE` happened to land on
+  weekdays and survived. Fixed by aligning on the index UNION, forward-filling, then restricting
+  to trading days. Worth noting the failure was loud (zero rows) — a slightly different join would
+  have silently produced a biased subsample instead.
+- **Result: the effect does NOT survive.** Double sort over 2002–2026 (6,182 days):
+
+  | growth state | carry state | n | mean fwd 63d S&P |
+  |---|---|---|---|
+  | stable | no compression | 3,476 | +2.06% |
+  | stable | COMPRESSING | 88 | +4.20% |
+  | deteriorating | no compression | 2,088 | +3.27% |
+  | deteriorating | COMPRESSING | 530 | **−2.02%** |
+
+  The compression effect is **−5.29pp when growth is deteriorating and +2.14pp when it is not** —
+  concentrated entirely in the deteriorating bucket. Regression agrees: compression alone
+  R²=0.0009, growth alone R²=0.0729, both together R²=0.0733, i.e. **ΔR² = 0.0004**.
+- **Conclusion**: carry compression carries **no information about forward equity returns that the
+  growth outlook does not already contain**. The headline −3.03pp was the Fed easing into trouble.
+- **Rejected: claiming the sign flip as a finding.** The growth-stable/compressing cell holds 88
+  overlapping days — a couple of independent episodes on 63-day windows. The defensible claim is
+  "no effect independent of growth", NOT "compression is good for equities when growth is fine".
+- **Net across all four studies**: entropic yield curve rejected, transfer entropy null, bond
+  selloff null, domestic carry null, cross-currency carry null once controlled. The only durable
+  results are (a) the stock–bond correlation regime flip and (b) that carry-unwind damage is
+  **contemporaneous, not forward** — which is likely why every forward-looking test here found
+  nothing.
+
 ## 2026-07-31 — Entropic yield curve tested and REJECTED; ticker→exchange reference built
 
 **`entropic_yield_curve.py`** implements Parker (2017, *Entropy* 19:292) — a yield curve
