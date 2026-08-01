@@ -31,3 +31,20 @@ Branch: https://github.com/herrrickshaw/global-market-research-platform/tree/cla
 Any questions → see TEAM_BRIEFING.md or ask here
 
 Let's go! 🎯
+
+---
+UPDATE (Aug 1): 📊 Key research results published
+
+Consolidated verdicts from all repos — what works, where, at what capacity,
+and what turned out to be myth:
+
+https://claude.ai/code/artifact/da0a1ec5-0533-4ebb-8831-4b04d78ef260
+
+Highlights:
+• The edge is ILLIQUIDITY not size (+33.7% vs −1.7%)
+• Per-market playbook (India=trend, US/JP/KR/EU=mean-revert)
+• Momentum = the only multiple-testing survivor
+• Full negative-results table (what we proved false)
+• Literature audit: 85 verified refs, cite_check now enforced
+
+(Ask Uma for access if the link prompts — artifact shares from the page menu.)
