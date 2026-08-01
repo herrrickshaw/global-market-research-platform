@@ -22,12 +22,23 @@ Exit code 1 if any UNKNOWN finding (YEAR?/QUOTE? are warnings only).
 
 from __future__ import annotations
 
+import os
 import re
 import subprocess
 import sys
+import unicodedata
 from pathlib import Path
 
-BIB = Path(__file__).with_name("references.bib")
+
+def fold(s: str) -> str:
+    """Lowercase + strip accents, so cited 'Pástor' matches bib 'Pastor'."""
+    nfd = unicodedata.normalize("NFD", s)
+    return "".join(c for c in nfd if not unicodedata.combining(c)).lower()
+
+# Canonical bib lives next to this script; CITE_CHECK_BIB overrides (used by the
+# central ~/.local/share/cite_check install that the pre-commit hooks call).
+BIB = Path(os.environ.get("CITE_CHECK_BIB",
+                          Path(__file__).with_name("references.bib")))
 
 # "Name (2000)" / "Name & Name (2003)" / "Name, Name & Name (2016)" / "Name et al. (2024)"
 NAME = r"[A-Z][A-Za-zÀ-ſ'\-]+"
@@ -41,6 +52,12 @@ STOP = {
     "January", "February", "March", "April", "May", "June", "July", "August",
     "September", "October", "November", "December", "Q1", "Q2", "Q3", "Q4",
     "FY", "CAGR", "IPO", "GDP", "NSE", "BSE", "US", "EU", "UK",
+    # acronym tails of shorthand cites ("Asness-Frazzini-Pedersen QMJ (2019)",
+    # "Gu-Kelly-Xiu ML (2020)") — the full-name form is checked elsewhere
+    "QMJ", "ML", "IIMA", "AFP", "PEAD", "CAPM", "EMH", "HFT", "OBV", "CMF",
+    "DSR", "PBO", "SSRN", "TEDE", "JIER", "IJACSA", "FF",
+    # generic tails of named methods ("Magic Formula (2005)", "Domain-Driven Design (2003)")
+    "Formula", "Design", "Name",
 }
 
 
@@ -61,8 +78,9 @@ def load_bib() -> tuple[set[tuple[str, str]], set[str]]:
         if entry_author and entry_year:
             for chunk in re.split(r"\s+and\s+", entry_author):
                 surname = chunk.split(",")[0].strip()
-                surname = re.sub(r"\{\\?.\}|\{|\}|\\", "", surname)  # de-TeX
-                surname = surname.lower()
+                surname = re.sub(r"\\.", "", surname)   # drop TeX accents (\', \v, ...)
+                surname = re.sub(r"[{}]", "", surname)  # then braces
+                surname = fold(surname)
                 if not surname:
                     continue
                 # register the full surname AND its final token, so
@@ -81,9 +99,10 @@ def lead_candidates(name: str) -> set[str]:
     so generate leads under both readings and accept if either matches the bib.
     """
     name = re.sub(r"\bet\s+al\.?", "", name)
+    name = re.sub(r"[''']s\b", "", name)  # possessive: "Amihud's" -> "Amihud"
     leads = set()
     for splitter in (r"\s*(?:,|&|and|–)\s*", r"\s*(?:,|&|and|–|-)\s*"):
-        parts = [p.strip().lower() for p in re.split(splitter, name) if p.strip()]
+        parts = [fold(p.strip()) for p in re.split(splitter, name) if p.strip()]
         if parts:
             leads.add(parts[0])
     return leads
@@ -142,7 +161,8 @@ def main() -> int:
 
     n_unknown = 0
     for f in files:
-        if f.resolve() == Path(__file__).resolve():
+        # skip any copy of this script — its docstring cites example errors
+        if f.name == "cite_check.py":
             continue
         for kind, lineno, cite, msg in check_file(f, pairs, names):
             if kind == "UNKNOWN":
