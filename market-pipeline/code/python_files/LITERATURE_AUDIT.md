@@ -69,11 +69,63 @@ market-pipeline**. Two were **RESOLVED at source on 2026-08-01** (full citations
   Comparing Buy & Hold Vs. Trading Strategies based on Technical Indicators.* *JIER* 4(3).
   doi:10.52783/jier.v4i3.1785 — the "Bhute et al." attribution was **correct**; it was
   BazaarTalks' anonymous entry that was incomplete.
-- **Dhanus & Amutha (2025)** — *IJARCMSS* 8(2-II), 10–14 per BazaarTalks
-- **AlQahtani et al. (2025)** Ridge regression — no title, venue, or ID anywhere
-- **Walkshäusl et al.** F-score critique — "EconStor", no year, no journal; the in-text quote in `cost_vs_edge.py` is not traceable to a specific paper
-- **"Chaudhuri/Wu"** and **"the TEDE emerging-vs-developed study"** (`backtest_zone_rules.py`) — topic labels, not citations
-- **Gomber et al., *High-Frequency Trading*** — no year (the 2011 working paper exists)
+- ✅ **Dhanus & Amutha (2025)** — verified real (2nd pass): Dhanus, S., & Amutha, G.
+  (2025). *Back-Testing Super Trend in 15 Mins Time Frame among Top Five NIFTY-50
+  Stocks.* *IJARCMSS* 8(2-II), Apr–Jun 2025 (inspirajournals.com, PDF 871152129).
+  The Super-Trend/volume claims cited in `backtest_screeners.py` match the paper's
+  actual topic.
+- ✅ **AlQahtani et al. (2025)** — resolved: AlQahtani, H. S., Alhaddad, M. J., & Jarrah, M.
+  (2025). *Comprehensive Analysis of Machine and Deep Learning Models for Stock Market
+  Prediction.* *IJACSA* 16(8), 455–463 (same paper as BazaarTalks' anonymous IJACSA entry).
+  🔴 **Claim-level erratum found and fixed:** `full_us_market_scan.py` credited the paper
+  with recommending Ridge regression and a 5-year data window — the paper evaluates plain
+  Linear Regression vs RNN vs LSTM (LR wins), mentions Ridge only in a taxonomy figure, and
+  makes no window recommendation (its review notes ~2y sufficed; stresses retraining).
+  Comments rewritten to credit the paper only for what it shows.
+- ✅ **"Walkshäusl et al." F-score critique** — resolved at EconStor: the paper with that
+  exact title is **Krauss, C., Krüger, T. & Beerstecher, D. (2015)**, IWQW Discussion Paper
+  13/2015, FAU Erlangen-Nürnberg. 🔴 **Wrong-author citation, fixed** in `cost_vs_edge.py`
+  and both copies of PIOTROSKI_LIQUIDITY_PAPER.md. (Walkshäusl's own F-score paper is
+  *Piotroski's FSCORE: international evidence*, J. Asset Management 21, 2020 — the PDF in
+  ~/Downloads — a different work.)
+- ✅ **"Chaudhuri/Wu"** — resolved: Chaudhuri, K., & Wu, Y. (2003). *Random walk versus
+  breaking trend in stock prices: Evidence from emerging markets.* *J. Banking & Finance*
+  27(4), 575–592 (+ companion in *Managerial Finance* 2003). Full cite now in
+  `backtest_zone_rules.py`.
+- ⚠️ **"TEDE emerging-vs-developed study"** — best candidate located: Palwasha, R. I.,
+  Ahmad, N., Ahmed, R. R., Vveinhardt, J., & Štreimikienė, D. (2018). *Speed of Mean
+  Reversion: An Empirical Analysis of KSE, LSE and ISE Indices.* *TEDE* 24(4), 1435–1452.
+  But it measures mean-reversion speed **across Pakistani indices only** — it does not
+  compare emerging vs developed. `backtest_zone_rules.py` now says so and rests the
+  emerging-markets-revert claim on Chaudhuri & Wu.
+- ✅ **Gomber et al., *High-Frequency Trading*** — resolved: Gomber, P., Arndt, B., Lutat,
+  M., & Uhle, T. (2011). SSRN 1858626, Goethe University Frankfurt / Deutsche Börse.
+
+### Delta audit — 2026-08-01 second pass (files the first sweep did not cover)
+
+- **`price_prediction_backtest/docs/ACCURACY_RELIABILITY_MATRIX.md`** — all 5 sources checked:
+  - ✅ arXiv 2606.27100 *Pretrained Time-Series Foundation Models for Financial Return
+    Forecasting* — real; authors Noguer i Alonso & Pereira Franklin (June 2026); the
+    doc's "not universal engines of statistically reliable alpha" quote matches.
+  - ✅ MDPI JRFM 19(3):203 (2026) *A Comparative Study of Transformer-Based and Classical
+    Models…* — real; author Ting Liu; the doc's "ARIMA and Random Forest remain strong
+    baselines" claim matches the paper's findings.
+  - ✅ Gu–Kelly–Xiu SSRN 3159577 — correct ID.
+  - ⚠️ Two ResearchGate links (394711257 systematic review, 403314395 DL review) —
+    ResearchGate blocks fetching; titles are plausible but IDs not independently verified.
+- **`literature_scout.py` (BazaarTalks ≡ global-market-scanners, byte-identical)** —
+  "Jacob-Pradeep-Varma (IIMA 2022)" in the docstring = Jacob, J., Pradeep, K. P., &
+  Varma, J. R. (2022), *Performance of quality factor in Indian equity market*, IIMA
+  working paper / SSRN 4284686 — real. All other named papers already Tier-1 verified.
+- **`ml_signal_engine.py`** — 🔴 claim-level erratum fixed: "Multivariate CNN-LSTM
+  (RMSE 0.0162)" was presented as AlQahtani et al.'s finding, but AlQahtani only *cites*
+  it in their review table — the result is Widiputra, H., Mailangkay, A., & Gautama, E.
+  (2021), *Complexity*. Attribution corrected in the code header; full AlQahtani citation
+  (IJACSA 16(8), doi:10.14569/IJACSA.2025.0160845) also added. Caution: IJACSA 16(11)
+  carries a similar-sounding Saudi paper by Eissa Alreshidi (ARIMA/XGBoost, 7 models) —
+  do not conflate the two.
+- **`.lmstudio/extensions/backends`** (190 files with arXiv links) — vendored LM Studio
+  third-party docs, out of audit scope.
 
 ### Tier 4 — Fabricated → **DELETED in this commit**
 

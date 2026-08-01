@@ -9,7 +9,8 @@ The within-tier sweep found a median edge of +5.7% (canonical) to +13.3%
 F-score literature's central practical finding is that this edge lives in exactly
 the names you cannot trade cheaply: "consideration of liquidity constraints and an
 estimate of trading costs in this low liquidity stock universe render both
-strategies virtually unprofitable" (Walkshäusl et al., via EconStor). That is the
+strategies virtually unprofitable" (Krauss, Krüger & Beerstecher 2015, IWQW
+Discussion Paper 13/2015, FAU Erlangen-Nürnberg, via EconStor). That is the
 same finding that independently justified the user's Rs 1 crore/day floor.
 
 So: is +13.3% gross a real edge, or a spread?
