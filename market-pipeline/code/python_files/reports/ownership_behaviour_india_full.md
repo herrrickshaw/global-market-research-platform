@@ -1,6 +1,6 @@
 # Ownership and behaviour, WITHIN India
 
-1226 companies with both a shareholding pattern (as of Mar 2026) and ≥400 daily bars in the last ~3 years. Source: **NSE corporate-share-holdings-master** — the exchange's own filing, covering the full equity universe. Carries promoter/public only, so this run says nothing about FII/DII holding; see ownership_behaviour_india.md for the screener.in run that does.
+1544 companies with both a shareholding pattern (as of Mar 2026) and ≥400 daily bars in the last ~3 years. Source: **NSE corporate-share-holdings-master** — the exchange's own filing, covering the full equity universe. Carries promoter/public only, so this run says nothing about FII/DII holding; see ownership_behaviour_india.md for the screener.in run that does.
 
 
 This is the test `ownership_behaviour.md` argued for and could not run: sector, currency, calendar and index construction are held constant, and **liquidity can be controlled for directly** — which is the whole reason the 5-market version could not distinguish an ownership effect from thin trading.
@@ -10,11 +10,11 @@ This is the test `ownership_behaviour.md` argued for and could not run: sector, 
 
 | variable | min | p25 | median | p75 | max | sd |
 |---|---|---|---|---|---|---|
-| Promoters | 0.00 | 45.25 | 57.41 | 69.61 | 99.03 | 18.26 |
-| Public | 0.97 | 30.31 | 42.56 | 54.56 | 100.00 | 18.21 |
-| ann_vol | 18.61 | 35.17 | 41.92 | 48.80 | 96.80 | 10.01 |
-| autocorr | -0.25 | -0.03 | 0.01 | 0.05 | 0.31 | 0.06 |
-| median_turnover_cr | 0.01 | 1.21 | 6.76 | 26.48 | 2183.67 | 134.38 |
+| Promoters | 0.00 | 44.60 | 57.23 | 69.36 | 99.03 | 18.30 |
+| Public | 0.97 | 30.59 | 42.64 | 55.23 | 100.00 | 18.25 |
+| ann_vol | 18.61 | 35.42 | 41.88 | 48.69 | 156.92 | 10.35 |
+| autocorr | -0.25 | -0.03 | 0.01 | 0.05 | 0.31 | 0.07 |
+| median_turnover_cr | 0.01 | 1.20 | 6.04 | 24.77 | 2183.67 | 126.63 |
 
 ## 2. Raw cross-sectional correlations
 
@@ -23,8 +23,8 @@ Before any control — this is the naive answer, and section 3 exists because it
 
 | ownership | vs ann_vol | vs autocorr | vs var_ratio | vs amihud (illiq) |
 |---|---|---|---|---|
-| Promoters | +0.053 | +0.003 | -0.044 | +0.035 |
-| Public | -0.054 | -0.002 | +0.044 | -0.035 |
+| Promoters | +0.034 | -0.008 | -0.052 | +0.050 |
+| Public | -0.035 | +0.008 | +0.052 | -0.050 |
 
 ## 3. 🔴 Double sort — does the effect survive a liquidity control?
 
@@ -38,9 +38,9 @@ Stocks are split into liquidity terciles by median rupee turnover, then into own
 
 | liquidity | low promoter | mid | high promoter | spread |
 |---|---|---|---|---|
-| illiquid | +0.006 (99) | +0.001 (131) | -0.007 (179) | **-0.012** |
-| mid | +0.007 (124) | +0.017 (146) | +0.016 (138) | **+0.009** |
-| liquid | +0.008 (186) | +0.013 (131) | +0.003 (92) | **-0.005** |
+| illiquid | -0.000 (121) | -0.002 (164) | -0.007 (230) | **-0.007** |
+| mid | +0.014 (163) | +0.015 (182) | +0.020 (169) | **+0.006** |
+| liquid | +0.009 (231) | +0.013 (168) | -0.001 (116) | **-0.010** |
 
 → INCONSISTENT across liquidity rows — does NOT survive; the raw correlation was liquidity.
 
@@ -48,11 +48,11 @@ Stocks are split into liquidity terciles by median rupee turnover, then into own
 
 | liquidity | low promoter | mid | high promoter | spread |
 |---|---|---|---|---|
-| illiquid | +47.620 (99) | +46.112 (131) | +44.947 (179) | **-2.673** |
-| mid | +43.953 (124) | +42.996 (146) | +41.762 (138) | **-2.191** |
-| liquid | +37.798 (186) | +36.696 (131) | +38.601 (92) | **+0.804** |
+| illiquid | +46.323 (121) | +46.270 (164) | +44.841 (230) | **-1.482** |
+| mid | +45.144 (163) | +42.819 (182) | +42.033 (169) | **-3.112** |
+| liquid | +38.594 (231) | +36.911 (168) | +38.046 (116) | **-0.548** |
 
-→ INCONSISTENT across liquidity rows — does NOT survive; the raw correlation was liquidity.
+→ CONSISTENT in sign and MATERIAL (1.714 vs sd 10.354) — survives the liquidity control.
 
 ### by Public — retail / non-institutional float
 
@@ -61,9 +61,9 @@ Stocks are split into liquidity terciles by median rupee turnover, then into own
 
 | liquidity | low public float | mid | high public float | spread |
 |---|---|---|---|---|
-| illiquid | -0.007 (178) | +0.000 (132) | +0.006 (99) | **+0.012** |
-| mid | +0.016 (139) | +0.017 (144) | +0.008 (125) | **-0.009** |
-| liquid | +0.003 (92) | +0.014 (132) | +0.008 (185) | **+0.005** |
+| illiquid | -0.007 (229) | -0.002 (165) | -0.000 (121) | **+0.007** |
+| mid | +0.019 (170) | +0.015 (181) | +0.014 (163) | **-0.006** |
+| liquid | -0.000 (117) | +0.012 (167) | +0.009 (231) | **+0.009** |
 
 → INCONSISTENT across liquidity rows — does NOT survive; the raw correlation was liquidity.
 
@@ -71,24 +71,24 @@ Stocks are split into liquidity terciles by median rupee turnover, then into own
 
 | liquidity | low public float | mid | high public float | spread |
 |---|---|---|---|---|
-| illiquid | +44.809 (178) | +46.289 (132) | +47.620 (99) | **+2.811** |
-| mid | +41.723 (139) | +42.977 (144) | +44.021 (125) | **+2.298** |
-| liquid | +38.601 (92) | +36.740 (132) | +37.773 (185) | **-0.828** |
+| illiquid | +44.808 (229) | +46.307 (165) | +46.323 (121) | **+1.515** |
+| mid | +41.999 (170) | +42.855 (181) | +45.144 (163) | **+3.146** |
+| liquid | +38.050 (117) | +36.901 (167) | +38.594 (231) | **+0.544** |
 
-→ INCONSISTENT across liquidity rows — does NOT survive; the raw correlation was liquidity.
+→ CONSISTENT in sign and MATERIAL (1.735 vs sd 10.354) — survives the liquidity control.
 
 ## 4. Regression — ownership beyond size and liquidity
 
 | dependent | ownership var | spec | R² | coef | t-stat |
 |---|---|---|---|---|---|
-| autocorr | Promoters | alone | 0.000 | +0.00001 | +0.10 |
-| autocorr | Promoters | + turn | 0.013 | +0.00011 | +1.02 |
-| autocorr | Public | alone | 0.000 | -0.00001 | -0.09 |
-| autocorr | Public | + turn | 0.013 | -0.00010 | -1.00 |
-| ann_vol | Promoters | alone | 0.003 | +0.02930 | +1.87 |
-| ann_vol | Promoters | + turn | 0.160 | -0.02152 | -1.46 |
-| ann_vol | Public | alone | 0.003 | -0.02994 | -1.91 |
-| ann_vol | Public | + turn | 0.160 | +0.02076 | +1.40 |
+| autocorr | Promoters | alone | 0.000 | -0.00003 | -0.30 |
+| autocorr | Promoters | + turn | 0.017 | +0.00008 | +0.86 |
+| autocorr | Public | alone | 0.000 | +0.00003 | +0.30 |
+| autocorr | Public | + turn | 0.017 | -0.00008 | -0.85 |
+| ann_vol | Promoters | alone | 0.001 | +0.01923 | +1.34 |
+| ann_vol | Promoters | + turn | 0.135 | -0.02836 | -2.06 |
+| ann_vol | Public | alone | 0.001 | -0.01961 | -1.36 |
+| ann_vol | Public | + turn | 0.134 | +0.02778 | +2.01 |
 
 |t| > ~2 is conventionally significant at 5%. **The comparison that matters is whether a coefficient SURVIVES the addition of liquidity and size** — not whether it is significant alone. A coefficient that collapses when log_turn enters was measuring liquidity wearing an ownership label.
 
