@@ -58,6 +58,33 @@ mixing a measured share with a press figure in one table is the main way this co
 - **Rejected: scraping a number into the SIP column to complete the picture.** SIP figures stay
   cited in `equity_capital_sources.md` until a real endpoint is wired. An unsourced cell in a table
   like this is worse than an empty one.
+### Quarterly flow proxy built — the absorption claim now has a measured direction
+
+`--flow`. Implied flow from the ownership series + the price panel, since no free source serves
+historical daily FII/DII (routes exhausted, below).
+
+- **Two bugs found and fixed while building it, both material.**
+  1. **Raw vs adjusted prices.** Backcasting market cap off `warehouse/ohlcv/IN` produced quarterly
+     "market returns" of −24.7% and +15.9% for a large-cap panel — corporate-action artifacts, since
+     that panel carries UNADJUSTED closes and a split reads as a price collapse. Switched to
+     `ohlcv_adj/IN` (the `price_adjuster.py` build); returns became a plausible −13.3%..+15.7%.
+  2. **A single panel return leaves a composition artifact.** It reported a **+₹158,147 crore
+     promoter "inflow" in Jun 2026 while the promoter SHARE was flat at 47.2%** — differential
+     performance of promoter-heavy names, not a single share bought. Fixed by applying the identity
+     PER COMPANY with its own return, which collapses algebraically to
+     `flow_i = Δpct_i × mcap_i(t)` because the price term cancels exactly. Same figure became
+     +₹3,104 crore.
+- **Result, 11 quarter pairs, ~50 liquid large caps (₹ crore):** cumulative **FIIs −155,420,
+  DIIs +334,423**, promoters −124,141, public −58,413.
+- **The absorption behaviour is measurable, not just asserted**: DIIs positive in **10 of 11
+  quarters** with **corr(flow, market return) = −0.50** — they buy weakness. FIIs are the mirror at
+  **+0.38** — they buy strength. That is the mechanism behind the press narrative, independently
+  measured.
+- **What it is NOT**: implied flow, not observed cash. Share COUNT is assumed constant, so buybacks,
+  QIPs and fresh issuance are indistinguishable from trading; quarterly, so everything intra-quarter
+  nets out; ~50 large caps, not market-wide. Directionally useful; not a substitute for the real
+  daily series.
+
 ### Follow-up: SIP endpoint found, India ownership computed, flow history exhausted
 
 - **AMFI SIP: SOLVED.** Not an API — `amfiindia.com` is Next.js server-rendered (28 JS chunks

@@ -309,6 +309,8 @@ def run_sip(start_year: int = 2023) -> None:
 
 
 IN_OWN = CACHE / "india_ownership_quarterly.parquet"
+IN_OWN_LONG = CACHE / "india_ownership_by_company.parquet"
+IN_PROXY = CACHE / "india_flow_proxy_quarterly.parquet"
 SCREENER = "https://www.screener.in/company/{sym}/"
 _HOLDER = re.compile(r"promoter|FII|DII|government|public", re.I)
 
@@ -414,9 +416,146 @@ def run_india_ownership(limit: int = 60, sleep: float = 1.0) -> None:
     d = pd.DataFrame(rows)
     CACHE.mkdir(parents=True, exist_ok=True)
     d.to_parquet(IN_OWN, compression="zstd", index=False)
+    # Also persist the PER-COMPANY panel. The aggregate alone cannot support a
+    # flow proxy: implied flow needs each company's own share and its own price
+    # path to backcast market cap, and collapsing to a market average throws
+    # both away.
+    long = []
+    for sym, f in frames.items():
+        for h in f.index:
+            for q in f.columns:
+                v = f.loc[h, q]
+                if pd.notna(v):
+                    long.append({"symbol": sym, "quarter": q, "holder": h,
+                                 "pct": float(v), "mcap_now_cr": caps[sym]})
+    pd.DataFrame(long).to_parquet(IN_OWN_LONG, compression="zstd", index=False)
+    print(f"  -> {IN_OWN_LONG.name}: {len(long):,} company-quarter-holder rows")
     print(f"  -> {IN_OWN.name}: {len(d)} quarters, {len(frames)} companies"
           + (f", {len(failed)} failed" if failed else ""))
     print(d.tail(4).to_string(index=False))
+
+
+# 🔴 ohlcv_adj, NOT ohlcv. The raw India panel carries unadjusted closes, so a
+# split or bonus reads as a price collapse — backcasting market cap off it
+# produced quarterly "market returns" of -24.7% and +15.9% for a large-cap
+# panel, which is a corporate-action artifact, not the market. ohlcv_adj/IN is
+# the split/bonus-adjusted build (price_adjuster.py).
+WAREHOUSE_IN = Path("/Users/umashankar/repos/global-market-data/warehouse/ohlcv_adj/IN")
+
+
+def run_flow_proxy() -> None:
+    """Implied quarterly FII/DII flow, from ownership shares + prices.
+
+    THE IDENTITY. A holder's rupee position changes for two reasons: the price
+    moved, or they traded. Strip the first to isolate the second —
+
+        implied_flow_h(t) = V_h(t) - V_h(t-1) * (1 + r_t)
+
+    where V_h(t) is that holder's value held and r_t the cap-weighted return of
+    the same panel over the quarter. Without the (1 + r_t) term a holder who did
+    nothing in a rising market shows a large fake inflow, which is the single
+    easiest way to get this wrong.
+
+    Market cap is backcast per company as mcap_now * P(t) / P(now) from the deep
+    price panel, so each name is discounted by its OWN path rather than an index.
+
+    🔴 WHAT THIS IS NOT. It is an IMPLIED flow, not observed cash. Four gaps,
+    none of them small:
+      * Share COUNT is assumed constant. Buybacks, QIPs, promoter pledges and
+        fresh issuance all move ownership percentages with no trading by the
+        holder, and are indistinguishable here from flow.
+      * Quarterly, not daily. Everything inside a quarter nets out — the very
+        thing the FII/DII daily series would have shown.
+      * The panel is 52 liquid large caps, so this is not market-wide.
+      * A changing panel moves the aggregate on its own; quarters are compared
+        only where both ends carry the same company.
+    Directionally useful. Not a substitute for the real flow series.
+    """
+    if not IN_OWN_LONG.exists():
+        print("  run --inown first"); return
+    d = pd.read_parquet(IN_OWN_LONG)
+    d["qdate"] = pd.to_datetime(d["quarter"], format="%b %Y", errors="coerce")
+    d = d.dropna(subset=["qdate"])
+    # quarter-end price per company from the deep panel
+    parts = sorted(WAREHOUSE_IN.glob("year=*.parquet"))
+    if not parts:
+        print("  India price panel not found"); return
+    px = pd.concat([pd.read_parquet(p, columns=["Date", "Symbol", "Close"]) for p in parts],
+                   ignore_index=True)
+    px["Date"] = pd.to_datetime(px["Date"]); px["Symbol"] = px["Symbol"].astype(str).str.upper()
+    px = px[px["Symbol"].isin(d["symbol"].unique())]
+    qp = (px.set_index("Date").groupby("Symbol")["Close"].resample("QE").last()
+            .reset_index().rename(columns={"Date": "qend", "Close": "px"}))
+    latest = qp.sort_values("qend").groupby("Symbol")["px"].last().rename("px_now")
+
+    d["qend"] = d["qdate"] + pd.offsets.QuarterEnd(0)
+    m = d.merge(qp, left_on=["symbol", "qend"], right_on=["Symbol", "qend"], how="left") \
+         .merge(latest, left_on="symbol", right_index=True, how="left")
+    m = m.dropna(subset=["px", "px_now"])
+    m["mcap_t"] = m["mcap_now_cr"] * m["px"] / m["px_now"]     # backcast, constant share count
+    m["value_cr"] = m["pct"] / 100.0 * m["mcap_t"]
+
+    # PER-COMPANY, which collapses to something much simpler and strictly better.
+    # For company i, applying the identity with that company's OWN return r_i:
+    #     flow = pct_i(t)/100 * mcap_i(t) - pct_i(t-1)/100 * mcap_i(t-1) * (1+r_i)
+    # and since mcap_i(t) = mcap_i(t-1) * (1+r_i) by construction, the price term
+    # cancels exactly, leaving
+    #     flow_i = [pct_i(t) - pct_i(t-1)] / 100 * mcap_i(t)
+    #
+    # Using a single PANEL return instead leaves a composition artifact: if the
+    # stocks a holder is overweight outperform, their value rises faster than the
+    # index and the difference is misread as buying. That is what produced a
+    # +Rs 158,147 crore promoter "inflow" in Jun 2026 while the promoter SHARE
+    # was flat at 47.2% — differential performance, not a single share purchased.
+    rows = []
+    quarters = sorted(m["qend"].unique())
+    for a, b in zip(quarters, quarters[1:]):
+        A = m[m.qend == a].set_index(["symbol", "holder"])["pct"]
+        B = m[m.qend == b].set_index(["symbol", "holder"])["pct"]
+        capB = m[m.qend == b].drop_duplicates("symbol").set_index("symbol")["mcap_t"]
+        capA = m[m.qend == a].drop_duplicates("symbol").set_index("symbol")["mcap_t"]
+        common = sorted(set(capA.index) & set(capB.index))
+        if len(common) < 30:
+            continue
+        r = capB[common].sum() / capA[common].sum() - 1.0
+        both = A.index.intersection(B.index)
+        both = [(s, h) for s, h in both if s in set(common)]
+        dpct = (B.loc[both] - A.loc[both])
+        flow = dpct / 100.0 * pd.Series({k: capB[k[0]] for k in both})
+        agg = flow.groupby(level=1).sum()
+        val = (B.loc[both] / 100.0 * pd.Series({k: capB[k[0]] for k in both})).groupby(level=1).sum()
+        for h in agg.index:
+            rows.append({"quarter": pd.Timestamp(b).strftime("%b %Y"), "holder": h,
+                         "n": len(common), "mkt_return_pct": r * 100,
+                         "value_cr": val.get(h, float("nan")),
+                         "implied_flow_cr": agg[h]})
+    if not rows:
+        print("  no comparable quarter pairs"); return
+    f = pd.DataFrame(rows)
+    f.to_parquet(IN_PROXY, compression="zstd", index=False)
+    piv = f.pivot_table(index="quarter", columns="holder", values="implied_flow_cr")
+    piv = piv.reindex(sorted(piv.index, key=lambda q: pd.to_datetime(q, format="%b %Y")))
+    ret = f.drop_duplicates("quarter").set_index("quarter")["mkt_return_pct"]
+    print(f"  -> {IN_PROXY.name}: {len(f)} rows, {piv.shape[0]} quarter pairs\n")
+    print("  implied net flow, Rs crore (panel of ~50 liquid large caps)")
+    cols = [c for c in ("FIIs", "DIIs", "Promoters", "Public") if c in piv.columns]
+    print(f"  {'quarter':10s} {'mkt ret':>8s} " + " ".join(f"{c:>12s}" for c in cols))
+    for q in piv.index:
+        print(f"  {q:10s} {ret.get(q, float('nan')):7.1f}% "
+              + " ".join(f"{piv.loc[q, c]:12,.0f}" for c in cols))
+    tot = piv[cols].sum()
+    print("\n  cumulative: " + "  ".join(f"{c} {tot[c]:+,.0f}" for c in cols))
+    # Is the domestic bid COUNTERCYCLICAL? That is the absorption claim, and it
+    # is testable here even though the levels are only a proxy.
+    rr = ret.reindex(piv.index).astype(float)
+    print("\n  quarters with positive flow, and correlation with the market return:")
+    for c in cols:
+        pos = int((piv[c] > 0).sum())
+        cr = piv[c].astype(float).corr(rr)
+        print(f"    {c:10s} positive in {pos:>2}/{len(piv):<2} quarters   "
+              f"corr(flow, mkt return) = {cr:+.2f}")
+    print("  Negative correlation = buys weakness. This is the absorption behaviour "
+          "the press describes, measured rather than asserted.")
 
 
 def run_table() -> None:
@@ -558,7 +697,7 @@ def run_sources() -> None:
 
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[1])
-    for f in ("us", "india", "sip", "inown", "table", "sources", "all"):
+    for f in ("us", "india", "sip", "inown", "flow", "table", "sources", "all"):
         ap.add_argument(f"--{f}", action="store_true")
     a = ap.parse_args()
     if not any(vars(a).values()):
@@ -573,6 +712,8 @@ def main() -> int:
         run_sip()
     if a.inown or a.all:
         run_india_ownership()
+    if a.flow or a.all:
+        run_flow_proxy()
     if a.table or a.all:
         run_table()
     return 0
