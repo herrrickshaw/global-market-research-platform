@@ -32,16 +32,23 @@ from __future__ import annotations
 
 import argparse
 import glob
+import re
 import subprocess
 import sys
+from datetime import date, datetime
 from io import StringIO
 from pathlib import Path
+from typing import Optional
 
 import pandas as pd
 
 HERE = Path(__file__).resolve().parent
 
 # market → (scan glob, symbol column, price column, yfinance suffix)
+# The scan is produced at 03:00 and consumed at 06:30 the SAME day, so a
+# workbook older than today means the producing job did not run.
+MAX_SCAN_AGE_DAYS = 0
+
 MARKETS = {
     "IN": ("indian_full_scan/indian_full_scan_*.xlsx", "Symbol", "LTP", ".NS"),
     "US": ("us_full_scan/us_full_scan_*.xlsx", "Symbol", "LTP", ""),
@@ -136,6 +143,21 @@ def fresh_quotes(tickers: list[str]) -> dict[str, float]:
     return out
 
 
+_SCAN_DATE = re.compile(r"_(\d{8})_\d{4}\.xlsx$")
+
+
+def scan_age_days(path: str) -> Optional[int]:
+    """Days between the workbook's own datestamp and today. None if unparseable."""
+    m = _SCAN_DATE.search(Path(path).name)
+    if not m:
+        return None
+    try:
+        stamp = datetime.strptime(m.group(1), "%Y%m%d").date()
+    except ValueError:
+        return None
+    return (date.today() - stamp).days
+
+
 def reconcile(market: str, sample: int, tolerance: float) -> bool:
     """Returns True if the market PASSES."""
     pat, sym_col, px_col, suffix = MARKETS[market]
@@ -144,6 +166,26 @@ def reconcile(market: str, sample: int, tolerance: float) -> bool:
         print(f"  [{market}] no scan workbook — SKIP")
         return True
     scan_path = files[-1]
+
+    # 🔴 IS THIS EVEN TODAY'S SCAN? Check before comparing a single price.
+    #
+    # `files[-1]` is just the newest file on disk, which is NOT the same as a
+    # scan from today. When the 03:00 mailer-data job does not run, the 06:30
+    # send silently reuses YESTERDAY's workbook, and the staleness only surfaces
+    # later as price drift — an inference, several steps removed from the cause.
+    #
+    # That is exactly what happened on Sat 2026-08-01: mailer-data is scheduled
+    # Mon–Sat but `pmset` wakes weekdays only, so the Mac slept through 03:00,
+    # the send fell back to Friday's 20260731 workbook, and this module reported
+    # "4/8 stale (worst 63MOONS 9.0%)". True, but it names the symptom. The
+    # cause is one day of missing data, and saying so directly is the difference
+    # between "prices look off" and "the scan never ran".
+    age = scan_age_days(scan_path)
+    if age is not None and age > MAX_SCAN_AGE_DAYS:
+        print(f"  [{market}] ❌ STALE WORKBOOK — {Path(scan_path).name} is {age} day(s) old; "
+              f"expected today's scan ({date.today():%Y-%m-%d}). The scan step did not run. "
+              f"Price drift below is a CONSEQUENCE, not the cause.")
+        return False
 
     df = pd.read_excel(scan_path, sheet_name="All_Stocks")
     if sym_col not in df.columns or px_col not in df.columns:
