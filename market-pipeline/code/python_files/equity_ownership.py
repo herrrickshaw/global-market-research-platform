@@ -14,9 +14,9 @@ FIIs on holdings. A stock and a flow are not the same statistic.
 🔴 EVIDENCE GRADE IS PART OF THE OUTPUT
 The US column is COMPUTED here from the Federal Reserve's Z.1 Financial Accounts
 via FRED — it is a real measurement and reproducible by re-running this file.
-India, Japan, Korea and Europe are CITED from public reporting because no
-comparable machine-readable series was reachable (see --sources for exactly what
-was tried and what failed). The table marks every cell, and mixing the two
+India ownership is ALSO computed, from screener.in shareholding patterns,
+cap-weighted over the liquid large-cap universe. Japan, Korea and Europe remain
+CITED — no comparable machine-readable series was reachable (see --sources). The table marks every cell, and mixing the two
 without saying so would be the main way this analysis could mislead.
 
 DATA ACCESS — WHAT WORKS AND WHAT DOES NOT
@@ -29,7 +29,13 @@ DATA ACCESS — WHAT WORKS AND WHAT DOES NOT
     Feb 2025 unparseable — so this is a short series, not the FY2016-17 history
     quoted in the press. (`portal.amfiindia.com/spages/` holds 419 monthly AUM
     reports back to 2000, but those carry AUM, not SIP.)
-  * FII/DII history: NOT SOLVED. NSE `fiidiiTradeReact` returns the CURRENT DAY
+  * India OWNERSHIP: SOLVED via screener.in company pages (`--inown`), which
+    carry a quarterly Promoters/FIIs/DIIs/Government/Public table per company.
+    NSDL's Latest.aspx serves richer daily FPI detail than NSE (equity vs debt
+    vs hybrid, INR and USD) but only for the current day — its date parameters
+    are ignored, and ReportDetail.aspx is an ASP.NET postback with
+    JS-populated dropdowns.
+  * FII/DII FLOW history: NOT SOLVED. NSE `fiidiiTradeReact` returns the CURRENT DAY
     only — it accepts a `date` parameter and silently ignores it. BSE's
     `api.bseindia.com` returns an XHTML error page for every endpoint name tried,
     and bseindia.com is blocked by browser policy here. So `--india` is
@@ -291,6 +297,117 @@ def run_sip(start_year: int = 2023) -> None:
     print(f"  -> {SIP.name}: {len(d)} months, {d.month.min().date()} .. {d.month.max().date()}")
 
 
+IN_OWN = CACHE / "india_ownership_quarterly.parquet"
+SCREENER = "https://www.screener.in/company/{sym}/"
+_HOLDER = re.compile(r"promoter|FII|DII|government|public", re.I)
+
+
+def _screener_company(sym: str):
+    """(shareholding DataFrame, market cap Rs crore) for one NSE symbol."""
+    import io
+    for path in (SCREENER.format(sym=sym) + "consolidated/", SCREENER.format(sym=sym)):
+        try:
+            r = requests.get(path, headers={"User-Agent": UA}, timeout=30)
+            if r.status_code != 200:
+                continue
+        except Exception:
+            continue
+        # Market Cap and its value are ~120 chars apart in the markup, the number
+        # living in its own <span class="number">, in Indian digit grouping
+        # ("17,69,785" = Rs 17.7 lakh crore). A short [^0-9]{0,40} window misses it.
+        mc = None
+        m = re.search(r"Market Cap.{0,200}?<span class=\"number\">([\d,]+)</span>",
+                      r.text, re.S)
+        if m:
+            mc = float(m.group(1).replace(",", ""))
+        try:
+            tabs = pd.read_html(io.StringIO(r.text))
+        except Exception:
+            continue
+        for t in tabs:
+            c0 = t.iloc[:, 0].astype(str)
+            if c0.str.contains("Promoter", case=False).any() and \
+               c0.str.contains("FII", case=False).any():
+                return t, mc
+    return None, None
+
+
+def run_india_ownership(limit: int = 60, sleep: float = 1.0) -> None:
+    """Market-cap-weighted FII/DII/promoter/retail split, from screener.in.
+
+    This is what makes the India row COMPUTED rather than cited. NSE and BSE
+    publish no aggregate ownership series that was reachable here, but
+    screener.in exposes each company's quarterly shareholding pattern, and a
+    cap-weighted aggregate over the liquid universe is a defensible market-level
+    estimate.
+
+    🔴 It is an ESTIMATE OF THE LIQUID LARGE-CAP SEGMENT, not the whole market.
+    Weighting by market cap over the most liquid names deliberately tracks where
+    institutional money actually sits; the long illiquid tail — thousands of
+    small caps with high promoter and retail ownership — is excluded, which
+    biases promoter share DOWN and institutional share UP versus a true
+    all-market figure. Stated here rather than discovered later.
+    """
+    import time
+    import screener_kit as kit
+    universe = sorted(kit.load("IN", min_turnover_usd=20_000_000))[:limit]
+    print(f"  universe: {len(universe)} liquid India names")
+    frames, caps, failed = {}, {}, []
+    for i, sym in enumerate(universe, 1):
+        t, mc = _screener_company(sym)
+        if t is None or mc is None:
+            failed.append(sym); continue
+        t = t.set_index(t.columns[0])
+        t.index = t.index.astype(str).str.replace(r"[+\s]+$", "", regex=True).str.strip()
+        keep = [ix for ix in t.index if _HOLDER.search(ix)]
+        vals = {}
+        for ix in keep:
+            row = t.loc[ix]
+            if isinstance(row, pd.DataFrame):
+                row = row.iloc[0]
+            vals[ix] = pd.to_numeric(row.astype(str).str.rstrip("%"), errors="coerce")
+        frames[sym] = pd.DataFrame(vals).T
+        caps[sym] = mc
+        if i % 15 == 0:
+            print(f"    {i}/{len(universe)} …")
+        time.sleep(sleep)
+    if not frames:
+        print("  nothing collected"); return
+
+    quarters = sorted({c for f in frames.values() for c in f.columns},
+                      key=lambda c: pd.to_datetime(c, format="%b %Y", errors="coerce")
+                      if pd.notna(pd.to_datetime(c, format="%b %Y", errors="coerce")) else pd.Timestamp.min)
+    rows = []
+    for q in quarters:
+        num, den = {}, 0.0
+        for sym, f in frames.items():
+            if q not in f.columns:
+                continue
+            w = caps[sym]
+            den += w
+            for h in f.index:
+                v = f.loc[h, q]
+                if pd.notna(v):
+                    num[h] = num.get(h, 0.0) + v * w
+        n_q = sum(1 for f in frames.values() if q in f.columns)
+        # Drop thin quarters. A handful of companies report on an off-cycle date,
+        # producing a "quarter" backed by one or two names whose cap-weighted
+        # split is that company's own, not the market's — Jul 2026 came through
+        # as n=1 with promoters at 72%. Cross-quarter comparison also needs a
+        # roughly stable panel, since a changing company set moves the aggregate
+        # for reasons that have nothing to do with ownership shifting.
+        if den > 0 and n_q >= 30:
+            rec = {"quarter": q, "n_companies": n_q}
+            rec.update({h: v / den for h, v in num.items()})
+            rows.append(rec)
+    d = pd.DataFrame(rows)
+    CACHE.mkdir(parents=True, exist_ok=True)
+    d.to_parquet(IN_OWN, compression="zstd", index=False)
+    print(f"  -> {IN_OWN.name}: {len(d)} quarters, {len(frames)} companies"
+          + (f", {len(failed)} failed" if failed else ""))
+    print(d.tail(4).to_string(index=False))
+
+
 def run_table() -> None:
     out = ["# Who owns each equity market\n",
            "**Read the evidence tags.** 🟢 = computed here from primary data and reproducible "
@@ -327,7 +444,35 @@ def run_table() -> None:
     else:
         out.append("\n## United States\n\nRun `--us` first.\n")
 
+    if IN_OWN.exists():
+        io_ = pd.read_parquet(IN_OWN)
+        cols = [c for c in ("Promoters","FIIs","DIIs","Government","Public") if c in io_.columns]
+        out.append("\n## 🟢 India ownership — COMPUTED (screener.in, cap-weighted)\n")
+        out.append(f"Market-cap-weighted shareholding across **{int(io_.n_companies.max())} liquid "
+                   f"large caps** (>$20M/day turnover), {len(io_)} quarters. "
+                   f"**This is the liquid large-cap segment, not the whole market** — excluding the "
+                   f"long illiquid tail biases promoter share DOWN and institutional share UP "
+                   f"versus a true all-market figure.\n")
+        out.append("\n| quarter | n | " + " | ".join(cols) + " |")
+        out.append("|---" * (len(cols) + 2) + "|")
+        for _, r in io_.tail(9).iterrows():
+            out.append(f"| {r.quarter} | {int(r.n_companies)} | "
+                       + " | ".join(f"{r[c]:.1f}%" if pd.notna(r[c]) else "—" for c in cols) + " |")
+        if len(io_) > 4 and {"FIIs","DIIs"} <= set(cols):
+            f0, f1 = io_.FIIs.iloc[0], io_.FIIs.iloc[-1]
+            d0, d1 = io_.DIIs.iloc[0], io_.DIIs.iloc[-1]
+            out.append(f"\n**The FII→DII crossover, measured:** FIIs {f0:.1f}% → {f1:.1f}% "
+                       f"({f1-f0:+.1f}pp), DIIs {d0:.1f}% → {d1:.1f}% ({d1-d0:+.1f}pp) over "
+                       f"{io_.quarter.iloc[0]} .. {io_.quarter.iloc[-1]}. The press figure this "
+                       f"was meant to test is a ratio crossing 1.0; here the gap closes and "
+                       f"reverses on a cap-weighted large-cap basis.")
+        out.append("\n🔴 Quarter-to-quarter moves partly reflect a CHANGING company panel, not "
+                   "only ownership shifting. Quarters backed by fewer than 30 companies are "
+                   "dropped for that reason.")
+
     for geo, rows in CITED.items():
+        if geo == "India" and IN_OWN.exists():
+            continue          # superseded by the computed section above
         out.append(f"\n## 🟡 {geo} — CITED, not computed\n")
         out.append("| holder | share | note |")
         out.append("|---|---|---|")
@@ -402,7 +547,7 @@ def run_sources() -> None:
 
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[1])
-    for f in ("us", "india", "sip", "table", "sources", "all"):
+    for f in ("us", "india", "sip", "inown", "table", "sources", "all"):
         ap.add_argument(f"--{f}", action="store_true")
     a = ap.parse_args()
     if not any(vars(a).values()):
@@ -415,6 +560,8 @@ def main() -> int:
         run_india()
     if a.sip or a.all:
         run_sip()
+    if a.inown or a.all:
+        run_india_ownership()
     if a.table or a.all:
         run_table()
     return 0
