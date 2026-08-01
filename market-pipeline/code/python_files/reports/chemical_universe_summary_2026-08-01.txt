@@ -1,0 +1,17 @@
+====================================================================================================
+CHEMICAL IMPORT SUBSTITUTION: FULL UNIVERSE ANALYSIS
+====================================================================================================
+
+Analysis Date: 2026-08-01 18:39:15
+Data Source: TradeStat EIDB (FY2025-26)
+Total Chemicals Analyzed: 2719
+Total Chemical Imports: $100990.0bn
+Total FY30 Savings Potential: $39931.4bn
+
+TIER-WISE SUMMARY:
+----------------------------------------------------------------------------------------------------
+Tier 1 (Load-bearing)                    |    2 chemicals | $ 2841.2bn imports | $1420.6bn FY30 savings
+Tier 2 (Dependent)                       |   47 chemicals | $32582.6bn imports | $9774.7bn FY30 savings
+Tier 2.5 (Quick-win)                     |  237 chemicals | $42739.5bn imports | $25643.7bn FY30 savings
+Tier 3 (Specialty)                       | 2193 chemicals | $19590.8bn imports | $2931.8bn FY30 savings
+Monitor (Low priority)                   |  240 chemicals | $ 3235.9bn imports | $ 160.6bn FY30 savings
