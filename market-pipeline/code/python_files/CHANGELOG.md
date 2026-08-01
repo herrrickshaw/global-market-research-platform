@@ -2,6 +2,38 @@
 
 Decisions and material changes to the pipeline, newest first.
 
+## 2026-08-01 — Does ownership show up in behaviour? Partly, and one prediction was backwards
+
+`ownership_behaviour.py` + `reports/ownership_behaviour.md`. Takes the ownership tables from
+`equity_ownership.py` and asks whether the composition is visible in the price series.
+
+- **Theory it is tested against**: Gabaix & Koijen's *inelastic markets hypothesis* — $1 into the
+  aggregate market moves its value ~$5 (multiplier 3–8), because the marginal holders (index
+  funds, pensions, insurers) hold mandated allocation bands and cannot absorb flow. Ownership IS
+  the demand elasticity, so it should be visible in how violently price moves per unit of flow.
+- **The five markets split two-and-three, cleanly**: US/JP/EU show NEGATIVE daily autocorrelation
+  (−0.088 to −0.036) and variance ratios BELOW 1 (0.84–0.91) — mean-reverting. IN/KR show POSITIVE
+  autocorrelation (+0.037, +0.038) and VR ≈ 1 — trending or random-walk.
+- **Volatility lines up**: Korea (64% retail turnover, the highest of any major market) is the most
+  volatile at 27.3%; the US (deepest institutional intermediation) the least at 19.0%.
+- **🔴 My stated prediction was WRONG on direction.** The module predicted retail-heavy markets
+  would show short-horizon REVERSAL. The data says the opposite — reversal is present where
+  INSTITUTIONS dominate and absent where retail does. Recorded rather than quietly re-framed.
+- **🔴 And there is a competing mechanism that needs no behaviour at all.** Positive daily
+  autocorrelation in thin markets is classically produced by NON-SYNCHRONOUS TRADING: when index
+  constituents do not all trade at the close, today's index partly reflects yesterday's
+  information. India's public float is ~11.4% with promoters at 47.2%, so thin trading is exactly
+  what to expect. This design cannot separate that from an ownership effect.
+- **Kurtosis does not sort by ownership at all** — India fattest (15.1), Japan thinnest (6.3), no
+  mapping to retail share or float. Whatever drives tail risk here, it is not composition.
+- **🔴 n = 5. This describes, it does not test.** Five points cannot support a cross-sectional
+  claim; no controls for sector mix, currency regime or index construction. One comparability trap
+  is named explicitly in the report: Korea's 64% is a share of TRANSACTION VALUE while India's
+  11.4% is an OWNERSHIP share — convenient to put in one column, not quite legitimate.
+- **The study this argues for and does not deliver**: rank stocks WITHIN India by promoter/
+  institutional holding (per-company data `equity_ownership.py` already collects) and compare
+  behaviour across buckets — sector, currency and calendar held constant, n in the hundreds.
+
 ## 2026-08-01 — Scan-freshness check: name the missing run, not the price drift
 
 The Sat 01 Aug run reported two failures — "reconcile: 2 market(s) stale scan prices" and
