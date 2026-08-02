@@ -62,6 +62,19 @@ WAREHOUSE = Path("/Users/umashankar/repos/global-market-data/warehouse/ohlcv")
 PANELS = {
     "IN": WAREHOUSE / "IN",
     "US": WAREHOUSE / "US",
+    # 🔴 JP/KR/EU WERE NEVER HERE, and that — not any failure — is why those three
+    # panels sat frozen at 2026-07-22/23 for ten days. There was no error to find:
+    # no scheduled process had ever folded a bar into them. Their file mtimes are
+    # all 23 Jul because a one-off backfill built them and nothing succeeded it.
+    #
+    # What made it invisible: daily_research.sh DOES scan all three every morning,
+    # and [R13]'s ledger reports them "0d ok [fresh]" — but that ledger tracks the
+    # SCAN SNAPSHOTS (market_ingest.py reads japan_scan/*.xlsx), a different asset
+    # from these OHLCV panels. A green light on one store masked a ten-day-stale
+    # other, which is the same failure shape as zone_regime.json's empty `asof`.
+    "JP": WAREHOUSE / "JP",
+    "KR": WAREHOUSE / "KR",
+    "EU": WAREHOUSE / "EU",
 }
 # Backups live OUTSIDE the dataset directory. A pre-write .bak kept beside the
 # partition it backs up is read straight back as a second copy of that year:
@@ -167,7 +180,42 @@ def _fresh_in() -> pd.DataFrame:
     return pd.DataFrame() if kept is None else kept
 
 
-FRESH = {"US": _fresh_us, "IN": _fresh_in}
+def _fresh_cached(name: str):
+    """Fold from ohlcv_cache's per-market long panel.
+
+    The JP/KR/EU scans already download real OHLCV to compute EMA50/200DMA and
+    already persist it here — ohlcv_JAPAN/KOREA/EUROPE.parquet were current to
+    2026-07-31 while the warehouse panels sat at 07-22/23. Nothing was missing;
+    nothing was wired.
+
+    Deliberately NOT sourced from the scan workbooks, which is the other obvious
+    candidate and is wrong: japan_scan/*.xlsx carries LTP + derived metrics and no
+    Open/High/Low/Volume at all, so folding those would invent three-quarters of
+    every bar. A Close-only row that LOOKS like a bar is worse here than no row.
+    """
+    def _f() -> pd.DataFrame:
+        try:
+            import ohlcv_cache as _oc
+            cdir = _oc.CACHE_DIR
+        except Exception:
+            cdir = HERE.parent.parent / "data" / "bhavcopy_cache"
+        f = Path(cdir) / f"ohlcv_{name}.parquet"
+        if not f.exists():
+            return pd.DataFrame()
+        try:
+            d = pd.read_parquet(f)
+        except Exception:
+            return pd.DataFrame()
+        if d.empty or not {"Date", "Symbol", "Close"} <= set(d.columns):
+            return pd.DataFrame()
+        return d[[c for c in COLS if c in d.columns]]
+    return _f
+
+
+FRESH = {"US": _fresh_us, "IN": _fresh_in,
+         "JP": _fresh_cached("JAPAN"),
+         "KR": _fresh_cached("KOREA"),
+         "EU": _fresh_cached("EUROPE")}
 
 # Which exchange suffixes legitimately belong to each market. Membership is
 # decided HERE, by an explicit table — not by ticker shape. "Carries a suffix"
@@ -176,6 +224,23 @@ FRESH = {"US": _fresh_us, "IN": _fresh_in}
 # tell those apart. When the panels move to fully exchange-qualified symbols,
 # this map is the one place that changes.
 _MARKET_SUFFIXES = {
+    # Membership is decided by an exchange ALLOWLIST, never by ticker shape.
+    # JP is .T; KR is .KS (KOSPI) and .KQ (KOSDAQ); EU is the 19 European
+    # exchange suffixes already enumerated in CLAUDE.md — without the full set a
+    # legitimate .VI or .WA name reads as foreign and gets stripped from its own
+    # market's fold.
+    "JP": {"T"},
+    "KR": {"KS", "KQ"},
+    # The last five (Istanbul, Budapest, Prague, Tallinn, Vilnius) are NOT in
+    # CLAUDE.md's 17-exchange list, but they ARE in the EU panel — 8/4/2/1/1
+    # symbols. Enforcing the documented list instead of the actual one would have
+    # dropped their fresh bars while every other EU name updated, freezing 16
+    # symbols mid-panel: a partial staleness that no row-count guard can see and
+    # nothing downstream would report. The allowlist has to describe the panel
+    # that exists, not the one the docs describe.
+    "EU": {"DE", "F", "L", "PA", "MI", "MC", "ST", "HE", "CO", "OL",
+           "AS", "BR", "LS", "IR", "SW", "WA", "AT", "VI",
+           "IS", "BD", "PR", "TL", "VS"},
     "IN": {"NS", "BO"},        # NSE, BSE
     "US": set(),               # US panel is bare today; add NYSE/NASDAQ codes here
 }

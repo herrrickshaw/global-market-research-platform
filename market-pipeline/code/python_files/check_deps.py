@@ -60,6 +60,30 @@ STEPS = {
     "8  Korea market scan":      "full_korea_market_scan.py",
     "9  Correlation scans (x5)": "market_correlation_scan.py",
     "14 Build + send mailer":    "build_mailer.py",
+
+    # ── daily_research.sh entry points ───────────────────────────────────────
+    # 🔴 THIS HALF WAS UNCOVERED. STEPS listed only the scan/mailer scripts, so
+    # every dependency reachable solely through the research partition was
+    # invisible to the audit. psycopg2 is the proof: pg_client.py imports it at
+    # module level (required by this file's own rules), system_state.py imports
+    # pg_client, completeness_graph.py imports system_state — a three-hop chain
+    # this scanner follows perfectly, and never walked, because no STEPS entry
+    # led to it. check_deps printed "deps OK" while [R9] died on ImportError.
+    #
+    # The scan half and the research half run on the same interpreter; auditing
+    # only one of them means the banner is answering a narrower question than
+    # the one it appears to answer.
+    "R5 Zone-rule backtests":    "backtest_zone_rules.py",
+    "R6 PE-anomaly backtests":   "backtest_pe_anomalies.py",
+    "R7 Custom indices":         "custom_indices.py",
+    "R8 Consistency audit":      "consistency_audit.py",
+    "R9 Completeness audit":     "completeness_graph.py",
+    "R10 Regime survival":       "strategy_regime_survival.py",
+    "R11 Paper track":           "paper_track.py",
+    "R12 Watchlist digest":      "watchlist_digest.py",
+    "R13 Bundle validation":     "bundle_validation.py",
+    "R15 System state":          "system_state.py",
+    "R16 Data index":            "data_index.py",
 }
 
 # stdlib we must not flag. sys.stdlib_module_names exists on 3.10+; 3.9 needs help.
