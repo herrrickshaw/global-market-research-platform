@@ -4,7 +4,7 @@ Every row was **probed**, not recalled. `status` is the result of this tool's ow
 
 🔴 **This is a lower bound, not a complete enumeration.** Neither NSE nor BSE publishes a machine-readable index of its own endpoints, so the candidate list is hand-assembled. It says *at least these exist* — never *only these exist*.
 
-**47 endpoints probed · 30 live · 18 live and currently unused.**
+**53 endpoints probed · 39 live · 25 live and currently unused.**
 
 ## The gap — live, parseable, and nobody is reading it
 
@@ -12,7 +12,14 @@ This is the answer to "we only fetch what we need": everything below is availabl
 
 | site | endpoint | category | what it gives | payload |
 |---|---|---|---|---|
+| bse | `bse-results-tab` | fundamentals | filed financial results | scalar str |
+| bse | `bse-stock-trading` | microstructure | trading detail / market depth | object keys=['CktLimit', 'ExDate', 'MktCapFF', 'MktCapFull', 'TTQ', 'T |
+| bse | `bse-advance-decline` | microstructure | advance/decline breadth | list[78] keys=['Advance', 'Advance_PER', 'DN', 'Decline', 'Decline_PER |
+| bse | `bse-high-low` | microstructure | 52-week high/low hits | object keys=['Table', 'Table1'] max_list=128 |
 | bse | `bse-quote` | prices | price series for a scrip | object keys=['CurrDate', 'CurrTime', 'CurrVal', 'Data', 'HighVal', 'Hi |
+| bse | `bse-scrip-header` | prices | live quote header (O/H/L/C) | object keys=['Cmpname', 'CompResp', 'CurrRate', 'Header'] max_list=0 |
+| bse | `bse-index-archive` | prices | daily close, every BSE index | object keys=['Table'] max_list=130 |
+| bse | `bse-bhavcopy` | prices | official EOD bhavcopy CSV | application/octet-stream 835639b |
 | bse | `bse-comheader` | reference | company header / industry | object keys=['CEPS', 'COName', 'COdetails', 'ConCEPS', 'ConEPS', 'ConN |
 | nse | `nse-corp-info` | corp-actions | per-company announcements bundle | object keys=['borad_meeting', 'corporate_actions', 'financial_results' |
 | nse | `nse-liveequity-deriv` | derivatives | live F&O board | object keys=['data', 'marketStatus', 'timestamp'] max_list=3 |
@@ -38,6 +45,8 @@ Attribution greps our own `.py` files only — **never `.venv`**. The `nse` and 
 | site | endpoint | what it gives | consumed by |
 |---|---|---|---|
 | bse | `bse-announcements` | corporate announcements | `earnings_dates_bse.py,exchange_extras.py` |
+| bse | `bse-corp-actions` | corporate actions (ex-dates) | `earnings_dates_bse.py,exchange_extras.py` |
+| bse | `bse-forth-results` | forthcoming results calendar | `exchange_extras.py` |
 | bse | `bse-scrip-list` | full active scrip master | `earnings_dates_bse.py` |
 | nse | `nse-announcements` | every corporate announcement | `earnings_dates_bse.py` |
 | nse | `nse-board-meetings` | board meeting calendar | `collect_board_meetings.py,earnings_dates_nse.py` |
@@ -68,31 +77,28 @@ No path token distinctive enough to grep for, so usage is genuinely unknown — 
 | nse | `nse-optionchain-idx` | DEAD | http 404 | index option chain w/ OI+IV |
 | nse | `nse-quote-derivative` | DEAD | http 404 | futures/options quotes per underlying |
 | other | `ibbi-cirp` | DEAD | http 404 | insolvency (CIRP) cases |
+| bse | `bse-ann-subcat` | EMPTY | empty object | announcement category taxonomy |
 | nse | `nse-optionchain-eq` | EMPTY | empty object | single-stock option chain |
 | nse | `nse-historical-cm` | ERROR | http 503 | daily OHLCV history |
 | other | `ccil-gsec` | ERROR | http 503 | G-sec / repo / forex benchmarks |
 | other | `rbi-wss` | HTML | html 56118b, 1 table(s) | weekly statistical supplement |
 | other | `sebi-fpi` | HTML-NOAPI | html 8203b, 0 table(s) | FPI investment statistics |
 | other | `nsdl-fpi` | HTML-NOAPI | html 247b, 0 table(s) | FPI fortnightly AUC |
-| bse | `bse-forthcoming` | UNREACHABLE | TooManyRedirects | forthcoming corporate actions |
-| bse | `bse-shareholding` | UNREACHABLE | TooManyRedirects | promoter/public shareholding |
-| bse | `bse-results` | UNREACHABLE | TooManyRedirects | filed financial results |
-| bse | `bse-indices` | UNREACHABLE | TooManyRedirects | index levels |
 
 ## Coverage by category
 
 | category | live | unused |
 |---|---|---|
-| corp-actions | 2 | 1 |
+| corp-actions | 3 | 1 |
 | derivatives | 1 | 1 |
-| disclosure | 4 | 1 |
+| disclosure | 5 | 1 |
 | flows | 2 | 1 |
-| fundamentals | 1 | 0 |
+| fundamentals | 2 | 1 |
 | funds | 1 | 0 |
 | macro | 1 | 0 |
-| microstructure | 3 | 3 |
+| microstructure | 6 | 6 |
 | ownership | 2 | 1 |
-| prices | 2 | 2 |
+| prices | 5 | 5 |
 | reference | 6 | 5 |
 | regulatory | 1 | 0 |
 | segment | 4 | 3 |

@@ -71,6 +71,20 @@ UA = ("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 "
 # large-cap: a thin name can 200-with-no-rows and make a live endpoint look empty.
 SYM_NSE, SYM_BSE = "RELIANCE", "500325"
 
+
+def _recent_weekday():
+    """Most recent weekday, for endpoints that require a date.
+
+    Deliberately not holiday-aware: if it lands on one, the endpoint answers with
+    an empty payload and `_shape` reports EMPTY — which is an honest result, not a
+    false DEAD. Anything cleverer would need a calendar this file should not own.
+    """
+    from datetime import date, timedelta
+    d = date.today()
+    while d.weekday() > 4:
+        d -= timedelta(days=1)
+    return d
+
 # ─────────────────────────────────────────────────────────────────────────────
 # CANDIDATES.  (site, id, category, url, what it gives you)
 #
@@ -126,14 +140,31 @@ CANDIDATES = [
     ("nse", "nse-debt-market",       "segment",     f"{NSE_API}/liveBonds-traded-on-cm?type=bonds", "traded bonds"),
 
     # ── BSE ──────────────────────────────────────────────────────────────────
+    # 🔴 Route names here are NOT guessed. The first pass invented four
+    # plausible-looking ones (Corpforthcoming, FinancialResultsNew, Sensexview,
+    # ShpPromoterNPublicShareholding); every one 302'd to api.bseindia.com/
+    # error_Bse.html, which redirects back — surfacing as TooManyRedirects, a
+    # symptom that looks like a transport fault and is actually "no such route".
+    # The names below are read off the maintained `bse` package's own request
+    # sites and then PROBED here, so they carry the same receipts as everything
+    # else. See docs: a wrong route name is indistinguishable from a dead API
+    # unless you look at the redirect target.
     ("bse", "bse-scrip-list",        "reference",   f"{BSE_API}/ListofScripData/w?Group=&Scripcode=&industry=&segment=Equity&status=Active", "full active scrip master"),
     ("bse", "bse-quote",             "prices",      f"{BSE_API}/StockReachGraph/w?scripcode={SYM_BSE}&flag=0&fromdate=&todate=&seriesid=", "price series for a scrip"),
     ("bse", "bse-comheader",         "reference",   f"{BSE_API}/ComHeadernew/w?quotetype=EQ&scripcode={SYM_BSE}&seriesid=", "company header / industry"),
     ("bse", "bse-announcements",     "disclosure",  f"{BSE_API}/AnnGetData/w?strCat=-1&strPrevDate=&strScrip=&strSearch=P&strToDate=&strType=C&subcategory=-1", "corporate announcements"),
-    ("bse", "bse-forthcoming",       "corp-actions", f"{BSE_API}/Corpforthcoming/w?scripcode=&ddlcategorys=E&ddlindustrys=&segment=0&strSearch=S", "forthcoming corporate actions"),
-    ("bse", "bse-shareholding",      "ownership",   f"{BSE_API}/ShpPromoterNPublicShareholding/w?scripcode={SYM_BSE}&qtrid=", "promoter/public shareholding"),
-    ("bse", "bse-results",           "fundamentals", f"{BSE_API}/FinancialResultsNew/w?scripcode={SYM_BSE}&seriesid=&type=", "filed financial results"),
-    ("bse", "bse-indices",           "prices",      f"{BSE_API}/Sensexview/w?index=SENSEX&type=D", "index levels"),
+    ("bse", "bse-scrip-header",      "prices",      f"{BSE_API}/getScripHeaderData/w?scripcode={SYM_BSE}", "live quote header (O/H/L/C)"),
+    ("bse", "bse-stock-trading",     "microstructure", f"{BSE_API}/StockTrading/w?flag=&quotetype=EQ&scripcode={SYM_BSE}", "trading detail / market depth"),
+    ("bse", "bse-results-tab",       "fundamentals", f"{BSE_API}/TabResults_PAR/w?scripcode={SYM_BSE}&tabtype=RESULTS", "filed financial results"),
+    # A same-day window on this one returns list[0] even when the route is fine —
+    # "forthcoming" means future-dated, so probing [today, today] tests nothing.
+    ("bse", "bse-forth-results",     "disclosure",  f"{BSE_API}/Corpforthresults/w?fromdate={{d8}}&todate={{d8fwd}}", "forthcoming results calendar"),
+    ("bse", "bse-corp-actions",      "corp-actions", f"{BSE_API}/DefaultData/w?Fdate={{d8}}&TDate={{d8}}&Purposecode=&scripcode=", "corporate actions (ex-dates)"),
+    ("bse", "bse-index-archive",     "prices",      f"{BSE_API}/IndexArchDailyAll/w?fmdt={{dslash}}&todt={{dslash}}&index=All&period=D", "daily close, every BSE index"),
+    ("bse", "bse-advance-decline",   "microstructure", f"{BSE_API}/advanceDecline/w?val=Index", "advance/decline breadth"),
+    ("bse", "bse-high-low",          "microstructure", f"{BSE_API}/MktHighLowData/w?HLflag=H&Grpcode=&indexcode=&scripcode=", "52-week high/low hits"),
+    ("bse", "bse-ann-subcat",        "reference",   f"{BSE_API}/AnnSubCategoryGetData/w", "announcement category taxonomy"),
+    ("bse", "bse-bhavcopy",          "prices",      "https://www.bseindia.com/download/BhavCopy/Equity/BhavCopy_BSE_CM_0_0_0_{d8}_F_0000.CSV", "official EOD bhavcopy CSV"),
 
     # ── Regulators / registries / other public ───────────────────────────────
     ("other", "amfi-nav",            "funds",       "https://www.amfiindia.com/spages/NAVAll.txt", "daily NAV, every MF scheme"),
@@ -288,22 +319,78 @@ def probe(site_filter: str = "", sleep: float = 1.2) -> int:
     todo = [c for c in CANDIDATES if not site_filter or c[0] == site_filter]
     print(f"  probing {len(todo)} endpoints"
           f"{' for ' + site_filter if site_filter else ''}")
+    day = _recent_weekday()
     rows, sessions = [], {}
     for i, (site, cid, cat, url, gives) in enumerate(todo, 1):
+        from datetime import timedelta
+        url = (url.replace("{d8fwd}", (day + timedelta(days=45)).strftime("%Y%m%d"))
+                  .replace("{d8}", day.strftime("%Y%m%d"))
+                  .replace("{dslash}", day.strftime("%d/%m/%Y")))
         if site not in sessions:
             sessions[site] = _session(site)
         s = sessions[site]
+        # 🔴 `Accept: application/json` makes BSE 404 a FILE download. The bhavcopy
+        # CSV returns 200/835KB with minimal headers and 404/8KB with the JSON
+        # Accept — same URL, same session age, isolated with a 90s cooldown so
+        # throttling could not explain it. Content negotiation, not a dead route.
+        # File endpoints therefore ask for */*, and only JSON APIs claim JSON.
+        is_file = re.search(r"\.(csv|zip|txt|xls[xm]?|json)$", url.split("?")[0], re.I)
         try:
-            r = s.get(url, timeout=25)
+            r = s.get(url, timeout=25,
+                      headers={"Accept": "*/*"} if is_file else None)
             http = r.status_code
             if http == 200:
                 status, n, shape = _shape(r)
             elif http in (401, 403):
                 status, n, shape = "AUTH/BLOCKED", 0, f"http {http}"
             elif http == 404:
+                # 🔴 A 404 IS NOT PROOF OF A DEAD ROUTE — at least not on BSE,
+                # which soft-blocks a client that has been going too fast by
+                # answering 404 with an ~8KB HTML page instead of 429. The
+                # bhavcopy URL returned 200/835KB, then 404 twice under load,
+                # then 200/835KB again after a 120s pause. Same URL throughout.
+                # So: back off and ask once more, and only then call it dead.
+                # Without this the index confidently records live endpoints as
+                # gone, which is the most expensive error it could make.
+                # Two escalating pauses. 20s was measured to be too short after a
+                # burst — the bhavcopy URL still 404'd at 20s and returned 200 at
+                # 120s. Cheap in practice: this path only runs on an actual 404.
+                # It is the SESSION that gets flagged, not just the pace. The same
+                # bhavcopy URL 404'd at 20s AND at 90s on the burst session, but
+                # returned 200/835KB on a freshly handshaken one. So the retry
+                # rebuilds the session rather than only waiting — waiting alone
+                # was measured and is not sufficient.
                 status, n, shape = "DEAD", 0, "http 404"
+                for wait in (15, 60):
+                    time.sleep(wait)
+                    try:
+                        s2 = _session(site)          # fresh cookies, fresh handshake
+                        r2 = s2.get(url, timeout=30)
+                    except Exception as e2:
+                        status, n, shape = "ERROR", 0, f"404 then {type(e2).__name__}"
+                        break
+                    if r2.status_code == 200:
+                        http = 200
+                        status, n, shape = _shape(r2)
+                        shape += f" (recovered: fresh session +{wait}s)"
+                        sessions[site] = s2          # keep the good one
+                        break
+                    status, n, shape = "DEAD", 0, f"http 404 (fresh session, {wait}s)"
             else:
                 status, n, shape = "ERROR", 0, f"http {http}"
+        except requests.TooManyRedirects:
+            # Do NOT report this as UNREACHABLE. BSE answers an unknown route with
+            # 302 -> error_Bse.html, which redirects back; the loop surfaces as a
+            # transport exception and reads as "the host is broken" when it really
+            # means "that route does not exist". Re-ask without following, so the
+            # index records the redirect TARGET as the evidence.
+            try:
+                rr = s.get(url, timeout=20, allow_redirects=False)
+                loc = rr.headers.get("location", "")
+                http, status, n = rr.status_code, "BAD-ROUTE", 0
+                shape = f"302 -> {loc[:60]}" if loc else "redirect loop"
+            except Exception as e2:
+                http, status, n, shape = 0, "UNREACHABLE", 0, type(e2).__name__
         except Exception as e:
             http, status, n, shape = 0, "UNREACHABLE", 0, type(e).__name__
         used = _used_by_repo(url)
