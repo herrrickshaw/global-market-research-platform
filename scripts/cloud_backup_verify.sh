@@ -32,10 +32,15 @@ for entry in "${TREES[@]}"; do
   name="${entry%%|*}"; src="${entry#*|}"
   [ -e "$src" ] || { echo "SKIP $name: local $src missing"; continue; }
 
-  # local size with the backup's excludes (lmdb, tmp/bak, .DS_Store)
+  # local size with the backup's excludes (lmdb, tmp/bak, .DS_Store) PLUS the
+  # EXTRA_EXCLUDES from cloud_backup.sh (nse_xbrl/xml, ohlc): those subdirs are
+  # deliberately NOT raw-synced — they ride in tar.zst via backup_archives — so
+  # counting them locally guarantees a false FAIL once they grow (2026-08-02:
+  # exactly that happened; nse_xbrl at 5.6G produced "49% apart" on a good sync).
   lbytes=$(find "$src" -type f \
       ! -name "*.tmp" ! -name "*.bak" ! -name "*.parquet.bak" ! -name ".DS_Store" \
-      ! -path "*/ohlcv.lmdb/*" -print0 2>/dev/null \
+      ! -path "*/ohlcv.lmdb/*" ! -path "*/nse_xbrl/xml/*" ! -path "*/ohlc/*" \
+      -print0 2>/dev/null \
     | xargs -0 stat -f%z 2>/dev/null | awk '{s+=$1} END {print s+0}')
 
   rjson=$("$RCLONE" size "$REMOTE/current/$name" --json 2>/dev/null) || rjson=""
