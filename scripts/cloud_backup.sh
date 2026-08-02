@@ -93,6 +93,21 @@ TREES=(
   "cache_seed|$HOME/market-pipeline/code/python_files/cache_seed"
   "gmd_cache_seed|$HOME/repos/global-market-data/cache_seed"
   "warehouse_duckdb|$HOME/data"
+  # 🔴 ADDED 2026-08-02 — THE OMISSION THAT MATTERED MOST. This tree is the deep
+  # price panel every downstream thing reads: the regime backtest, zone rules,
+  # warehouse_insights, ownership studies. It was the ONE dataset not backed up
+  # here, so its only off-machine copy was the git remote. That is not nothing —
+  # `git restore` is exactly what recovered 10M rows of CN bars on 2026-08-02
+  # after they were deleted locally — but 1.1GB of parquet in plain git objects
+  # (LFS budget is exhausted; see the repo's .gitattributes) is a poor long-term
+  # store, and a single remote is a single point of failure for the one dataset
+  # that cannot be re-derived quickly.
+  #
+  # Safe to sync raw, unlike market_cache/ohlc: 109 files totalling 1.1GB, so the
+  # per-request throttling documented below simply does not apply. Year
+  # partitioning is what makes that true — a daily run rewrites one ~8MB file per
+  # market, not thousands of per-ticker files.
+  "gmd_warehouse|$HOME/repos/global-market-data/warehouse"
   # The tar.zst archives of many-small-file static subdirs (see below). Synced as
   # its own dataset so excluding the raw files does not lose the data.
   "backup_archives|$HOME/.backup-archives"
@@ -124,7 +139,11 @@ TREES=(
 # a live-updated directory's archive frozen on day one. That script builds the
 # archive; this one consumes it, so the exclusion below is safe only because
 # backup_archives is in TREES above.
-EXTRA_EXCLUDES=(--exclude "nse_xbrl/xml/**" --exclude "ohlc/**")
+# _backup/** is warehouse_update.py's pre-write .bak copies of partitions that are
+# themselves in this sync — backing up a backup, and 45MB of pure duplication.
+# (It also must never live inside the panel dir; pyarrow would read a .bak back as
+# a second copy of that year. Kept outside, and excluded here.)
+EXTRA_EXCLUDES=(--exclude "nse_xbrl/xml/**" --exclude "ohlc/**" --exclude "_backup/**")
 
 {
   echo "=== cloud backup $(date '+%Y-%m-%d %H:%M:%S %Z') -> $REMOTE ==="
