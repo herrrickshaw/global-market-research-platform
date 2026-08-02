@@ -11,9 +11,11 @@
   --step-2:clamp(1.3rem,1.2rem + .5vw,1.6rem);
   --surface:#fff;--surface-alt:var(--oc-gray-0);--border:var(--oc-gray-3);--text:var(--oc-gray-9);--text-mut:var(--oc-gray-6);
 }
-@media(prefers-color-scheme:dark){
-  :root{--surface:#14161a;--surface-alt:#1b1e24;--border:#2c2e36;--text:#e8e8e8;--text-mut:#9a9a9a}
-}
+/* Dark-mode token overrides intentionally removed: this blog standardizes on
+   always-white-background/always-black-text regardless of OS theme. A
+   prefers-color-scheme:dark block here previously flipped --surface-alt/etc
+   to dark values while text stayed forced black (see BW-override fix),
+   producing invisible black-on-dark text in published posts. */
 
 /* === Card (Tremor recipe: generous padding, subtle border, near-invisible shadow) === */
 .dv2-card{background:var(--surface-alt);border:1px solid var(--border);border-radius:var(--radius);
@@ -30,7 +32,6 @@
 .dv2-table td{padding:var(--sp-2) var(--sp-3);border-bottom:1px solid var(--border)}
 .dv2-table tbody tr:nth-child(even){background:var(--surface-alt)}
 .dv2-table tbody tr:hover{background:var(--oc-gray-1)}
-@media(prefers-color-scheme:dark){.dv2-table tbody tr:hover{background:#232630}}
 
 /* === Sparkline label row === */
 .dv2-icon{width:1em;height:1em;stroke:currentColor;stroke-width:2;fill:none;vertical-align:-2px}
