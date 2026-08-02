@@ -117,10 +117,30 @@ def _pg_freshness() -> dict:
         except Exception:
             import psycopg as pg
         with pg.connect(R.PG_DSN) as conn, conn.cursor() as cur:
-            cur.execute("SELECT market, MAX(price_date) FROM public.ohlcv_history "
-                        "GROUP BY market ORDER BY market")
+            # 🔴 THIS QUERY NEVER WORKED. It selected `market` and `price_date`,
+            # neither of which exists on public.ohlcv_history — the table keys on
+            # stock_id and dates on `date`, with the market reachable only via
+            # stocks -> markets. Postgres raised `column "market" does not exist`
+            # on every single run, the bare `except` below swallowed it, and this
+            # returned {} forever. The warehouse row of the freshness report has
+            # therefore been blank since it was written, which reads identically
+            # to "no warehouse configured" rather than "the check is broken".
+            #
+            # A bare except around a hardcoded query cannot tell a missing driver
+            # from a wrong column name. The driver check above is what that
+            # except is FOR; a schema error is a bug and must not be silent, so
+            # it is reported rather than swallowed.
+            cur.execute("""
+                SELECT m.market_name, MAX(h.date)
+                FROM public.ohlcv_history h
+                JOIN public.stocks  s ON s.stock_id  = h.stock_id
+                JOIN public.markets m ON m.market_id = s.market_id
+                GROUP BY 1 ORDER BY 1""")
             return {m: str(d) for m, d in cur.fetchall()}
-    except Exception:
+    except Exception as e:
+        # Name the failure. Returning {} silently is what hid this for weeks.
+        print(f"  ⚠️  warehouse freshness query failed: "
+              f"{type(e).__name__}: {str(e).splitlines()[0][:110]}")
         return {}
 
 
