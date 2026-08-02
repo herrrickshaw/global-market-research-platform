@@ -2,6 +2,39 @@
 
 Decisions and material changes to the pipeline, newest first.
 
+## 2026-08-02 — Cassandra stopped for the nightly window (8GB box, jetsam)
+
+Claude Code was being killed by jetsam. The 08:54 crash report named the cause without
+ambiguity: `"largestProcess" : "claude"`, `"free" : 7213` pages (~118 MB),
+`"compressorSize" : 224414` (~3.6 GB compressed). The machine is an **8 GB M1** with
+2.87 GB of 4 GB swap committed. At one measurement it had **50 MB free**.
+
+Cassandra runs `-Xms4096M -Xmx4096M` and **nothing in the nightly chain queries it** —
+`ingest.sh`, `daily_mailer.sh` and `daily_research.sh` never touch it; the only nightly
+reference is `system_state.py`'s reachability check. So it is stopped 00:05 → 09:00.
+
+- **`scripts/cassandra_window.sh {stop|start|status}`**. Liveness is decided by port 9042
+  via `lsof`, **not** by the process table or `brew services list` — those report the
+  launchd job's *intent*, and a JVM can be up ~30 s before it accepts CQL.
+- **Must go through `brew services`.** The plist sets `KeepAlive=true`, so killing the
+  process just has launchd restart it seconds later. Only unloading the job keeps it down.
+- **The start job is on the CLOCK, not chained to the pipeline.** Rejected hanging it off
+  the end of `daily_research.sh`: a crashed or skipped run would then leave Cassandra down
+  all day, and since the web app and the whole `herrrickshaw` keyspace depend on it, that
+  reads as a data bug rather than a service nobody restarted. `RunAtLoad` additionally
+  covers a reboot inside the window. The script is idempotent (exits when 9042 listens).
+- 🔴 **The 4 GB heap is NOT what you get back, and the first version of this script claimed
+  it was.** `-Xms` reserves address space; macOS backs only touched pages. Measured:
+  swap 2876→2716 MB (−160), compressed 2.10→1.93 GB (−170), free RAM unchanged; restarting
+  put ~700 MB of compressor back. Honest figure: **~0.3–0.7 GB of relieved pressure, not
+  4 GB.** Worth having for free on a box at 50 MB free, but the `warehouse_update` DuckDB
+  pushdown (1.63 GB → 433 MB) was the larger lever by ~4×.
+- **The plists are NOT in git** — `Library/` is gitignored, so the schedule lives only on
+  this machine. Reproduce with `com.umashankar.cassandra-stop` (`StartCalendarInterval`
+  Hour 0 Minute 5) and `com.umashankar.cassandra-start` (Hour 9 Minute 0, `RunAtLoad`),
+  both invoking the script above. Verified end-to-end via `launchctl kickstart`, not by
+  reading the files back.
+
 ## 2026-08-01 — Who actually buys stocks: capital-source review by market
 
 `reports/equity_capital_sources.md` — literature review of public sources on where equity
