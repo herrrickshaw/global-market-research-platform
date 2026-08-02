@@ -123,7 +123,7 @@ tariff filing, audited DISCOM accounts, or investment advice.</div>
 
 <script>
 const $ = id => document.getElementById(id);
-function cr(v){return "₹" + Math.round(v).toLocaleString("en-IN") + " cr";}
+function cr(v){return "\u20B9" + Math.round(v).toLocaleString("en-IN") + " cr";}
 function pct(v){return (v*100).toFixed(2) + "%";}
 
 function feasibility(charge){
@@ -134,10 +134,10 @@ function feasibility(charge){
   if(charge<=50) return "✗ Hard";
   return "✗ Very hard";
 }
-function net(charge, connCr, eff, admin){           // ₹ crore/year
+function net(charge, connCr, eff, admin){           // \u20B9 crore/year
   return charge * connCr * 12 * eff * (1 - admin);
 }
-function heatColor(v){                               // v in ₹ cr
+function heatColor(v){                               // v in \u20B9 cr
   if(v > 20000) return "#22c55e";
   if(v >= 5000) return "#f59e0b";
   return "#ef4444";
@@ -147,11 +147,11 @@ function recompute(){
   const debt   = +$("debt").value, subsidy = +$("subsidy").value, growth = +$("growth").value;
   const conn   = (+$("domestic").value) + (+$("agri").value);
   const charge = +$("charge").value, eff = (+$("eff").value)/100, admin = (+$("admin").value)/100;
-  $("chargeLbl").textContent = "₹"+charge;
+  $("chargeLbl").textContent = "\u20B9"+charge;
   $("effLbl").textContent = $("eff").value+"%";
   $("adminLbl").textContent = $("admin").value+"%";
 
-  const grossMo = charge * conn;                     // ₹ cr/month
+  const grossMo = charge * conn;                     // \u20B9 cr/month
   const grossYr = grossMo * 12;
   const postEff = grossYr * eff;
   const adminC  = postEff * admin;
@@ -175,9 +175,9 @@ function recompute(){
   if(change >= 0){ vd.className="verdict v-ok";
     vd.textContent="✓ At this charge the collection EXCEEDS annual new debt — debt would start falling."; }
   else if(netYr > newDebt*0.25){ vd.className="verdict v-warn";
-    vd.textContent="⚠ Meaningful but insufficient — covers "+(netYr/newDebt*100).toFixed(0)+"% of the ₹"+Math.round(newDebt).toLocaleString("en-IN")+" cr added each year. Debt still grows, slower."; }
+    vd.textContent="⚠ Meaningful but insufficient — covers "+(netYr/newDebt*100).toFixed(0)+"% of the \u20B9"+Math.round(newDebt).toLocaleString("en-IN")+" cr added each year. Debt still grows, slower."; }
   else{ vd.className="verdict v-bad";
-    vd.textContent="✗ Negligible vs the problem — only "+(netYr/newDebt*100).toFixed(0)+"% of annual new debt. A token charge alone cannot dent ₹"+Math.round(debt/100000)/10+"L cr."; }
+    vd.textContent="✗ Negligible vs the problem — only "+(netYr/newDebt*100).toFixed(0)+"% of annual new debt. A token charge alone cannot dent \u20B9"+Math.round(debt/100000)/10+"L cr."; }
 
   // breakdown
   $("breakdown").innerHTML = `
@@ -191,19 +191,19 @@ function recompute(){
 
   // scenario table
   const charges=[1,5,10,20,50,100];
-  let sc="<tr><th>Charge ₹/mo</th><th>Net collection ₹cr</th><th>% of debt/yr</th><th>Years to repay</th><th>Feasibility</th></tr>";
+  let sc="<tr><th>Charge \u20B9/mo</th><th>Net collection \u20B9cr</th><th>% of debt/yr</th><th>Years to repay</th><th>Feasibility</th></tr>";
   charges.forEach(ch=>{
     const n=net(ch,conn,eff,admin); const y=n>0?Math.round(debt/n):Infinity;
     const cls = ch==charge ? ' class="hl"' : '';
-    sc+=`<tr${cls}><td>₹${ch}</td><td>${cr(n)}</td><td>${pct(n/debt)}</td><td>${isFinite(y)?y.toLocaleString("en-IN"):"∞"}</td><td>${feasibility(ch)}</td></tr>`;
+    sc+=`<tr${cls}><td>\u20B9${ch}</td><td>${cr(n)}</td><td>${pct(n/debt)}</td><td>${isFinite(y)?y.toLocaleString("en-IN"):"∞"}</td><td>${feasibility(ch)}</td></tr>`;
   });
   $("scenarios").innerHTML=sc;
 
   // sensitivity heatmap
   const effs=[50,60,70,75,80,85,90,95,100], rows=[1,2,5,10,15,20,30,50,100];
-  let h="<tr><th>₹/mo ↓ · eff →</th>"+effs.map(e=>`<th>${e}%</th>`).join("")+"</tr>";
+  let h="<tr><th>\u20B9/mo ↓ · eff →</th>"+effs.map(e=>`<th>${e}%</th>`).join("")+"</tr>";
   rows.forEach(ch=>{
-    h+=`<tr><th>₹${ch}</th>`+effs.map(e=>{
+    h+=`<tr><th>\u20B9${ch}</th>`+effs.map(e=>{
       const v=net(ch,conn,e/100,admin);
       return `<td style="background:${heatColor(v)}">${Math.round(v).toLocaleString("en-IN")}</td>`;
     }).join("")+"</tr>";
