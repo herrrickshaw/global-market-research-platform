@@ -84,14 +84,51 @@ def build() -> int:
         # but the source and its as-of date are recorded per market rather than
         # silently chosen, because "last_close" from a stale partition is a
         # different claim from "last_close" today.
+        # THREE bases, not two, because that is what actually exists:
+        #
+        #   adjusted     IN only — a real corporate-actions feed (23,480 events)
+        #                supports adjusting the WHOLE panel.
+        #   RAW+patch    US/JP/KR — no feed exists, so price_adjuster_global.py
+        #                DETECTS splits from the panel and keeps only those a
+        #                yfinance cross-check confirms. That yielded 16 symbols
+        #                across three markets (JP 7, KR 4, US 5) out of ~16,000.
+        #                It writes corrected_symbols.parquet — a PATCH, not year
+        #                partitions — and overlaying it is honest; calling the
+        #                market "adjusted" on the back of 16 symbols would not be.
+        #   RAW          everything else.
+        #
+        # Collapsing the middle case into "adjusted" is the tempting error: it
+        # would silence this index's warning for 99.9% of symbols that are still
+        # unadjusted, which is worse than no adjustment at all.
         adj = WH.parent / "ohlcv_adj" / mkt
-        src, kind = ((adj, "adjusted") if sorted(adj.glob("year=*.parquet"))
-                     else (WH / mkt, "RAW"))
-        parts = sorted(src.glob("year=*.parquet"))
+        adj_years = sorted(adj.glob("year=*.parquet"))
+        patch = adj / "corrected_symbols.parquet"
+
+        if adj_years:
+            parts, kind = adj_years, "adjusted"
+        else:
+            parts, kind = sorted((WH / mkt).glob("year=*.parquet")), "RAW"
         if not parts:
             print(f"  {mkt}: no partitions — skipped")
             continue
         files = "[" + ",".join(f"'{p}'" for p in parts) + "]"
+
+        n_patched = 0
+        if kind == "RAW" and patch.exists():
+            import pandas as _pd
+            n_patched = _pd.read_parquet(patch, columns=["Symbol"]).Symbol.nunique()
+            kind = f"RAW+{n_patched}corr"
+            # Overlay: drop the patched symbols from raw, then union the patch.
+            src_sql = (f"select Symbol, Date, Open, High, Low, Close, Volume "
+                       f"from read_parquet({files}) "
+                       f"where Symbol not in (select distinct Symbol from "
+                       f"read_parquet('{patch}')) "
+                       f"union all "
+                       f"select Symbol, Date, Open, High, Low, Close, Volume "
+                       f"from read_parquet('{patch}')")
+        else:
+            src_sql = (f"select Symbol, Date, Open, High, Low, Close, Volume "
+                       f"from read_parquet({files})")
 
         # One pass, all per-symbol aggregates. Ordered aggregates (last/first by
         # date) avoid a self-join, which on 16M rows is the difference between
@@ -100,7 +137,7 @@ def build() -> int:
         with b as (
             select Symbol, Date, Open, High, Low, Close, Volume,
                    Close * Volume as turnover
-            from read_parquet({files})
+            from ({src_sql})
             where Close is not null and Close > 0
         ),
         agg as (
@@ -129,7 +166,13 @@ def build() -> int:
         select '{mkt}' as market, '{kind}' as price_basis, * from agg
         """
         d = con.execute(q).df()
-        flag = "" if kind == "adjusted" else "  ⚠️ RAW closes — returns distorted by splits/bonuses"
+        if kind == "adjusted":
+            flag = ""
+        elif n_patched:
+            flag = (f"  ⚠️ {n_patched} symbols split-corrected; the rest are RAW "
+                    f"— returns still distorted where a split went undetected")
+        else:
+            flag = "  ⚠️ RAW closes — returns distorted by splits/bonuses"
         print(f"  {mkt}: {len(d):,} symbols indexed  [{kind}, to "
               f"{pd.to_datetime(d.last_bar).max().date()}]{flag}")
         frames.append(d)
