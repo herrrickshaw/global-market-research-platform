@@ -2,6 +2,49 @@
 
 Decisions and material changes to the pipeline, newest first.
 
+## 2026-08-02 — Disk reorganisation: stats, a redundant index, workbook retention
+
+Volume is 79% full (44 GB free of 228). Postgres turned out to be a **disk** problem,
+not the memory problem I had assumed: `shared_buffers` is 128 MB, `work_mem` 4 MB — all
+stock defaults — and total postgres RSS is **10 MB**. The cluster is 22 GB on disk.
+
+- 🔴 **`autoanalyze` was `None` on every large table.** The planner had *zero* statistics
+  on a 38.4M-row table, which is why they all reported "0 live rows" and why an ordinary
+  three-table join timed out at 600 s. `ANALYZE` on six tables took 22 s; `ohlcv_history`
+  now correctly reports 38,427,645 rows. Nothing was wrong with the data — only with what
+  the planner knew about it.
+- **Dropped `idx_ohlcv_stock`** — 443 MB, **0 scans**, and a strict prefix of
+  `idx_ohlcv_stock_date` which has 223,176. Verified free-standing (no constraint, no
+  inbound FK) before dropping, and `DROP INDEX CONCURRENTLY` so no reader blocked.
+  Recreate with `CREATE INDEX idx_ohlcv_stock ON public.ohlcv_history USING btree
+  (stock_id)`. Index total 6516 → 6074 MB.
+- **`scan_retention.py`** — 175 workbooks / 111.8 MB reclaimed. **Deliberately not
+  `find -mtime -delete`**: `market_ingest.ingest_snapshot()` globs every workbook and
+  appends "every date not yet in the table", so a *not-yet-ingested* day deleted on age
+  alone vanishes from `market_daily.snapshots` permanently, and the gap is
+  indistinguishable from a day the scan never ran. A file is expendable only when its date
+  is **already ingested** AND older than `--keep-days`. Superseded same-day re-runs (files
+  outnumber dates 39–48 to 15–17) go first. The run reported **0 un-ingested**, and both
+  mailer reconcile gates still pass afterwards.
+
+### `ohlcv_history` — 12 GB, and the case for moving it off Postgres
+
+Not actioned, recorded for a decision. It is **12 GB (5.8 heap + 6.5 GB indexes) for 38.4M
+rows**; the parquet warehouse holds the same 37.4M rows in **846 MB** — 14×.
+
+- It is **derived, not upstream**. `load_ohlcv_to_warehouse.py` *writes into* it from
+  `repos/global-stock-screener/cache_seed/ltm/{US,JP,KR}.parquet` — **490 MB of sources
+  that still exist**. So it is reconstructible by a script already in the tree.
+- That loader is **not in any pipeline script** — manual/one-off. Nothing writes it nightly.
+- Its only nightly reader, `data_index.py:120`, runs `SELECT market, MAX(price_date)` and
+  **those columns do not exist**; the failure is swallowed by a bare `except` returning
+  `{}`. It has never worked against this schema.
+- ⚠️ `completeness_graph.py:87` asserts "ohlcv_history has no writer anywhere in this repo".
+  That is **wrong** — `load_ohlcv_to_warehouse.py` is in the same directory.
+
+Before reclaiming it, confirm no external consumer (the K8s event-driven platform) reads
+it. The broken `data_index.py` query is a real bug regardless of the storage decision.
+
 ## 2026-08-02 — Cassandra stopped for the nightly window (8GB box, jetsam)
 
 Claude Code was being killed by jetsam. The 08:54 crash report named the cause without
