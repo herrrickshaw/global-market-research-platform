@@ -1,4 +1,36 @@
 # Chemical Import Substitution Opportunity Map
+> ## ⚠️ CORRECTION — 4 August 2026: HSN codes in this document are unreliable
+>
+> Validated against the authentic DGCI&S HSN-8 registry
+> (`~/chemical_import_substitution/data/chem_hsn8_signals.json`, 827 rows, chapters 28/29/31/32/33/34/38/39).
+> **The following HS-8 codes used in this document do not exist in India's tariff schedule**, and the
+> import values attached to them are unsupported:
+>
+> | Cited (invalid) | Cited value | Correct code | Authentic FY26 import |
+> |---|---|---|---|
+> | `29011100` ethylene  | $2,800M | `29012100` | **$44.1M** |
+> | `29011200` propylene | $1,400M | `29012200` | **$14.1M** |
+> | `39021010` HDPE      | $2,800M | `39012000` | **$938.6M** |
+> | `39021030` LDPE/LLDPE| $2,900M | 3901 lines | **~$1,861M total** |
+> | `29239090` lecithin  | $100M   | `29232090` | **$18.6M** |
+> | `32030010` dyes/azo  | $1,400M | HSN 3204   | **~$8–25M azo-specific; $298M chapter** |
+> | `39021100` polypropylene | $1,400M | `39021000` | **$1,372.0M** (value was right, code wrong) |
+> | `28301100` sulfuric acid | $1,650M | `28070010` | **$249.8M** |
+>
+> Note: HSN 3902 is **polypropylene**, not polyethylene — the `3902xxxx` polyethylene lines above are
+> mis-chaptered as well as non-existent.
+>
+> **Also corrected:** the "+81% growth" for acetic acid (`29152100`) in these documents is the
+> *estimate-vs-actual variance column*, not a growth rate. Authentic FY25→FY26 growth is **+2.6%**
+> ($479.1M → $489.9M). Chapter 29 as a whole **fell 4.4%** in FY2025-26.
+>
+> **Verified correct** in these documents: chapter totals (Ch28 $14,180M, Ch29 $25,411M, Ch39 $22,234M,
+> Ch27 $203,415M, Ch31 $14,580M), Ch28 growth +24.63% YoY and +86.0% since FY2018-19, Ch31 +76.0%,
+> total imports $776.0bn (+7.60%), Ch38 $5.32bn gross deficit across 77 qualifying codes,
+> and DAP `31053000` +75.8% / fertiliser-grade urea `31021010` +148.0% / other urea `31021090` +56.0%.
+>
+> Downstream blog posts have been corrected. Do not reuse the codes in the table above.
+
 ## Complete List of Chemicals with Economic Viability Assessment
 
 **Date**: August 2026  
