@@ -133,3 +133,5 @@ market-pipeline/code/python_files/data/nse_symbolchange.csv
 *.err
 manual_run_*.out
 *.bak-*
+market-pipeline/code/python_files/cache_seed/factorial_screener_signals_us.parquet
+market-pipeline/code/python_files/cache_seed/factorial_screener_signals_CN_technical.parquet
