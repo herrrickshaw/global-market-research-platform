@@ -315,6 +315,13 @@ def run(
         corr, clusters = compute_correlation_clusters(prices, threshold=threshold)
 
     out = Path(output_dir)
+    # Create it, don't assume it. Every write below lands here, and the scan does all
+    # its work (1y history for 2.4k-3.5k symbols, ~4 min/market) BEFORE the first write
+    # — so a missing dir threw away a completed scan with
+    # "OSError: Cannot save file into a non-existent directory". That is how all four
+    # markets silently produced nothing from 2026-07-15 to 2026-08-04 while the run
+    # itself looked healthy.
+    out.mkdir(parents=True, exist_ok=True)
     prefix = market.lower()
     # zstd-compress the full matrix (~8x smaller). pandas infers compression from
     # the .zst suffix on write and read, so `pd.read_csv(path)` round-trips unchanged.
