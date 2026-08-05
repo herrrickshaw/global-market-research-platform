@@ -83,6 +83,34 @@ def _get(url: str, referer: str = None) -> requests.Response:
     return requests.get(url, headers=h, timeout=TIMEOUT)
 
 
+# Bounded retry for CONNECTION-class failures only. On 2026-08-05 BSE closed the
+# connection mid-request (RemoteDisconnected); that single blip cost the run its
+# bse_results_cal snapshot and sent an alert email, while the same endpoint
+# answered on the first attempt minutes later — 7 prior runs had all succeeded.
+#
+# Deliberately NOT retried: HTTPError, because the handler below reads a 404 on a
+# dated file as a holiday and any other code is the site telling us something true;
+# and ValueError ("empty frame"), because a retry cannot make data appear. Retrying
+# those would convert a real outage into a slow one and hide it.
+RETRY_ON = (requests.ConnectionError, requests.Timeout)
+RETRIES = 2              # 3 attempts total
+RETRY_BACKOFF = 3.0      # seconds before the 2nd attempt, doubled for the 3rd
+
+
+def _fetch_with_retry(fn, d, kind: str, verbose: bool):
+    for attempt in range(RETRIES + 1):
+        try:
+            return fn(d)
+        except RETRY_ON as e:
+            if attempt == RETRIES:
+                raise
+            wait = RETRY_BACKOFF * (2 ** attempt)
+            if verbose:
+                print(f"  retry {kind:16} {type(e).__name__} — "
+                      f"attempt {attempt + 2}/{RETRIES + 1} in {wait:.0f}s")
+            time.sleep(wait)
+
+
 # ── per-kind fetchers ─────────────────────────────────────────────────────────
 def fetch_index_closes(d: _dt.date) -> pd.DataFrame:
     u = f"https://archives.nseindia.com/content/indices/ind_close_all_{d:%d%m%Y}.csv"
@@ -212,7 +240,7 @@ def collect(d: _dt.date, verbose: bool = True) -> dict:
             out[kind] = "skip"          # idempotent
             continue
         try:
-            df = fn(d)
+            df = _fetch_with_retry(fn, d, kind, verbose)
             if df is None or df.empty:
                 raise ValueError("empty frame")
             df.to_parquet(raw, index=False)
