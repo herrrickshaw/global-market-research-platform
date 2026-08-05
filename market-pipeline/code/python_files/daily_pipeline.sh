@@ -479,7 +479,8 @@ FAILURES=()
 
   if [[ ${#FAILURES[@]} -gt 0 ]]; then
     echo "[ALERT] ${#FAILURES[@]} step(s) failed: ${FAILURES[*]}"
-    $PY send_alert.py "${FAILURES[@]}" || echo "  alert email itself failed to send"
+    $PY send_alert.py --pipeline daily_pipeline.sh --log "$LOG" \
+      "${FAILURES[@]}" || echo "  alert email itself failed to send"
   fi
 
   echo "=== done $(date) ==="

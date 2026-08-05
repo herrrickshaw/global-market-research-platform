@@ -161,7 +161,8 @@ section_end() {
   step "__end__"
   if [[ ${#FAILURES[@]} -gt 0 ]]; then
     echo "[ALERT] ${#FAILURES[@]} step(s) failed in ${SECTION}: ${FAILURES[*]}"
-    $PY send_alert.py "${FAILURES[@]}" || echo "  alert email itself failed to send"
+    $PY send_alert.py --pipeline "${SECTION}.sh" --log "${LOG}" \
+      "${FAILURES[@]}" || echo "  alert email itself failed to send"
   fi
   echo "=== done ${SECTION} $(date) — $((dur / 60))m $((dur % 60))s ==="
 }

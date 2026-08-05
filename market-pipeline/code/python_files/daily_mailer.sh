@@ -100,6 +100,22 @@ FAILURES=()
   step "[2/13] pre-flight: scan input gates"
   $PY preflight_scan_inputs.py || FAILURES+=("STARTUP: pre-flight input gate(s) failed")
 
+  # ── 1b. self-heal a missed data phase ──────────────────────────────────────
+  # 2026-08-01: the Mac slept through mailer-data's 03:00 slot (the pmset wake
+  # only covers weekdays), so --send at 06:30 gated Thursday's scan against
+  # Friday's closes and correctly refused to send. The gate held; the brief
+  # still never arrived. If today's scan workbooks are absent at send time, the
+  # data phase never ran — run it inline (~12 min) instead of walking into a
+  # guaranteed reconcile failure and an alert email.
+  if [ "$RUN_SEND" = "1" ] && [ "$RUN_DATA" = "0" ]; then
+    TODAY_TAG="$(date +%Y%m%d)"
+    if ! ls indian_full_scan/indian_full_scan_"${TODAY_TAG}"_*.xlsx >/dev/null 2>&1 \
+       || ! ls us_full_scan/us_full_scan_"${TODAY_TAG}"_*.xlsx >/dev/null 2>&1; then
+      step "[SELF-HEAL] today's scan workbooks missing — running the data phase inline"
+      RUN_DATA=1
+    fi
+  fi
+
   if [ "$RUN_DATA" = "1" ]; then
   # ── 2. India ───────────────────────────────────────────────────────────────
   step "[3/13] India EOD refresh (official bhavcopy, incremental)"
@@ -207,7 +223,8 @@ FAILURES=()
     # send_alert re-checks any "NOT SENT" claim against state/last_brief_sent.json
     # before mailing, so a failure that was fixed mid-run does not contradict a
     # brief that actually went out.
-    $PY send_alert.py "${FAILURES[@]}" || echo "  alert email itself failed to send"
+    $PY send_alert.py --pipeline daily_mailer.sh --log "$LOG" \
+      "${FAILURES[@]}" || echo "  alert email itself failed to send"
   fi
 
   echo "=== done $(date) ==="

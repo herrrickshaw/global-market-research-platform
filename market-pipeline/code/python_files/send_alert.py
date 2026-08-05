@@ -20,14 +20,25 @@ import sys
 from email.mime.text import MIMEText
 
 
-def _run_log_name() -> str:
-    """The log for the run that is ENDING, which may have started yesterday."""
+def _run_log_name(explicit: str | None = None) -> str:
+    """The log for the run that is ENDING, which may have started yesterday.
+
+    Callers pass --log, because only the caller knows which pipeline it is. The
+    glob is a fallback and covers every pipeline that can raise an alert:
+    pipeline_lib.sh sections write <section>_pipeline_YYYYMMDD.log, daily_mailer.sh
+    writes daily_mailer_YYYYMMDD.log. Globbing daily_pipeline_* alone pointed the
+    2026-08-05 ingest alert at daily_pipeline_20260728.log — a week-old log
+    belonging to a script retired 2026-07-29.
+    """
+    if explicit:
+        return explicit
     from pathlib import Path
     here = Path(__file__).resolve().parent
-    logs = sorted(here.glob("daily_pipeline_2*.log"),
+    logs = sorted({p for pat in ("*_pipeline_2*.log", "daily_mailer_2*.log")
+                   for p in here.glob(pat)},
                   key=lambda p: p.stat().st_mtime, reverse=True)
     return logs[0].name if logs else (
-        f"daily_pipeline_{_dt.date.today():%Y%m%d}.log")
+        f"daily_mailer_{_dt.date.today():%Y%m%d}.log")
 
 
 def _brief_actually_sent_since(when: _dt.datetime | None = None):
@@ -78,7 +89,7 @@ def reconcile_failures(failed_steps: list) -> tuple[list, list]:
     return live, resolved
 
 
-def send_alert(failed_steps: list) -> bool:
+def send_alert(failed_steps: list, pipeline: str = "", log: str = "") -> bool:
     if not failed_steps:
         return True
     failed_steps, resolved = reconcile_failures(failed_steps)
@@ -97,10 +108,14 @@ def send_alert(failed_steps: list) -> bool:
     # The log is named for the date the run STARTED. A run that crosses midnight
     # (this one began 22:36 and ended 08:08) would otherwise point the reader at
     # a file that does not exist.
-    log_name = _run_log_name()
-    subject = f"⚠️ Daily Market Brief — {len(failed_steps)} step(s) failed ({today})"
+    log_name = _run_log_name(log)
+    # Name the pipeline that actually failed. Hardcoding daily_pipeline.sh sent an
+    # alert on 2026-08-05 blaming a script retired a week earlier, for a failure
+    # that came from ingest.sh.
+    who = pipeline or log_name.split("_2")[0] or "pipeline"
+    subject = f"⚠️ {who} — {len(failed_steps)} step(s) failed ({today})"
     body = (
-        f"{len(failed_steps)} step(s) failed in today's daily_pipeline.sh run ({today}):\n\n"
+        f"{len(failed_steps)} step(s) failed in today's {who} run ({today}):\n\n"
         + "\n".join(f"  - {s}" for s in failed_steps)
         + f"\n\nEach failed step falls back to cached/skipped data — the rest of the "
         f"pipeline still ran. Check {log_name} for details."
@@ -126,4 +141,15 @@ def send_alert(failed_steps: list) -> bool:
 
 
 if __name__ == "__main__":
-    send_alert(sys.argv[1:])
+    # Hand-parsed, not argparse: the positionals are free-text failure labels
+    # ("ingest: [3b/7] NSE/BSE extras (indices, ...)") and argparse mangles them.
+    _args, _pipeline, _log = [], "", ""
+    _it = iter(sys.argv[1:])
+    for _a in _it:
+        if _a == "--pipeline":
+            _pipeline = next(_it, "")
+        elif _a == "--log":
+            _log = next(_it, "")
+        else:
+            _args.append(_a)
+    send_alert(_args, pipeline=_pipeline, log=_log)
