@@ -2,6 +2,152 @@
 
 Decisions and material changes to the pipeline, newest first.
 
+## 2026-08-07 — Unbounded RSS fetch cost a full day's brief; timeout added at two layers
+
+The 03:00 data phase fired on time, ran steps 1–4 clean, entered step [5/13]
+(`daily_combined_report.py --market IN --html`) at 03:47 and never came out. At
+08:23 it was still there: 4h50m elapsed, 0.0% CPU, one ESTABLISHED HTTPS socket
+to an Akamai edge and no bytes moving. It held `/tmp/daily_pipeline.lock` the
+whole time, so the 06:30 send hit the lock, printed `already running (pid 283)`
+and **exited 0** — launchd recorded success for a job that did nothing, and no
+brief went out. The same call completed in **7 seconds** on re-run, so this was a
+transient stalled socket, not a reproducible break.
+
+Root cause was NOT in `daily_combined_report.py`, where the symptom appeared. All
+four REST sentiment providers already pass `timeout=15`. The uncapped call was
+`feedparser.parse(url)` in `sentiment_pipeline.py:_all_entries()` — feedparser
+fetches through `urllib`, which has no default timeout, and `get_market_mood()`
+routes straight to it. The surrounding `except Exception` is no defence: a hang
+is not an error.
+
+- **Layer 1 (the fix).** `feedparser.parse(url)` → `feedparser.parse(requests.get(
+  url, timeout=RSS_FETCH_TIMEOUT).content)`. feedparser parses content as happily
+  as a URL, so behaviour is unchanged (verified: 214 live entries still parse); a
+  timeout now *raises*, so the existing handler degrades that one feed to `[]`.
+- **Layer 2 (the backstop).** A hard `STREET_TALK_TIMEOUT` (default 300s, ~40x the
+  healthy 7s) around the whole street-talk component in `get_street_talk`, so any
+  *future* uncapped call downstream also degrades instead of wedging. Component 2
+  is optional colour — the report already renders with an empty talk dict.
+- **DECISION: daemon thread, not `signal.alarm`, for layer 2.** SIGALRM was the
+  obvious choice and is wrong here: the RSS path wraps each feed in
+  `except Exception`, so the alarm's exception would be caught and discarded and
+  the loop would sail on to the next feed. A thread caps by wall clock without
+  needing the callee to cooperate, and `daemon=True` means an abandoned wedge
+  cannot keep the process alive.
+- **DECISION: fix layer 1 as well, rather than rely on the backstop alone.** The
+  cap turns a 4h50m outage into a 5-minute delay, but only layer 1 keeps the
+  sentiment data itself intact — a capped run silently loses market mood for the
+  day, which is a quieter failure than the one being fixed.
+- Both bounds are env-tunable (`RSS_FETCH_TIMEOUT`, `STREET_TALK_TIMEOUT`) so a
+  slow-feed morning can be widened without a code change.
+
+**Same day — per-step wall-clock ceiling in `daily_mailer.sh`.** The socket fix
+above closes one call in one step; this closes the class. A `cap <secs> <label>
+<cmd…>` helper wraps all 23 `$PY` invocations and returns 124 (GNU timeout's
+convention) when a step overruns, so every existing `|| FAILURES+=(…)` handler
+fires unchanged and the alert email still goes out — with an explicit `TIMEOUT:`
+entry naming the step, because "India: combined report" in an alert otherwise
+reads as a crash when it was a hang, and those point at different bugs.
+
+- **Budgets are measured, not guessed** — set from the worst case observed across
+  every run in this directory (`n` recorded per step in the source), then widened
+  to a multiple of it. A ceiling that clips a merely slow day would be worse than
+  no ceiling: it would fail runs that were going to succeed. Longest is [7/13] US
+  scan at 5400s against an observed max of 2783s.
+- **DECISION: kill the descendant tree, not just the child.** A bare `kill` on the
+  direct child orphans grandchildren to init, and several steps shell out —
+  [5/13] can spawn a whole scan via `subprocess`, [7/13] runs a worker pool. The
+  helper recurses through `pgrep -P` deepest-first, then escalates TERM→KILL after
+  a 5s grace. Verified: a 3-deep tree leaves zero orphans.
+- **DECISION: the send gates fail SAFE under the ceiling.** A timed-out reconcile
+  counts as a failed reconcile; a timed-out validation leaves `VALIDATE_OK=1` and
+  suppresses the send. A gate that cannot finish must never read as a gate that
+  passed.
+- **Accepted risk on `[SEND]`.** `send_mailer` has no already-sent guard, so
+  killing it mid-SMTP could half-deliver and a retry would double-send. Capped at
+  900s (~14x the ~65s it takes) anyway: a send that has not returned in 15 minutes
+  is wedged, and an unbounded hang there is precisely the failure being fixed. If
+  it ever trips, check `state/last_brief_sent.json` before re-running.
+- NOT added: a global deadline for the whole data phase. Per-step ceilings sum to
+  more than the 03:00→06:30 window in the pathological all-steps-hang case. That
+  case has never occurred and a global cap would need a policy for which steps to
+  sacrifice; deferred rather than guessed at.
+
+Still open: `pmset -g sched` reads `wakepoweron at 0:10AM`, aimed at the
+`dailybrief` job retired 2026-07-29 and never moved ahead of the 03:00 slot.
+
+## 2026-08-05 — Piotroski tests 5 and 7 corrected in all five market scans
+
+Triggered by a comparison against screener.in's Piotroski-9 screen (`/screens/2/`).
+Scored 490 of its 499 names (195 BSE-only numeric codes via yfinance `.BO`, 304
+NSE-style via the store / `.NS`) and instrumented all nine tests separately.
+Finding: only 4% of lost points were missing data — the rest were real comparisons,
+and the two **level** tests passed ~100% while every **year-over-year delta** test
+bled points. Two of those deltas were scoring 0 on data that is not a failure.
+
+- **Test 5 (ΔLeverage) penalised debt-free companies.** `ltd = _row(...) or 0` turns
+  an absent "Long Term Debt" line into 0, so the test evaluated `0/a0 < 0/a1` →
+  `0 < 0` → False. A firm scored 0 on a leverage test *because it carries no
+  leverage*. Worst offender: 42% of names lost this point, 36% of those debt-free.
+- **Test 7 (no dilution) counted ESOP vesting as an equity raise.** 22 of 31 raw
+  failures were share-count increases under 2% (EUREKAFORB failed on **+0.01%**);
+  two more were a clean 2.0x bonus issue and a 1.55x. None is a capital raise.
+- **A clean share-count multiple alone does NOT identify a bonus issue** — caught
+  when the first cut of this fix rescued IDEA (1.52x). On the India universe the
+  ratio-only rule rescued 9 names of which only 3 were real bonus issues; it also
+  passed COHANCE (equity 2.31x) and MIRCELECTR (1.89x), which are plainly raises,
+  and ALLCARGO (equity 0.24x) and IDEA (0.51x), which are restructurings. A bonus
+  issue reclassifies reserves into share capital, so TOTAL equity is unchanged,
+  whereas a rights issue brings cash in. The split branch now also requires equity
+  within `SPLIT_EQUITY_BAND` (0.85–1.15); missing equity means no rescue, i.e. the
+  pre-fix behaviour. Corrected exactly those 6 back to baseline, kept SHILPAMED /
+  ASIANTILES / BEML. DECISION: gate on equity rather than drop the branch — 3 real
+  bonus issues would otherwise be scored as dilution.
+- Both fixes live in `stock_utils.leverage_improved()` / `no_dilution()` and are
+  called by all five `full_*_market_scan.py`. DECISION: shared helpers, not five
+  copies — the bug existed identically in all five, and a per-market divergence in
+  what "Piotroski 7" means is worse than the bug.
+- DECISION: fix all markets, not just India. REJECTED "India-only" — the same score
+  name would then mean two different things across the daily brief's markets.
+- Measured effect on screener.in's 9s (n=490): agreement at ≥7 **77% → 86%**, at
+  ≥8 44% → 53%, exact-9 12% → 17%. Verified end-to-end: all 154 store-backed India
+  names reproduce the predicted score through the patched `fundamental_scan()`,
+  39 moved, 0 mismatches.
+- **Re-ran the India scan** (`scan_bhavcopy.py`, which calls this
+  `fundamental_scan`) on unchanged 2026-08-04 EOD, so the delta is purely the
+  scoring change: **472 of 1,314 names up, 0 down** (the fixes can only turn a 0
+  into a 1 — a fall would be a bug). `>=7` **314 → 405**, `>=8` 127 → 186, `==9`
+  28 → 41, **Triple_Hits 39 → 57**. Spot-audited the gainers: MARUTI, TECHM,
+  PERSISTENT, HEROMOTOCO, EUREKAFORB are genuinely debt-free; the test-7 gainers
+  are +0.006%–0.5% ESOP drift. ⚠️ `Piotroski >= 7` is now a materially wider gate
+  — 91 more India names clear it, which flows into Triple_Hits and the brief.
+- NOT changed, deliberately: tests 8 (ΔGross margin) and 9 (ΔAsset turnover), the
+  next two biggest point-losers. Spot-checked the arithmetic — the failures are
+  real (assets outgrowing revenue on every sampled name, e.g. MWL revenue +13.9%
+  vs assets +46.0%). We are stricter than screener.in on capex-cycle names and
+  that is correct behaviour, not a bug. The residual disagreement is methodology.
+- ⚠️ **Any Piotroski backtest predating this commit is now stale** — in particular
+  the "US Piotroski is inverted" result, which was computed under the old test 5/7.
+  Re-run before citing it.
+
+## 2026-08-05 — bhavcopy_cache de-duplicated; cold data moved to Dropbox
+
+- **`BHAV_CACHE` default repointed** from `~/Downloads/data/bhavcopy_cache` to the
+  canonical `~/market-pipeline/data/bhavcopy_cache` in all 6 scripts that hard-coded
+  the old path (build_mailer, ipo_monitor, liquidity, market_calendar, ohlcv_cache,
+  screener_kit) + 2 stale path comments. The two dirs held the same data twice
+  (~1.7 GB); the market-pipeline copy is fresher (daily pipeline writes there) and a
+  verified superset (0 Downloads-only files) and is already mirrored to Dropbox
+  (`bhavcopy_cache` tree). Deleted the Downloads copy → −854 MB. DECISION: repoint the
+  default, don't just delete — 6 standalone-run scripts defaulted to the Downloads path.
+- **Cold/large data moved off local to Dropbox** (disk was 92% → 86%, 30 GB free):
+  `repos/branch-archives/*.bundle` (1.4 GB pre-rewrite git safety bundles, were
+  local-only) → `dropbox:market-data-archive/archives/branch-archives/`;
+  `Downloads/data/{china,hk}_scan` matrices (117 MB, no other copy) →
+  `.../current/correlation_matrices/`. Deleted stale `IN.parquet.bak` (67 MB, byte-identical
+  to the live file). LEFT ALONE: `.mempalace/palace/chroma.sqlite3` (4.6 GB — LIVE store),
+  repo-tracked `ltm/`/`warehouse/` parquet (moving breaks checkouts).
+
 ## 2026-08-02 — Disk reorganisation: stats, a redundant index, workbook retention
 
 Volume is 79% full (44 GB free of 228). Postgres turned out to be a **disk** problem,

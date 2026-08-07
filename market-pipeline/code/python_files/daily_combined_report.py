@@ -35,6 +35,8 @@ from __future__ import annotations
 import argparse
 import glob
 import json
+import os
+import threading
 import warnings
 from datetime import datetime
 from pathlib import Path
@@ -45,6 +47,11 @@ import pandas as pd
 warnings.filterwarnings("ignore")
 
 OUT_DIR = Path("./combined_report_results"); OUT_DIR.mkdir(exist_ok=True)
+
+# Hard wall-clock cap on the optional street-talk component (see get_street_talk).
+# 300s is ~40x the 7s this step takes on a healthy day, so it will not clip a
+# merely slow provider — it only catches a genuine wedge.
+STREET_TALK_TIMEOUT = float(os.environ.get("STREET_TALK_TIMEOUT", "300"))
 
 DISCLAIMER = ("⚠️  Two independent views: mechanical fundamental screeners + noisy "
               "news sentiment. Convergence is NOT a buy signal. Educational/research "
@@ -185,16 +192,51 @@ def get_street_talk(symbols: list, market: str) -> tuple:
         from sentiment_pipeline import SentimentPipeline
     except ImportError:
         return {}, {}
-    sp = SentimentPipeline()
-    mood = sp.get_market_mood(market)   # IN → Moneycontrol/ET; US → CNBC/MarketWatch
-    talk = {}
-    if symbols:
-        res = sp.get_batch(symbols, market)
-        for sym, s in res.items():
-            talk[sym] = {"score": s.score, "label": s.label,
-                         "n_articles": s.n_articles,
-                         "headlines": s.top_headlines[:2]}
-    return mood, talk
+
+    def _fetch():
+        sp = SentimentPipeline()
+        mood = sp.get_market_mood(market)   # IN → Moneycontrol/ET; US → CNBC/MarketWatch
+        talk = {}
+        if symbols:
+            res = sp.get_batch(symbols, market)
+            for sym, s in res.items():
+                talk[sym] = {"score": s.score, "label": s.label,
+                             "n_articles": s.n_articles,
+                             "headlines": s.top_headlines[:2]}
+        return mood, talk
+
+    # Component 2 is optional colour on top of the mechanical screeners — the
+    # report already renders fine with an empty talk dict (see the ImportError
+    # path above). So it must never be able to hold up the brief.
+    #
+    # Individual providers are bounded at their own call sites, but this is the
+    # backstop for the class of bug that cost the 2026-08-07 brief: one
+    # unbounded socket, four hours and fifty minutes, lock held, send exits 0.
+    # A daemon thread caps this by wall clock without needing the callee to
+    # cooperate — which matters, because the RSS path swallows exceptions per
+    # feed, so a signal-based timeout there would be caught and discarded.
+    # A stalled fetch is abandoned, not awaited; the process can still exit.
+    out: dict = {}
+
+    def _runner():
+        try:
+            out["value"] = _fetch()
+        except Exception as exc:            # noqa: BLE001 - optional component
+            out["error"] = exc
+
+    t = threading.Thread(target=_runner, daemon=True, name="street-talk")
+    t.start()
+    t.join(STREET_TALK_TIMEOUT)
+
+    if t.is_alive():
+        print(f"  ⚠️  street talk exceeded {STREET_TALK_TIMEOUT:.0f}s — "
+              f"continuing without sentiment (Component 1 is unaffected)")
+        return {}, {}
+    if "error" in out:
+        print(f"  ⚠️  street talk failed ({out['error']}) — "
+              f"continuing without sentiment (Component 1 is unaffected)")
+        return {}, {}
+    return out.get("value", ({}, {}))
 
 
 # ══════════════════════════════════════════════════════════════════════════════

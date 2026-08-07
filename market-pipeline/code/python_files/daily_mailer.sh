@@ -81,6 +81,83 @@ step() {
   echo "$*"
 }
 
+# ── per-step wall-clock ceiling ──────────────────────────────────────────────
+# 🔴 WHY. On 2026-08-07 step [5/13] opened an HTTPS socket that never delivered a
+# byte and blocked for 4h50m at 0% CPU. Nothing in this script could notice: no
+# step had a time limit, so the run simply stopped advancing while holding
+# $LOCKDIR. The 06:30 send then found the lock held by a live pid, printed
+# "already running" and **exit 0** — launchd recorded success for both jobs and
+# no brief went out. A hang is strictly worse than a crash here, because every
+# step is guarded with `|| FAILURES+=(...)` and therefore every *error* is
+# already visible; only a hang is silent.
+#
+# The underlying socket was fixed (sentiment_pipeline.py now bounds its RSS
+# fetch), but that is one call in one step. This is the structural guard: no step
+# may run forever, whatever it is waiting on.
+#
+#   cap <seconds> <label> <command...>
+#
+# Returns the command's own exit status, or 124 on timeout (GNU timeout's
+# convention). 124 is non-zero, so every existing `|| FAILURES+=(...)` handler
+# fires unchanged and the alert email still goes out — a timed-out step is
+# reported exactly like a failed one, plus an explicit TIMEOUT entry naming it.
+CAP_POLL=5
+
+# Kill a process and all its descendants, deepest first — a bare `kill` on the
+# parent orphans grandchildren to init, and several steps shell out (step [5/13]
+# can spawn a full scan via subprocess, step [7/13] runs a worker pool).
+_kill_tree() {
+  local sig="$1" root="$2" child
+  for child in $(pgrep -P "$root" 2>/dev/null); do
+    _kill_tree "$sig" "$child"
+  done
+  kill "-$sig" "$root" 2>/dev/null || true
+}
+
+TIMED_OUT=()
+cap() {
+  local secs="$1" label="$2"; shift 2
+  "$@" &
+  local pid=$! waited=0
+  while kill -0 "$pid" 2>/dev/null; do
+    if [ "$waited" -ge "$secs" ]; then
+      echo "  ⏱  TIMEOUT: '$label' exceeded ${secs}s — killing it and continuing"
+      _kill_tree TERM "$pid"
+      sleep 5
+      if kill -0 "$pid" 2>/dev/null; then
+        echo "  ⏱  still alive after SIGTERM — escalating to SIGKILL"
+        _kill_tree KILL "$pid"
+      fi
+      wait "$pid" 2>/dev/null
+      TIMED_OUT+=("$label (>${secs}s)")
+      return 124
+    fi
+    sleep "$CAP_POLL"
+    waited=$(( waited + CAP_POLL ))
+  done
+  wait "$pid"
+}
+
+# Budgets. Set from the worst case actually observed across every run in this
+# directory (n shown), NOT guessed — a ceiling that clips a merely slow day would
+# be worse than no ceiling, because it would fail runs that were going to succeed.
+# Each is a wide multiple of its observed max, so only a genuine wedge trips it.
+CAP_DEPS=120        # obs max     3s  (n=14)
+CAP_PREFLIGHT=300   # obs max    21s  (n=18)
+CAP_BHAVCOPY=2400   # obs max   956s  (n=11)  full EOD rebuild
+CAP_SCAN_IN=3600    # obs max  1823s  (n=11)
+CAP_REPORT_IN=1800  # obs max   907s  (n=10)  healthy path is ~7s
+CAP_CCC=600         # obs max     4s  (n=10)  network scrape, kept generous
+CAP_SCAN_US=5400    # obs max  2783s  (n=9)   longest step in the pipeline
+CAP_REPORT_US=1800  # obs max    13s  (n=3)   can spawn a fresh scan like IN
+CAP_WATCHLIST=600   # obs max     8s  (n=5)
+CAP_SCREENS=900     # obs max    44s  (n=11)
+CAP_PREDICT=900     # obs max    91s  (n=11)
+CAP_REGIME=600      # obs max    17s  (n=11)
+CAP_GATES=900       # obs max    12s  (n=9)   hits screener.in + yfinance
+CAP_SEND=900        # obs      ~65s
+CAP_ALERT=300       # an alert that hangs would hold the lock after all work is done
+
 # Phase selection. Neither flag = both phases, so a manual run still works.
 RUN_DATA=1; RUN_SEND=1; IS_DRAFT=0
 for a in "$@"; do
@@ -95,10 +172,12 @@ FAILURES=()
 
   # ── 1. gates ───────────────────────────────────────────────────────────────
   step "[1/13] dependency check"
-  $PY check_deps.py || FAILURES+=("STARTUP: missing required dependencies")
+  cap $CAP_DEPS "[1/13] dependency check" \
+    $PY check_deps.py || FAILURES+=("STARTUP: missing required dependencies")
 
   step "[2/13] pre-flight: scan input gates"
-  $PY preflight_scan_inputs.py || FAILURES+=("STARTUP: pre-flight input gate(s) failed")
+  cap $CAP_PREFLIGHT "[2/13] pre-flight gates" \
+    $PY preflight_scan_inputs.py || FAILURES+=("STARTUP: pre-flight input gate(s) failed")
 
   # ── 1b. self-heal a missed data phase ──────────────────────────────────────
   # 2026-08-01: the Mac slept through mailer-data's 03:00 slot (the pmset wake
@@ -119,30 +198,37 @@ FAILURES=()
   if [ "$RUN_DATA" = "1" ]; then
   # ── 2. India ───────────────────────────────────────────────────────────────
   step "[3/13] India EOD refresh (official bhavcopy, incremental)"
-  $PY bhavcopy_history.py 400 \
+  cap $CAP_BHAVCOPY "[3/13] India EOD refresh" \
+    $PY bhavcopy_history.py 400 \
     || { echo "  bhavcopy refresh failed (will use cache)"; FAILURES+=("India: bhavcopy refresh"); }
 
   step "[4/13] India full screener scan"
-  $PY scan_bhavcopy.py \
+  cap $CAP_SCAN_IN "[4/13] India full screener scan" \
+    $PY scan_bhavcopy.py \
     || { echo "  scan failed (will use latest cache)"; FAILURES+=("India: full screener scan"); }
 
   step "[5/13] India combined report (fundamentals + street talk)"
-  $PY daily_combined_report.py --market IN --html \
+  cap $CAP_REPORT_IN "[5/13] India combined report" \
+    $PY daily_combined_report.py --market IN --html \
     || { echo "  combined report failed"; FAILURES+=("India: combined report"); }
 
   step "[6/13] India CCC screen (screener.in) + scrape test"
-  $PY -c "import screener_in as s; s.ccc_screen().to_parquet('cache_seed/india_ccc_screen.parquet', index=False)" \
+  cap $CAP_CCC "[6/13] India CCC screen refresh" \
+    $PY -c "import screener_in as s; s.ccc_screen().to_parquet('cache_seed/india_ccc_screen.parquet', index=False)" \
     || { echo "  CCC refresh skipped"; FAILURES+=("India: CCC screen refresh"); }
-  $PY test_screener_in.py \
+  cap $CAP_CCC "[6/13] screener.in scrape test" \
+    $PY test_screener_in.py \
     || { echo "  ⚠️  screener.in CCC test FAILED — CCC section will show n/a"; FAILURES+=("India: CCC scrape test"); }
 
   # ── 3. US ──────────────────────────────────────────────────────────────────
   step "[7/13] US full market scan (NASDAQ+NYSE, min-price \$2)"
-  $PY full_us_market_scan.py --workers 10 --min-price 2 \
+  cap $CAP_SCAN_US "[7/13] US full market scan" \
+    $PY full_us_market_scan.py --workers 10 --min-price 2 \
     || { echo "  US full market scan failed (continuing)"; FAILURES+=("US: full market scan"); }
 
   step "[8/13] US combined report (reuses the fresh US scan)"
-  $PY daily_combined_report.py --market US --html \
+  cap $CAP_REPORT_US "[8/13] US combined report" \
+    $PY daily_combined_report.py --market US --html \
     || { echo "  US combined report failed (continuing)"; FAILURES+=("US: combined report"); }
   fi   # end phase 1
 
@@ -150,12 +236,16 @@ FAILURES=()
 
   # ── 4. watchlist + screens ─────────────────────────────────────────────────
   step "[9/13] watchlist repair (renames/delists/ETFs + coverage gate)"
-  $PY watchlist_repair.py || FAILURES+=("watchlist: repair")
+  cap $CAP_WATCHLIST "[9/13] watchlist repair" \
+    $PY watchlist_repair.py || FAILURES+=("watchlist: repair")
 
   step "[10/13] screens (value re-rating · playbook · small-cap)"
-  $PY screen_value_rerating.py || FAILURES+=("screen: value re-rating")
-  $PY playbook_screener.py     || FAILURES+=("screen: playbook")
-  $PY smallcap_screener.py --screen || FAILURES+=("screen: small-cap")
+  cap $CAP_SCREENS "[10/13] value re-rating screen" \
+    $PY screen_value_rerating.py || FAILURES+=("screen: value re-rating")
+  cap $CAP_SCREENS "[10/13] playbook screen" \
+    $PY playbook_screener.py     || FAILURES+=("screen: playbook")
+  cap $CAP_SCREENS "[10/13] small-cap screen" \
+    $PY smallcap_screener.py --screen || FAILURES+=("screen: small-cap")
 
   # 🔴 RE-GATE AFTER THE SCREENS, NOT JUST BEFORE THEM. The coverage gate at
   # [9/13] runs before these screens can add rows, so a screen matching a stale
@@ -165,18 +255,23 @@ FAILURES=()
   # filter already keeps them out of the actual email, so this was never a brief
   # correctness bug, but the FILE re-accumulated daily and fed straight into
   # watchlist_tiers' SYNC below. Cheap (idempotent, ~seconds) to just run again.
-  $PY watchlist_repair.py || FAILURES+=("watchlist: re-gate after screens")
+  cap $CAP_WATCHLIST "[10/13] watchlist re-gate" \
+    $PY watchlist_repair.py || FAILURES+=("watchlist: re-gate after screens")
 
   step "[11/13] prediction filter -> tiers -> re-entry ranking"
-  $PY prediction_filter.py || FAILURES+=("prediction filter")
-  $PY watchlist_tiers.py   || FAILURES+=("watchlist tiers")
+  cap $CAP_PREDICT "[11/13] prediction filter" \
+    $PY prediction_filter.py || FAILURES+=("prediction filter")
+  cap $CAP_PREDICT "[11/13] watchlist tiers" \
+    $PY watchlist_tiers.py   || FAILURES+=("watchlist tiers")
   # NOTE: reentry_engine RANKS but no longer injects (--commit required). The
   # forward edge that justified auto-injection measured t=0.06 and was withdrawn
   # 2026-07-29; it stays in the mailer path only to keep the paper-track running.
-  $PY reentry_engine.py || FAILURES+=("re-entry ranking")
+  cap $CAP_PREDICT "[11/13] re-entry ranking" \
+    $PY reentry_engine.py || FAILURES+=("re-entry ranking")
 
   step "[12/13] refresh live market regime (zone_regime.json)"
-  $PY strategy_regime_survival.py --refresh-regime \
+  cap $CAP_REGIME "[12/13] regime refresh" \
+    $PY strategy_regime_survival.py --refresh-regime \
     || echo "  regime refresh failed (continuing)"
 
   # ── 5. THE SEND GATES ──────────────────────────────────────────────────────
@@ -191,19 +286,33 @@ FAILURES=()
   # the send over a market the brief does not mention.
   RECONCILE_FAIL=0
   step "[13/13] send gates: price reconcile (IN, US) + brief validation"
+  # Both gates FAIL SAFE under the ceiling: cap returns 124, which is non-zero,
+  # so a timed-out reconcile counts as a failed reconcile and a timed-out
+  # validation leaves VALIDATE_OK=1. A gate that cannot finish must never be
+  # read as a gate that passed — that is the whole point of having it.
   for MKT in IN US; do
-    $PY scan_price_reconcile.py --market "$MKT" \
+    cap $CAP_GATES "[13/13] price reconcile $MKT" \
+      $PY scan_price_reconcile.py --market "$MKT" \
       || { RECONCILE_FAIL=$((RECONCILE_FAIL+1)); echo "  ⚠ $MKT failed price reconcile"; }
   done
   [ "$RECONCILE_FAIL" -gt 0 ] && FAILURES+=("reconcile: $RECONCILE_FAIL market(s) stale scan prices")
 
   VALIDATE_OK=1
-  $PY validate_brief.py --sample 6 && VALIDATE_OK=0
+  cap $CAP_GATES "[13/13] brief validation" \
+    $PY validate_brief.py --sample 6 && VALIDATE_OK=0
 
   # ── 6. send ────────────────────────────────────────────────────────────────
   if [ "$VALIDATE_OK" -eq 0 ] && [ "$RECONCILE_FAIL" -eq 0 ]; then
       step "[SEND] build + send mailer"
-      $PY send_mailer.py "$@" \
+      # ⚠️ The one ceiling with a real downside. send_mailer has no already-sent
+      # guard, so killing it mid-SMTP could in principle leave the brief half
+      # delivered and a retry would send twice. Capped anyway, at ~14x the ~65s
+      # it actually takes: a send that has not returned in 15 minutes is wedged,
+      # not slow, and an unbounded hang here holds the lock and silently kills
+      # the brief — the exact failure this whole guard exists to prevent. If it
+      # ever trips, check state/last_brief_sent.json before re-running.
+      cap $CAP_SEND "[SEND] build + send mailer" \
+        $PY send_mailer.py "$@" \
         || { echo "  mailer build/send failed"; FAILURES+=("mailer: build/send"); }
   else
       # Name the ACTUAL blocker. On 2026-07-28 the reconcile blocked the send and
@@ -212,18 +321,28 @@ FAILURES=()
       else WHY="price reconcile flagged $RECONCILE_FAIL market(s) (validation itself PASSED)"; fi
       echo "  ❌ send SUPPRESSED — $WHY; saving draft instead"
       FAILURES+=("mailer: NOT SENT — $WHY")
-      $PY send_mailer.py --draft \
+      cap $CAP_SEND "[SEND] draft save" \
+        $PY send_mailer.py --draft \
         || { echo "  draft save failed"; FAILURES+=("mailer: draft save"); }
   fi
 
   fi   # end phase 2
+
+  # Name timed-out steps explicitly. Their `|| FAILURES+=(...)` handler above has
+  # already recorded a generic failure, but "India: combined report" in an alert
+  # reads as a crash — the operator needs to know it hung, because a hang points
+  # at an unbounded call rather than a bug in the report itself.
+  if [ ${#TIMED_OUT[@]} -gt 0 ]; then
+    FAILURES+=("TIMEOUT: ${TIMED_OUT[*]}")
+  fi
 
   if [ ${#FAILURES[@]} -gt 0 ]; then
     echo "[ALERT] ${#FAILURES[@]} step(s) failed: ${FAILURES[*]}"
     # send_alert re-checks any "NOT SENT" claim against state/last_brief_sent.json
     # before mailing, so a failure that was fixed mid-run does not contradict a
     # brief that actually went out.
-    $PY send_alert.py --pipeline daily_mailer.sh --log "$LOG" \
+    cap $CAP_ALERT "[ALERT] send_alert" \
+      $PY send_alert.py --pipeline daily_mailer.sh --log "$LOG" \
       "${FAILURES[@]}" || echo "  alert email itself failed to send"
   fi
 
