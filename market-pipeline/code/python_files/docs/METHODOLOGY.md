@@ -76,7 +76,7 @@ Japan changed — only the **power** did. This is the entire point of the suffic
 - **Execution / impact:** Almgren & Chriss (2000); Almgren et al. (2005). → `execution_cost_model.py`.
 - **Liquidity / capacity:** Amihud (2002), JFM; Corwin & Schultz (2012), JF. → `cost_vs_edge.py`.
 - **Factor selection:** Tibshirani (1996), *Lasso*, JRSS-B. → `factor_learning.py` (shadow mode).
-- **Microstructure / HFT:** Gomber et al., *High-Frequency Trading*; `baobach/hft_papers`. →
+- **Microstructure / HFT:** Gomber, Arndt, Lutat & Uhle (2011), *High-Frequency Trading*, SSRN 1858626; `baobach/hft_papers`. →
   orchestration + cost realism.
 - **Japanese data + LLM-vs-baseline:** Sugiura et al. (2025), *EDINET-Bench* (Sakana AI),
   arXiv:2506.08762 — the deep JP panel + independent evidence that a **naive persistence

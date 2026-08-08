@@ -90,6 +90,10 @@ CACHE_FILE = Path(os.environ.get(
 CACHE_FILE.parent.mkdir(parents=True, exist_ok=True)
 OUT_DIR    = Path("./sentiment_results"); OUT_DIR.mkdir(exist_ok=True)
 CACHE_TTL_HOURS = 6
+# Bounded read for RSS feeds. The REST providers below already pass timeout=15;
+# this is the matching cap for the feedparser path, which had none. Env-tunable
+# so a slow-feed day can be widened without a code change.
+RSS_FETCH_TIMEOUT = float(os.environ.get("RSS_FETCH_TIMEOUT", "15"))
 
 DISCLAIMER = ("⚠️  News sentiment is noisy, provider-dependent, and may lag or "
               "lead price. Educational/research only. NOT investment advice.")
@@ -361,11 +365,23 @@ class IndianRSSProvider(NewsProvider):
         if self._feed_cache:
             return [e for v in self._feed_cache.values() for e in v]
         import feedparser
+        import requests
         for outlet, urls in self.FEEDS.items():
             for url in urls:
                 try:
                     self._throttle()
-                    d = feedparser.parse(url)
+                    # feedparser.parse(url) fetches through urllib, which has NO
+                    # default timeout — and the `except Exception` below cannot
+                    # catch a hang, only an error. On 2026-08-07 one wedged feed
+                    # socket blocked the 03:00 data phase for 4h50m, held
+                    # /tmp/daily_pipeline.lock, made the 06:30 send exit 0 without
+                    # sending, and cost the day's brief. Fetch with a bounded
+                    # read, then hand the bytes to feedparser (it parses content
+                    # as happily as a URL). A timeout now raises -> caught below
+                    # -> that feed degrades to [] instead of stopping the world.
+                    d = feedparser.parse(
+                        requests.get(url, timeout=RSS_FETCH_TIMEOUT).content
+                    )
                     self._feed_cache[url] = [
                         {"title": e.get("title",""),
                          "summary": e.get("summary", e.get("description","")),

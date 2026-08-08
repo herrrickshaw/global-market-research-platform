@@ -2,87 +2,270 @@
 
 Decisions and material changes to the pipeline, newest first.
 
-## 2026-08-05 — bhavcopy_cache de-duplicated; cold data moved off local to Dropbox
+## 2026-08-08 — data_index reported six datasets STALE forever; they were never stale
 
-- **`BHAV_CACHE` default repointed** (commit `0750b1fc`) from `~/Downloads/data/bhavcopy_cache`
-  to the canonical `~/market-pipeline/data/bhavcopy_cache` in all 6 scripts that hard-coded the
-  old path (build_mailer, ipo_monitor, liquidity, market_calendar, ohlcv_cache, screener_kit).
-  The two dirs held the same data twice (~1.7 GB); the market-pipeline copy is fresher (the daily
-  pipeline writes there) and a verified superset (0 Downloads-only files), already mirrored to
-  Dropbox (`bhavcopy_cache` tree). Deleted the Downloads copy → −854 MB. DECISION: repoint the
-  default, don't just delete — 6 standalone-run scripts defaulted to the Downloads path, so a bare
-  delete would have broken them.
-- **Machine disk cleanup (94% → 75%, ~37 GB freed), all reclaim from redundancy — nothing live
-  touched.** Regenerable correlation-matrix CSVs → float16 zstd parquet (kept, same names);
-  `branch-archives/*.bundle` (1.4 GB) + `{china,hk}_scan` matrices → Dropbox; MemPalace (5.9 GB,
-  dormant 14 d, redundant with MEMORY.md/ruflo) → Dropbox + plugin disabled; unused Homebrew
-  packages (llvm/julia/flink/pytorch/kafka/…, −5.3 GB); LM Studio orphan (1.3 GB); stale Claude
-  agent worktrees (2 GB); `global-market-data` LFS cache shed 1.2 GB→16 KB by deleting two
-  triply-archived pre-rewrite branches (`old-main*`) then `git lfs prune`. Dropbox archive paths:
-  `market-data-archive/{archives,lfs_archive}/` (branch bundles + full LFS tarballs).
+`data_index.py` flagged `scan.india/us/europe/japan/korea` and `report.combined`
+as STALE every single day, while printing `newest is 0.0d old` in the same line.
+All six had that morning's file. The brief built from them and went out fine.
 
-## 2026-08-01 — Does ownership show up in behaviour? Partly, and one prediction was backwards
+Cause: one rule applied to two different dataset shapes. `_coverage()` requires
+80% of a directory's files to be within `max_age_days` — correct for a MIRROR,
+where the set is one logical snapshot spread over many files, and where the
+newest member lies (2026-07-20: a US OHLC refresh advanced 2,658 of 7,641
+tickers, `max(mtime)` said fresh, the gate passed over a 57%-stale cache). But
+the scan directories are ARCHIVES: each run writes a *new* timestamped workbook
+and leaves yesterday's alone. Retaining 17 daily workbooks scores ~12% within
+1.5d on a day the writer is working perfectly. Coverage cannot be satisfied by
+an append-only directory, so those six were pinned to STALE permanently.
 
-`ownership_behaviour.py` + `reports/ownership_behaviour.md`. Takes the ownership tables from
-`equity_ownership.py` and asks whether the composition is visible in the price series.
+Six standing false alarms is worse than no check — it is what trains an operator
+to skim past the two lines that matter. The run that prompted this had 10
+flagged datasets, of which 6 were structural noise.
 
-- **Theory it is tested against**: Gabaix & Koijen's *inelastic markets hypothesis* — $1 into the
-  aggregate market moves its value ~$5 (multiplier 3–8), because the marginal holders (index
-  funds, pensions, insurers) hold mandated allocation bands and cannot absorb flow. Ownership IS
-  the demand elasticity, so it should be visible in how violently price moves per unit of flow.
-- **The five markets split two-and-three, cleanly**: US/JP/EU show NEGATIVE daily autocorrelation
-  (−0.088 to −0.036) and variance ratios BELOW 1 (0.84–0.91) — mean-reverting. IN/KR show POSITIVE
-  autocorrelation (+0.037, +0.038) and VR ≈ 1 — trending or random-walk.
-- **Volatility lines up**: Korea (64% retail turnover, the highest of any major market) is the most
-  volatile at 27.3%; the US (deepest institutional intermediation) the least at 19.0%.
-- **🔴 My stated prediction was WRONG on direction.** The module predicted retail-heavy markets
-  would show short-horizon REVERSAL. The data says the opposite — reversal is present where
-  INSTITUTIONS dominate and absent where retail does. Recorded rather than quietly re-framed.
-- **🔴 And there is a competing mechanism that needs no behaviour at all.** Positive daily
-  autocorrelation in thin markets is classically produced by NON-SYNCHRONOUS TRADING: when index
-  constituents do not all trade at the close, today's index partly reflects yesterday's
-  information. India's public float is ~11.4% with promoters at 47.2%, so thin trading is exactly
-  what to expect. This design cannot separate that from an ownership effect.
-- **Kurtosis does not sort by ownership at all** — India fattest (15.1), Japan thinnest (6.3), no
-  mapping to retail share or float. Whatever drives tail risk here, it is not composition.
-- **🔴 n = 5. This describes, it does not test.** Five points cannot support a cross-sectional
-  claim; no controls for sector mix, currency regime or index construction. One comparability trap
-  is named explicitly in the report: Korea's 64% is a share of TRANSACTION VALUE while India's
-  11.4% is an OWNERSHIP share — convenient to put in one column, not quite legitimate.
-- **The study this argues for and does not deliver**: rank stocks WITHIN India by promoter/
-  institutional holding (per-company data `equity_ownership.py` already collects) and compare
-  behaviour across buckets — sector, currency and calendar held constant, n in the hundreds.
+- **DECISION: add a `shape` field, do NOT relax `COVERAGE_REQUIRED`.** The
+  obvious fix — lower the 80%, or judge everything on the newest member — walks
+  straight back into the 2026-07-20 bug. The two shapes need two rules, so the
+  registry now declares which one each dataset is. `MIRROR` stays the default:
+  a dataset is coverage-judged unless it says otherwise, so the failure mode of
+  forgetting to classify a new dataset is a false ALARM, not a false all-clear.
+- **DECISION: ARCHIVE is judged on the newest member alone.** For an append-only
+  directory the only meaningful question is whether the latest run landed; its
+  old members are history and carry no staleness information.
+- Marked exactly the six demonstrable archives. Anything whose writer rewrites
+  files in place stays a MIRROR — `cache.ohlc`, `intl_pit.cache` and the
+  correlation outputs are unchanged and still coverage-judged.
+- Verified in both directions, because "always OK" would be the worse bug: an
+  archive whose latest run is 5d old still reports STALE; an archive with 1 fresh
+  + 16 old members reports OK; and a MIRROR with a brand-new file but 90% of
+  members 4d old still reports STALE (the 2026-07-20 case, unregressed).
 
-## 2026-08-01 — Scan-freshness check: name the missing run, not the price drift
+Report goes from 10 stale/missing to 4, and all 4 are real.
 
-The Sat 01 Aug run reported two failures — "reconcile: 2 market(s) stale scan prices" and
-"mailer: NOT SENT — brief failed screener.in validation". Both were TRUE POSITIVES reporting
-one underlying fact, and neither named it.
+## 2026-08-07 — Unbounded RSS fetch cost a full day's brief; timeout added at two layers
 
-- **What actually happened.** `mailer-data` (03:00, produces the IN/US scans) is scheduled
-  **Mon–Sat**, but `pmset` wakes **weekdays only**. 01 Aug was a **Saturday**, so the Mac slept
-  through 03:00 and the job never fired — `launchd_mailer_data.log` has no 2026-08-01 entries at
-  all. `mailer-send` at 06:30 then silently reused Friday's `20260731` workbook. Proof beyond the
-  filename: `RELIANCE ours=1292.9` is byte-identical to the previous day's run, as are HDFCBANK
-  753.95, BHARTIARTL 1956.8 and SBIN 1025.3, while screener.in had moved to 1308.0.
-- **The gates were right; their diagnosis was indirect.** Reconcile said "4/8 stale (worst
-  63MOONS 9.0%)" and validation said "1 price mismatch beyond 2.0%". Both true, both describing
-  a symptom several steps from the cause. Reading them, the natural conclusion is that the price
-  checks are flaky — which is the opposite of what is happening.
-- **Fix: check the workbook's own datestamp BEFORE comparing any price.**
-  `scan_price_reconcile.py` now fails fast with "STALE WORKBOOK — …_20260731_… is 1 day(s) old;
-  expected today's scan. The scan step did not run." No network calls, no price comparison, cause
-  stated directly. `validate_brief.py` prints the equivalent note before its screener.in fetches.
-- **Immediately useful**: running it today shows **JP, KR and EU passing on today's 20260801
-  workbooks while only IN and US are stale** — pinning the failure to the 03:00 job specifically,
-  since the 06:32 jobs clearly did fire.
-- **Rejected: removing the screener.in validation.** It was the only thing that stopped a brief
-  headed "01 Aug 2026" carrying 31 Jul prices from being sent — precisely the 2026-07-15 incident
-  it was built for (a GOLDEN_CROSS pick quoting a seven-week-old price). The gate is not the
-  repeating bug; the missing Saturday run is, and it recurs every Saturday until fixed.
-- **🔴 Still required, needs sudo (cannot be done from here)**: extend the wake schedule to
-  Saturday so the 03:00 job actually fires —
-  `sudo pmset repeat wakeorpoweron MTWRFS 00:10:00`
+The 03:00 data phase fired on time, ran steps 1–4 clean, entered step [5/13]
+(`daily_combined_report.py --market IN --html`) at 03:47 and never came out. At
+08:23 it was still there: 4h50m elapsed, 0.0% CPU, one ESTABLISHED HTTPS socket
+to an Akamai edge and no bytes moving. It held `/tmp/daily_pipeline.lock` the
+whole time, so the 06:30 send hit the lock, printed `already running (pid 283)`
+and **exited 0** — launchd recorded success for a job that did nothing, and no
+brief went out. The same call completed in **7 seconds** on re-run, so this was a
+transient stalled socket, not a reproducible break.
+
+Root cause was NOT in `daily_combined_report.py`, where the symptom appeared. All
+four REST sentiment providers already pass `timeout=15`. The uncapped call was
+`feedparser.parse(url)` in `sentiment_pipeline.py:_all_entries()` — feedparser
+fetches through `urllib`, which has no default timeout, and `get_market_mood()`
+routes straight to it. The surrounding `except Exception` is no defence: a hang
+is not an error.
+
+- **Layer 1 (the fix).** `feedparser.parse(url)` → `feedparser.parse(requests.get(
+  url, timeout=RSS_FETCH_TIMEOUT).content)`. feedparser parses content as happily
+  as a URL, so behaviour is unchanged (verified: 214 live entries still parse); a
+  timeout now *raises*, so the existing handler degrades that one feed to `[]`.
+- **Layer 2 (the backstop).** A hard `STREET_TALK_TIMEOUT` (default 300s, ~40x the
+  healthy 7s) around the whole street-talk component in `get_street_talk`, so any
+  *future* uncapped call downstream also degrades instead of wedging. Component 2
+  is optional colour — the report already renders with an empty talk dict.
+- **DECISION: daemon thread, not `signal.alarm`, for layer 2.** SIGALRM was the
+  obvious choice and is wrong here: the RSS path wraps each feed in
+  `except Exception`, so the alarm's exception would be caught and discarded and
+  the loop would sail on to the next feed. A thread caps by wall clock without
+  needing the callee to cooperate, and `daemon=True` means an abandoned wedge
+  cannot keep the process alive.
+- **DECISION: fix layer 1 as well, rather than rely on the backstop alone.** The
+  cap turns a 4h50m outage into a 5-minute delay, but only layer 1 keeps the
+  sentiment data itself intact — a capped run silently loses market mood for the
+  day, which is a quieter failure than the one being fixed.
+- Both bounds are env-tunable (`RSS_FETCH_TIMEOUT`, `STREET_TALK_TIMEOUT`) so a
+  slow-feed morning can be widened without a code change.
+
+**Same day — per-step wall-clock ceiling in `daily_mailer.sh`.** The socket fix
+above closes one call in one step; this closes the class. A `cap <secs> <label>
+<cmd…>` helper wraps all 23 `$PY` invocations and returns 124 (GNU timeout's
+convention) when a step overruns, so every existing `|| FAILURES+=(…)` handler
+fires unchanged and the alert email still goes out — with an explicit `TIMEOUT:`
+entry naming the step, because "India: combined report" in an alert otherwise
+reads as a crash when it was a hang, and those point at different bugs.
+
+- **Budgets are measured, not guessed** — set from the worst case observed across
+  every run in this directory (`n` recorded per step in the source), then widened
+  to a multiple of it. A ceiling that clips a merely slow day would be worse than
+  no ceiling: it would fail runs that were going to succeed. Longest is [7/13] US
+  scan at 5400s against an observed max of 2783s.
+- **DECISION: kill the descendant tree, not just the child.** A bare `kill` on the
+  direct child orphans grandchildren to init, and several steps shell out —
+  [5/13] can spawn a whole scan via `subprocess`, [7/13] runs a worker pool. The
+  helper recurses through `pgrep -P` deepest-first, then escalates TERM→KILL after
+  a 5s grace. Verified: a 3-deep tree leaves zero orphans.
+- **DECISION: the send gates fail SAFE under the ceiling.** A timed-out reconcile
+  counts as a failed reconcile; a timed-out validation leaves `VALIDATE_OK=1` and
+  suppresses the send. A gate that cannot finish must never read as a gate that
+  passed.
+- **Accepted risk on `[SEND]`.** `send_mailer` has no already-sent guard, so
+  killing it mid-SMTP could half-deliver and a retry would double-send. Capped at
+  900s (~14x the ~65s it takes) anyway: a send that has not returned in 15 minutes
+  is wedged, and an unbounded hang there is precisely the failure being fixed. If
+  it ever trips, check `state/last_brief_sent.json` before re-running.
+- NOT added: a global deadline for the whole data phase. Per-step ceilings sum to
+  more than the 03:00→06:30 window in the pathological all-steps-hang case. That
+  case has never occurred and a global cap would need a policy for which steps to
+  sacrifice; deferred rather than guessed at.
+
+Still open: `pmset -g sched` reads `wakepoweron at 0:10AM`, aimed at the
+`dailybrief` job retired 2026-07-29 and never moved ahead of the 03:00 slot.
+
+## 2026-08-05 — Piotroski tests 5 and 7 corrected in all five market scans
+
+Triggered by a comparison against screener.in's Piotroski-9 screen (`/screens/2/`).
+Scored 490 of its 499 names (195 BSE-only numeric codes via yfinance `.BO`, 304
+NSE-style via the store / `.NS`) and instrumented all nine tests separately.
+Finding: only 4% of lost points were missing data — the rest were real comparisons,
+and the two **level** tests passed ~100% while every **year-over-year delta** test
+bled points. Two of those deltas were scoring 0 on data that is not a failure.
+
+- **Test 5 (ΔLeverage) penalised debt-free companies.** `ltd = _row(...) or 0` turns
+  an absent "Long Term Debt" line into 0, so the test evaluated `0/a0 < 0/a1` →
+  `0 < 0` → False. A firm scored 0 on a leverage test *because it carries no
+  leverage*. Worst offender: 42% of names lost this point, 36% of those debt-free.
+- **Test 7 (no dilution) counted ESOP vesting as an equity raise.** 22 of 31 raw
+  failures were share-count increases under 2% (EUREKAFORB failed on **+0.01%**);
+  two more were a clean 2.0x bonus issue and a 1.55x. None is a capital raise.
+- **A clean share-count multiple alone does NOT identify a bonus issue** — caught
+  when the first cut of this fix rescued IDEA (1.52x). On the India universe the
+  ratio-only rule rescued 9 names of which only 3 were real bonus issues; it also
+  passed COHANCE (equity 2.31x) and MIRCELECTR (1.89x), which are plainly raises,
+  and ALLCARGO (equity 0.24x) and IDEA (0.51x), which are restructurings. A bonus
+  issue reclassifies reserves into share capital, so TOTAL equity is unchanged,
+  whereas a rights issue brings cash in. The split branch now also requires equity
+  within `SPLIT_EQUITY_BAND` (0.85–1.15); missing equity means no rescue, i.e. the
+  pre-fix behaviour. Corrected exactly those 6 back to baseline, kept SHILPAMED /
+  ASIANTILES / BEML. DECISION: gate on equity rather than drop the branch — 3 real
+  bonus issues would otherwise be scored as dilution.
+- Both fixes live in `stock_utils.leverage_improved()` / `no_dilution()` and are
+  called by all five `full_*_market_scan.py`. DECISION: shared helpers, not five
+  copies — the bug existed identically in all five, and a per-market divergence in
+  what "Piotroski 7" means is worse than the bug.
+- DECISION: fix all markets, not just India. REJECTED "India-only" — the same score
+  name would then mean two different things across the daily brief's markets.
+- Measured effect on screener.in's 9s (n=490): agreement at ≥7 **77% → 86%**, at
+  ≥8 44% → 53%, exact-9 12% → 17%. Verified end-to-end: all 154 store-backed India
+  names reproduce the predicted score through the patched `fundamental_scan()`,
+  39 moved, 0 mismatches.
+- **Re-ran the India scan** (`scan_bhavcopy.py`, which calls this
+  `fundamental_scan`) on unchanged 2026-08-04 EOD, so the delta is purely the
+  scoring change: **472 of 1,314 names up, 0 down** (the fixes can only turn a 0
+  into a 1 — a fall would be a bug). `>=7` **314 → 405**, `>=8` 127 → 186, `==9`
+  28 → 41, **Triple_Hits 39 → 57**. Spot-audited the gainers: MARUTI, TECHM,
+  PERSISTENT, HEROMOTOCO, EUREKAFORB are genuinely debt-free; the test-7 gainers
+  are +0.006%–0.5% ESOP drift. ⚠️ `Piotroski >= 7` is now a materially wider gate
+  — 91 more India names clear it, which flows into Triple_Hits and the brief.
+- NOT changed, deliberately: tests 8 (ΔGross margin) and 9 (ΔAsset turnover), the
+  next two biggest point-losers. Spot-checked the arithmetic — the failures are
+  real (assets outgrowing revenue on every sampled name, e.g. MWL revenue +13.9%
+  vs assets +46.0%). We are stricter than screener.in on capex-cycle names and
+  that is correct behaviour, not a bug. The residual disagreement is methodology.
+- ⚠️ **Any Piotroski backtest predating this commit is now stale** — in particular
+  the "US Piotroski is inverted" result, which was computed under the old test 5/7.
+  Re-run before citing it.
+
+## 2026-08-05 — bhavcopy_cache de-duplicated; cold data moved to Dropbox
+
+- **`BHAV_CACHE` default repointed** from `~/Downloads/data/bhavcopy_cache` to the
+  canonical `~/market-pipeline/data/bhavcopy_cache` in all 6 scripts that hard-coded
+  the old path (build_mailer, ipo_monitor, liquidity, market_calendar, ohlcv_cache,
+  screener_kit) + 2 stale path comments. The two dirs held the same data twice
+  (~1.7 GB); the market-pipeline copy is fresher (daily pipeline writes there) and a
+  verified superset (0 Downloads-only files) and is already mirrored to Dropbox
+  (`bhavcopy_cache` tree). Deleted the Downloads copy → −854 MB. DECISION: repoint the
+  default, don't just delete — 6 standalone-run scripts defaulted to the Downloads path.
+- **Cold/large data moved off local to Dropbox** (disk was 92% → 86%, 30 GB free):
+  `repos/branch-archives/*.bundle` (1.4 GB pre-rewrite git safety bundles, were
+  local-only) → `dropbox:market-data-archive/archives/branch-archives/`;
+  `Downloads/data/{china,hk}_scan` matrices (117 MB, no other copy) →
+  `.../current/correlation_matrices/`. Deleted stale `IN.parquet.bak` (67 MB, byte-identical
+  to the live file). LEFT ALONE: repo-tracked `ltm/`/`warehouse/` parquet (moving breaks checkouts).
+- **Follow-through (same day, disk 92% → 75%, ~37 GB total):** MemPalace (5.9 GB, dormant 14 d,
+  redundant with MEMORY.md/ruflo) → Dropbox + plugin disabled; unused Homebrew packages
+  (llvm/julia/flink/pytorch/kafka/…, −5.3 GB); LM Studio orphan (1.3 GB); stale Claude agent
+  worktrees (2 GB); `global-market-data` LFS cache 1.2 GB → 16 KB by deleting two triply-archived
+  pre-rewrite branches (`old-main*`) + `git lfs prune`. All reclaim from redundancy — nothing live.
+
+## 2026-08-02 — Disk reorganisation: stats, a redundant index, workbook retention
+
+Volume is 79% full (44 GB free of 228). Postgres turned out to be a **disk** problem,
+not the memory problem I had assumed: `shared_buffers` is 128 MB, `work_mem` 4 MB — all
+stock defaults — and total postgres RSS is **10 MB**. The cluster is 22 GB on disk.
+
+- 🔴 **`autoanalyze` was `None` on every large table.** The planner had *zero* statistics
+  on a 38.4M-row table, which is why they all reported "0 live rows" and why an ordinary
+  three-table join timed out at 600 s. `ANALYZE` on six tables took 22 s; `ohlcv_history`
+  now correctly reports 38,427,645 rows. Nothing was wrong with the data — only with what
+  the planner knew about it.
+- **Dropped `idx_ohlcv_stock`** — 443 MB, **0 scans**, and a strict prefix of
+  `idx_ohlcv_stock_date` which has 223,176. Verified free-standing (no constraint, no
+  inbound FK) before dropping, and `DROP INDEX CONCURRENTLY` so no reader blocked.
+  Recreate with `CREATE INDEX idx_ohlcv_stock ON public.ohlcv_history USING btree
+  (stock_id)`. Index total 6516 → 6074 MB.
+- **`scan_retention.py`** — 175 workbooks / 111.8 MB reclaimed. **Deliberately not
+  `find -mtime -delete`**: `market_ingest.ingest_snapshot()` globs every workbook and
+  appends "every date not yet in the table", so a *not-yet-ingested* day deleted on age
+  alone vanishes from `market_daily.snapshots` permanently, and the gap is
+  indistinguishable from a day the scan never ran. A file is expendable only when its date
+  is **already ingested** AND older than `--keep-days`. Superseded same-day re-runs (files
+  outnumber dates 39–48 to 15–17) go first. The run reported **0 un-ingested**, and both
+  mailer reconcile gates still pass afterwards.
+
+### `ohlcv_history` — 12 GB, and the case for moving it off Postgres
+
+Not actioned, recorded for a decision. It is **12 GB (5.8 heap + 6.5 GB indexes) for 38.4M
+rows**; the parquet warehouse holds the same 37.4M rows in **846 MB** — 14×.
+
+- It is **derived, not upstream**. `load_ohlcv_to_warehouse.py` *writes into* it from
+  `repos/global-stock-screener/cache_seed/ltm/{US,JP,KR}.parquet` — **490 MB of sources
+  that still exist**. So it is reconstructible by a script already in the tree.
+- That loader is **not in any pipeline script** — manual/one-off. Nothing writes it nightly.
+- Its only nightly reader, `data_index.py:120`, runs `SELECT market, MAX(price_date)` and
+  **those columns do not exist**; the failure is swallowed by a bare `except` returning
+  `{}`. It has never worked against this schema.
+- ⚠️ `completeness_graph.py:87` asserts "ohlcv_history has no writer anywhere in this repo".
+  That is **wrong** — `load_ohlcv_to_warehouse.py` is in the same directory.
+
+Before reclaiming it, confirm no external consumer (the K8s event-driven platform) reads
+it. The broken `data_index.py` query is a real bug regardless of the storage decision.
+
+## 2026-08-02 — Cassandra stopped for the nightly window (8GB box, jetsam)
+
+Claude Code was being killed by jetsam. The 08:54 crash report named the cause without
+ambiguity: `"largestProcess" : "claude"`, `"free" : 7213` pages (~118 MB),
+`"compressorSize" : 224414` (~3.6 GB compressed). The machine is an **8 GB M1** with
+2.87 GB of 4 GB swap committed. At one measurement it had **50 MB free**.
+
+Cassandra runs `-Xms4096M -Xmx4096M` and **nothing in the nightly chain queries it** —
+`ingest.sh`, `daily_mailer.sh` and `daily_research.sh` never touch it; the only nightly
+reference is `system_state.py`'s reachability check. So it is stopped 00:05 → 09:00.
+
+- **`scripts/cassandra_window.sh {stop|start|status}`**. Liveness is decided by port 9042
+  via `lsof`, **not** by the process table or `brew services list` — those report the
+  launchd job's *intent*, and a JVM can be up ~30 s before it accepts CQL.
+- **Must go through `brew services`.** The plist sets `KeepAlive=true`, so killing the
+  process just has launchd restart it seconds later. Only unloading the job keeps it down.
+- **The start job is on the CLOCK, not chained to the pipeline.** Rejected hanging it off
+  the end of `daily_research.sh`: a crashed or skipped run would then leave Cassandra down
+  all day, and since the web app and the whole `herrrickshaw` keyspace depend on it, that
+  reads as a data bug rather than a service nobody restarted. `RunAtLoad` additionally
+  covers a reboot inside the window. The script is idempotent (exits when 9042 listens).
+- 🔴 **The 4 GB heap is NOT what you get back, and the first version of this script claimed
+  it was.** `-Xms` reserves address space; macOS backs only touched pages. Measured:
+  swap 2876→2716 MB (−160), compressed 2.10→1.93 GB (−170), free RAM unchanged; restarting
+  put ~700 MB of compressor back. Honest figure: **~0.3–0.7 GB of relieved pressure, not
+  4 GB.** Worth having for free on a box at 50 MB free, but the `warehouse_update` DuckDB
+  pushdown (1.63 GB → 433 MB) was the larger lever by ~4×.
+- **The plists are NOT in git** — `Library/` is gitignored, so the schedule lives only on
+  this machine. Reproduce with `com.umashankar.cassandra-stop` (`StartCalendarInterval`
+  Hour 0 Minute 5) and `com.umashankar.cassandra-start` (Hour 9 Minute 0, `RunAtLoad`),
+  both invoking the script above. Verified end-to-end via `launchctl kickstart`, not by
+  reading the files back.
 
 ## 2026-08-01 — Who actually buys stocks: capital-source review by market
 

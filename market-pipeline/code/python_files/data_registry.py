@@ -93,6 +93,12 @@ DAILY = "weekday 00:15-02:30"
 WEEKLY = "Saturday 02:00"
 ONDEMAND = "on demand"
 
+# ── dataset shapes (see Dataset.shape) ────────────────────────────────────────
+# MIRROR: every file must be current -> judged on coverage (the default).
+# ARCHIVE: append-only dated artifacts -> judged on the newest member.
+MIRROR = "mirror"
+ARCHIVE = "archive"
+
 
 @dataclass
 class Dataset:
@@ -102,6 +108,27 @@ class Dataset:
     India EOD is 1 because bhavcopy is same-day-EOD; the research panels are 8
     because a week-old factor panel is still a valid research input. None means
     staleness is not meaningful (append-only logs, derived reports).
+
+    shape says HOW a directory is judged, because two different things are both
+    "a directory of files" and they fail in opposite ways:
+
+      MIRROR  — every file should be current; the set is one logical snapshot
+                spread over many files (a per-ticker OHLC cache). Judged on
+                COVERAGE: if 4,344 of 7,641 tickers are four days behind, the
+                dataset is stale no matter how new the newest file is. This is
+                the 2026-07-20 lesson and it is the default.
+
+      ARCHIVE — append-only; each run drops a NEW dated artifact beside the old
+                ones and never rewrites them (indian_full_scan/*.xlsx). Old files
+                are history, not staleness. Judged on the NEWEST member, because
+                coverage is meaningless here: retain 17 daily workbooks and
+                coverage-within-1.5d is ~12% on the day it is working perfectly.
+                An archive can never satisfy the coverage rule, so applying it
+                pins the dataset to STALE forever — which is how a real staleness
+                signal gets trained out of the operator.
+
+    Pick ARCHIVE only when old files are SUPPOSED to stay old. If a writer
+    rewrites files in place, it is a MIRROR and coverage is the correct test.
     """
     key: str
     path: Path
@@ -111,6 +138,7 @@ class Dataset:
     max_age_days: Optional[float]
     note: str = ""
     consumers: List[str] = field(default_factory=list)
+    shape: str = MIRROR
 
     def exists(self) -> bool:
         return self.path.exists()
@@ -218,27 +246,30 @@ DATASETS: List[Dataset] = [
             "expected, not stale — check coverage via `yf_intl_pit_fundamentals.py --status`."),
 
     # ---- mailer ----------------------------------------------------------
+    # ARCHIVE, all six: every run writes a NEW timestamped workbook/report and
+    # leaves yesterday's in place. Coverage would judge them on the retained
+    # history, which is 100% of the point of keeping it — see Dataset.shape.
     Dataset("scan.india", CODE / "indian_full_scan",
             "scan_bhavcopy.py", "mailer", DAILY, 1.5,
             "🔴 Median_Turnover is in RUPEES; floor is Rs 1cr, not the USD floor",
-            ["consistency_audit.py", "send_mailer.py"]),
+            ["consistency_audit.py", "send_mailer.py"], shape=ARCHIVE),
     Dataset("scan.us", CODE / "us_full_scan",
             "full_us_market_scan.py", "mailer", DAILY, 1.5,
             "Turnover_USD; structural $10k floor",
-            ["consistency_audit.py", "send_mailer.py"]),
+            ["consistency_audit.py", "send_mailer.py"], shape=ARCHIVE),
     Dataset("scan.europe", CODE / "european_scan",
             "full_european_market_scan.py", "mailer", DAILY, 1.5,
             "mixed-currency universe; lacks Data_Points so 200-DMA is unverifiable",
-            ["consistency_audit.py", "send_mailer.py"]),
+            ["consistency_audit.py", "send_mailer.py"], shape=ARCHIVE),
     Dataset("scan.japan", CODE / "japan_scan",
             "full_japan_market_scan.py", "mailer", DAILY, 1.5, "",
-            ["consistency_audit.py", "send_mailer.py"]),
+            ["consistency_audit.py", "send_mailer.py"], shape=ARCHIVE),
     Dataset("scan.korea", CODE / "korea_scan",
             "full_korea_market_scan.py", "mailer", DAILY, 1.5, "",
-            ["consistency_audit.py", "send_mailer.py"]),
+            ["consistency_audit.py", "send_mailer.py"], shape=ARCHIVE),
     Dataset("report.combined", CODE / "combined_report_results",
             "daily_combined_report.py", "mailer", DAILY, 1.5,
-            "fundamentals + street talk, per market"),
+            "fundamentals + street talk, per market", shape=ARCHIVE),
     Dataset("brief.html", CODE / "brief_today.html",
             "send_mailer.py", "mailer", DAILY, 1.0,
             "the sent brief; also written on the --draft suppression path"),

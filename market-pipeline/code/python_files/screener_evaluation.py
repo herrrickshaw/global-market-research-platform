@@ -28,7 +28,8 @@ REP = Path(__file__).resolve().parent / "reports"
 # (screen, factor family, factor_align 0-10, liquidity_friendly 0-10, verdict, why)
 S = [
  ("Golden Crossover (50>200 DMA)", "trend", 10, 8, "EFFECTIVE",
-  "our PRIMARY India edge — trend survives Deflated Sharpe (0.994); no size cap"),
+  "our PRIMARY India edge — trend survives Deflated Sharpe (Bailey & Lopez de Prado "
+  "2014) at 0.994; no size cap"),
  ("Magic Formula (ROCE + earnings yield)", "quality+value", 8, 7, "EFFECTIVE",
   "combines the two validated factors; Greenblatt travels to India; no cap floor"),
  ("Value Stocks (hi OPM/ROCE, low D/E)", "quality+value", 8, 7, "EFFECTIVE",

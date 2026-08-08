@@ -84,10 +84,19 @@ import system_state
 # a fault: nse_deep_ohlcv is an append-only static archive with NO live writer by
 # design; india_quarterly was being measured on period_end, a reporting period,
 # so a perfectly fresh quarterly table reads as a month behind between results
-# seasons; and ohlcv_history has no writer anywhere in this repo — it belongs to
-# the event-driven platform and is read, not maintained, here. Judging all three
-# against "should have updated yesterday" produced three alarms and zero
+# seasons; and ohlcv_history is loaded in BULK, not maintained daily. Judging all
+# three against "should have updated yesterday" produced three alarms and zero
 # problems, which is how an audit teaches people to ignore it.
+#
+# ⚠️ CORRECTED 2026-08-02. This comment used to claim ohlcv_history "has no writer
+# anywhere in this repo — it belongs to the event-driven platform". That is false:
+# load_ohlcv_to_warehouse.py sits in THIS directory and writes into it, from
+# global-stock-screener/cache_seed/ltm/{US,JP,KR}.parquet. What is true is that
+# the loader is in no pipeline script, so the table advances only when someone
+# runs it by hand — hence per-market dates of 2026-07-01 (japan) through
+# 2026-07-17 (usa) on 2026-08-02. "No writer" and "no SCHEDULED writer" lead to
+# very different decisions about whether 12GB is safe to reclaim, which is why
+# the distinction is worth the correction.
 #
 # tolerance is in days; None means no freshness expectation at all.
 CADENCE = {"daily": 5, "weekly": 12, "quarterly": 120, "static": None,

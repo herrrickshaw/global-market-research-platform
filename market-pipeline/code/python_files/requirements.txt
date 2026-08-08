@@ -54,6 +54,13 @@ networkx
 scikit-learn>=1.6    # ML — was the one real gap in this venv's analysis stack
 polars>=1.36         # fast columnar DataFrame, complements pandas on large screener universes
 sqlalchemy>=2.0      # proper DB layer alongside raw psycopg2
+psycopg2-binary>=2.9 # pg_client.py imports psycopg2 DIRECTLY, and pg_client is a
+                     # hard import for system_state.py -> completeness_graph.py.
+                     # It was referenced only in the comment above and never
+                     # DECLARED, so it survived in the venv by ad-hoc install and
+                     # vanished the moment that venv was rebuilt from this file —
+                     # taking daily_research [R9] with it. Declared now so a clean
+                     # rebuild reproduces a working environment.
 pandera>=0.26        # DataFrame schema/data-quality validation
 statsmodels>=0.14    # econometric regression (OLS/consistency work)
 seaborn>=0.13        # statistical visualization — correlation heatmaps etc.

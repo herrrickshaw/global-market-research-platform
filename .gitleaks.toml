@@ -1,0 +1,17 @@
+# Repo-level gitleaks config — picked up by BOTH the local pre-commit hook
+# (gitleaks protect) and the quality-gates CI job (gitleaks detect --source .).
+# Extends the default ruleset; entries below are verified false positives only.
+
+[extend]
+useDefault = true
+
+# Figma embeds paste metadata into exported/copied HTML as base64 comments:
+#   <!--(figmeta){"fileKey":"...","pasteID":...,"dataType":"scene"}(/figmeta)-->
+# The fileKey is a public document identifier, not a credential. Verified
+# 2026-08-02 (quality-gates CI triage): the only hit is an old exported page.
+[[rules]]
+id = "generic-api-key"
+[rules.allowlist]
+regexTarget = "line"
+regexes = ['''\(figmeta\)''']
+paths = ['''Downloads/code/web/chapterdetail\.html''']

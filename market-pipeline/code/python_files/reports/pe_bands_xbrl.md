@@ -1,9 +1,9 @@
 # India P/E panel — bands, tiers and accuracy
 
-Generated 2026-07-29 by `pe_bands.py --build --source xbrl`.
+Generated 2026-07-30 by `pe_bands.py --build --source xbrl`.
 
-- **1,962,914** daily observations · **1,744** symbols
-- span **2019-01-17 → 2026-07-28**
+- **1,979,108** daily observations · **1,776** symbols
+- span **2019-01-17 → 2026-07-29**
 - P/E is TTM: four consecutive quarters, each stamped at its FILING date, so a lookup on any bar uses only what the market could already see
 
 ## Band occupancy
@@ -17,26 +17,26 @@ symbol reached z = −45 that way).
 | band | share |
 |---|--:|
 | normal | 44.6% |
-| nan | 18.9% |
+| nan | 19.0% |
 | +1..+2sd | 13.9% |
-| -2..-1sd | 10.4% |
-| >+2sd | 8.5% |
+| -2..-1sd | 10.5% |
+| >+2sd | 8.4% |
 | <-2sd | 3.7% |
 
-> `nan` at 18.9% is the honest coverage gap — symbols without enough consecutive quarters to form a TTM window, or without the 12-observation history a band needs. It is reported rather than dropped: a hidden gap reads as coverage.
+> `nan` at 19.0% is the honest coverage gap — symbols without enough consecutive quarters to form a TTM window, or without the 12-observation history a band needs. It is reported rather than dropped: a hidden gap reads as coverage.
 
 ## Accuracy vs `fundamentals.ratios`
 
-Independent cross-check on the latest bar, 902 symbols present in both. `ratios` is built from a different source, so agreement is evidence and disagreement is a question, not proof either side is right.
+Independent cross-check on the latest bar, 926 symbols present in both. `ratios` is built from a different source, so agreement is evidence and disagreement is a question, not proof either side is right.
 
 | percentile | abs error |
 |---|--:|
-| p25 | 8.0% |
-| p50 | 21.0% |
-| p75 | 46.3% |
-| p90 | 81.3% |
+| p25 | 6.4% |
+| p50 | 18.7% |
+| p75 | 42.4% |
+| p90 | 78.2% |
 
-- **median 21.0%** · within 25%: 54% · within 50%: 78%
+- **median 18.7%** · within 25%: 59% · within 50%: 80%
 
 > This number is why `--source` defaults to `xbrl`: the screener path measures wider AND covers fewer symbols (1,301 vs 1,744). Recomputed on every build rather than quoted, so it cannot drift from the panel it describes.
 
@@ -46,14 +46,14 @@ Independent cross-check on the latest bar, 902 symbols present in both. `ratios`
 
 | tier (latest bar) | symbols |
 |---|--:|
-| 1 | 142 |
-| 2 | 143 |
-| 3 | 143 |
-| 4 | 143 |
-| 5 | 143 |
-| 6 | 143 |
-| 7 | 143 |
-| 8 | 143 |
-| 9 | 143 |
-| 10 | 143 |
+| 1 | 145 |
+| 2 | 145 |
+| 3 | 145 |
+| 4 | 145 |
+| 5 | 146 |
+| 6 | 145 |
+| 7 | 145 |
+| 8 | 145 |
+| 9 | 145 |
+| 10 | 146 |
 

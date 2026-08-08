@@ -121,6 +121,14 @@ ipywidgets>=7.6.0          # Interactive widgets for Jupyter
 #   pip install -r requirements.txt
 #
 
+# ─────────────────────────────────────────────────────────────────────────────
+# TENDER SCRAPING (Tenders on Time automation)
+# ─────────────────────────────────────────────────────────────────────────────
+# See: TENDERS_SCRAPER_README.md · scripts: tenders_scraper_v2.py
+# Scrapes commodity tenders (ethanol, biogas, SAF, lubricants, etc.)
+# DuckDB storage at ~/tenders_data.duckdb · Credentials: ~/.config/market-secrets/
+# Already included above: requests, beautifulsoup4, duckdb, selenium
+
 # --- OCR fallback for scanned/image PDFs (opt-in) ---------------------------
 # Client deps for a remote baidu/Unlimited-OCR endpoint (arXiv:2606.23050).
 # Shared client: ~/ocr/  ·  serve instructions: ~/ocr/serve/README.md

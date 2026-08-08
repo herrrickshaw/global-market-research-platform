@@ -75,7 +75,9 @@ except ImportError:
     _US_CACHE = None
     _CACHE_OK  = False
 
-# ML signal engine (AlQahtani et al. 2025 — Ridge regression)
+# ML signal engine — Ridge regression (this repo's model choice; regularised
+# variant of the simple-linear-regression baseline that AlQahtani, Alhaddad &
+# Jarrah 2025, IJACSA 16(8), found beats RNN/LSTM for daily price forecasting)
 try:
     from ml_signal_engine import MLSignalEngine as _MLEngine
     _ML_ENGINE = _MLEngine(model_type="ridge")
@@ -386,7 +388,9 @@ def bulk_download_ohlc(tickers: list[str], period: str = "1y") -> dict[str, pd.D
     Download OHLC for US stocks with 3-tier caching (memory → disk → network).
 
     US tickers have no suffix (AAPL, MSFT etc.) — stored as bare ticker in cache.
-    Cache stores 5 years as recommended by AlQahtani et al. (2025).
+    Cache stores 5 years (this repo's window choice — AlQahtani et al. 2025 make
+    no window recommendation; their review notes ~2y sufficed and stresses
+    periodic retraining for nonstationarity).
 
     Tier 1 — Memory cache: 0.3 ms/stock (same session, already fetched)
     Tier 2 — Parquet cache: ~94 ms/stock (previously downloaded, on disk)
@@ -673,7 +677,7 @@ def main(nasdaq_only: bool = False, top: int = 0, run_scans: bool = True,
     print(f"  FULL US MARKET SCAN — NASDAQ + NYSE")
     print(f"  Started: {datetime.now().strftime('%d %b %Y  %H:%M:%S')}")
     print(f"  Cache: {'✅ active (Parquet)' if _CACHE_OK else '⚠️  disabled'}")
-    print(f"  ML signal: {'✅ Ridge regression (AlQahtani et al. 2025)' if _ML_OK else '⚠️  disabled'}")
+    print(f"  ML signal: {'✅ Ridge regression' if _ML_OK else '⚠️  disabled'}")
     print(f"{'#'*60}\n")
 
     # ── Live market context (S&P 500 regime) ─────────────────────────────────
@@ -944,7 +948,7 @@ def main(nasdaq_only: bool = False, top: int = 0, run_scans: bool = True,
                    and r.get("Piotroski_Strong") == "YES"
                    and r.get("CoffeeCan") == "PASS"]
 
-    # ── Stage 4b: ML signal on every stock with OHLC (AlQahtani et al. 2025) ─
+    # ── Stage 4b: ML signal (Ridge regression) on every stock with OHLC ──────
     ml_signal_map: dict = {}
     if _ML_OK and ohlc_data:
         print(f"\nStage 4b — ML signal (Ridge regression) on {len(ohlc_data)} stocks …")

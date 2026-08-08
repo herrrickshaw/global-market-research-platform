@@ -155,10 +155,21 @@ DISCLAIMER = (
     "For educational/research use only — NOT investment advice."
 )
 
-# ── Research-backed improvements (applied from 7 papers) ─────────────────────
-# Source: Preet et al. (2021) — Magic Formula India; Bhute et al. (2024) — JIER;
-#         Liu & Zhu (2024) — Kalman Filter market efficiency;
-#         Dhanus & Amutha (2025) — Super Trend Nifty backtest
+# ── Research-backed improvements (applied from 5 papers) ─────────────────────
+# Sources (full citations, resolved 2026-08-01 audit):
+#   Preet, S., Gulati, A., Gupta, A., & Aggarwal, A. (2021). "Back Testing Magic
+#     Formula on Indian Stock Markets: An Analysis of Magic Formula Strategy."
+#     SGGSCC, University of Delhi. SSRN 3945468.
+#   Bhute, A., Tripathi, M. M., Jadav, D., Kasar, A., & Bathia, A. (2024).
+#     "Backtesting Brilliance: Leveraging Analytics for Comparing Buy & Hold Vs.
+#     Trading Strategies based on Technical Indicators." J. Informatics Education
+#     and Research 4(3). doi:10.52783/jier.v4i3.1785
+#   Liu, B., & Zhu, H. (2024). "Analysis of market efficiency in main stock
+#     markets: using Karman-Filter as an approach." arXiv:2404.16449.
+#   Dhanus, S., & Amutha, G. (2025). "Back-testing Super Trend in the 15-minute
+#     time frame among the top 5 contributors of Nifty 50." IJARCMSS 8(2-II), 10-14.
+#   Bailey, D., Borwein, J., Lopez de Prado, M., & Zhu, Q. J. (2014). "The
+#     Probability of Backtest Overfitting." J. Computational Finance (SSRN 2326253).
 
 TRANSACTION_COST_PCT = 0.002   # 0.2% round-trip: STT 0.1% + brokerage ~0.1%
                                 # Source: JIER 2024 — "transaction cost and impact cost

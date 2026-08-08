@@ -1,0 +1,8 @@
+name,ticker,market,segment,india_export_share,key_exports_to_india,hsn_codes,market_cap_usd,market_cap_bn,pe_ratio,pb_ratio,roe,debt_to_equity,sector,industry,employees,website,currency
+Saudi Aramco,2222.SA,Tadawul,Integrated Oil & Gas,0.3,"['Ethylene', 'Propylene', 'Polyolefins']","['29011100', '29011200', '39021010', '39021100']",,,,,,,,,,,
+SABIC,,Global,Petrochemicals,0.35,"['PP', 'PE', 'Specialty Polymers']","['39021010', '39021030', '39021100']",,,,,,,,,,,
+China Petroleum & Chemical Corporation,600028.SS,Shanghai,Petrochemicals,0.45,"['TPA', 'Azo Dyes', 'Disperse Dyes']","['29173600', '32030010']",635192344576.0,635.192344576,19.481482,0.7660938,0.04138,57.948,Energy,Oil & Gas Integrated,351104.0,https://www.sinopec.com/listco,CNY
+CNPC,PTR,NYSE,Oil & Petrochemicals,0.4,"['Chemicals', 'Polymers']","['29000000', '39000000']",,,,,,,,,,,
+ExxonMobil Holdings Corporation,XOM,NYSE,Integrated Oil & Gas,0.08,"['Specialty Polymers', 'Chemicals']","['39021000', '39074000']",644290576384.0,644.290576384,26.435373,2.5327926,0.09873,18.261,Energy,Oil & Gas Integrated,57900.0,https://corporate.exxonmobil.com,USD
+Dow Inc.,DOW,NYSE,Specialty Chemicals,0.12,"['Polyurethane', 'Adhesives', 'Coatings']","['39069090', '39072990']",21879701504.0,21.879701504,,1.3795774,-0.0554,111.913,Basic Materials,Chemicals,32800.0,https://www.dow.com,USD
+LyondellBasell Industries N.V.,LYB,NYSE,Petrochemicals,0.1,"['Polyolefins', 'Styrenics']","['39021000', '39071000']",20038479872.0,20.038479872,,1.9957564,-0.02269,132.759,Basic Materials,Specialty Chemicals,18970.0,https://www.lyondellbasell.com,USD

@@ -49,8 +49,9 @@ mean and median disagreed on **every** headline result, with the median correct 
 
 ## 1. Introduction
 
-Piotroski (2000) locates the F-score premium in "small, illiquid, low-analyst-coverage
-value stocks." Three attributes, routinely compressed into one — usually *size*, because
+Piotroski (2000) locates the F-score premium in "small and medium-sized firms, companies
+with low share turnover, and firms with no analyst following" — small, illiquid,
+low-coverage value stocks. Three attributes, routinely compressed into one — usually *size*, because
 size is the conventional risk factor and the easiest to measure.
 
 This note asks which attribute is doing the work. The question is not academic: size and
@@ -283,6 +284,6 @@ tables.
 - Corwin, S. & Schultz, P. (2012). A simple way to estimate bid-ask spreads from daily high and low prices. *Journal of Finance* 67(2).
 - Fang, V., Noe, T. & Tice, S. (2009). Stock market liquidity and firm value. *Journal of Financial Economics* 94(1).
 - Piotroski, J. (2000). Value investing: the use of historical financial statement information to separate winners from losers. *Journal of Accounting Research* 38.
-- Walkshäusl, C. et al. The Piotroski F-Score: a fundamental value strategy revisited from an investor's perspective. EconStor.
+- Krauss, C., Krüger, T. & Beerstecher, D. (2015). The Piotroski F-Score: a fundamental value strategy revisited from an investor's perspective. IWQW Discussion Paper 13/2015, FAU Erlangen-Nürnberg (EconStor). [Previously misattributed here to "Walkshäusl, C. et al."; Walkshäusl's separate paper is *Piotroski's FSCORE: international evidence*, J. Asset Management 21, 2020.]
 
 *Reproduction: `sweep_piotroski_plus_us.py`, `size_vs_liquidity_us.py`, `cost_vs_edge.py`, `daily_breakout_combo_us.py`, `roace_by_liquidity.py`, `backtest_liquidity_forward.py`.*

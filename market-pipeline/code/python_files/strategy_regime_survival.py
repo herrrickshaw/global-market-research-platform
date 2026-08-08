@@ -189,6 +189,10 @@ def refresh_regime() -> int:
             prev = zr[mkt].get("current_regime")
             zr[mkt]["current_regime"] = cur
             zr[mkt]["active_rule"] = zr[mkt]["bull_rule"] if cur == "bull" else zr[mkt]["bear_rule"]
+            # Refresh moves the regime, so it must move the date too — otherwise
+            # the map carries the backtest's date while asserting today's regime.
+            if asof:
+                zr[mkt]["asof"] = asof
             if cur != prev:
                 LOG.info(f"{mkt}: REGIME FLIP {prev} -> {cur} (active_rule now {zr[mkt]['active_rule']})")
             dl.record("regime_refresh", market=mkt, prev_regime=prev, current_regime=cur,
@@ -210,7 +214,7 @@ def main() -> int:
     if zp.exists():
         zone = json.loads(zp.read_text())
     rules = ["trend", "revert", "mom126", "mom_st", "golden_cross", "breakout"]
-    recs, verdict, cur_regime = [], {}, {}
+    recs, verdict, cur_regime, regime_asof = [], {}, {}, {}
     for mkt in MARKETS:
         try:
             with timed(LOG, f"load+score {mkt}"):
@@ -218,7 +222,14 @@ def main() -> int:
         except Exception as e:
             LOG.error(f"{mkt}: load failed {e}"); continue
         reg = regime_series(close, turn)
-        cur_regime[mkt] = str(reg.dropna().iloc[-1]) if reg.dropna().size else "bull"
+        _rg = reg.dropna()
+        cur_regime[mkt] = str(_rg.iloc[-1]) if _rg.size else "bull"
+        # Date of the breadth reading the rule choice rests on. Written into
+        # zone_regime.json so a consumer can tell a fresh call from a stale one.
+        # This used to read df.attrs["asof"], which nothing ever set — so the
+        # field serialised as "" on every market, every run, and the map looked
+        # equally current whether it was minutes or months old.
+        regime_asof[mkt] = str(_rg.index[-1].date()) if _rg.size else ""
         sig = signals(close)
         nb = int((reg == "bull").sum()); nr = int((reg == "bear").sum())
         print(f"{mkt}: {close.shape[1]} names, {reg.dropna().index.min().date()}→"
@@ -265,7 +276,7 @@ def main() -> int:
                             "bear_rule": er, "bear_excess": ex,
                             "current_regime": cur_regime.get(mkt, "bull"),
                             "active_rule": br if cur_regime.get(mkt) == "bull" else er,
-                            "asof": str(df.attrs.get("asof", ""))}
+                            "asof": regime_asof.get(mkt, "")}
     (HERE / "cache_seed" / "zone_regime.json").write_text(json.dumps(zone_regime, indent=1))
     print("\n=== regime-conditional zone map (cache_seed/zone_regime.json) ===")
     for mkt, z in zone_regime.items():

@@ -15,6 +15,10 @@
 #   2. DEDUP     verify bhavcopy.cleaned_ohlcv has no duplicate (symbol,date) rows
 #   3. COMPRESS  correlation_scan/*_correlation_matrix.csv -> float16 zstd parquet
 #                (the real space lever; keeps files LFS-free so no LFS billing)
+#   3b. GRAPH    incremental graphify refresh + 3-repo merge (advisory)
+#   3c. CITE     sync cite_check central install + citation sweep of all wired
+#                repos (UNKNOWN citations count as an issue; the pre-commit hook
+#                catches new ones, this catches drift and bib/central skew)
 #   4. BACKUP    cloud_backup.sh --with-pg, then the independent verify GATE
 #
 # Exit 0 only if the backup verify gate passes.
@@ -112,6 +116,37 @@ print('graph: %d changed file(s) since last build' % r.get('new_total', 0))
       || echo "  ! graph merge failed (non-fatal)"
   else
     echo "  graphify not installed — skipped"
+  fi
+
+  # 3c. CITATION HYGIENE (2026-08-01 literature audit): re-sync the central
+  # cite_check install from the canonical copy, then sweep every wired repo.
+  # The pre-commit hook blocks NEW unknown citations; this weekly pass catches
+  # drift (bib edited without sync, files landed by merge/pull, hook bypassed).
+  echo "-- [3c] citation hygiene --"
+  "$HOME/scripts/sync_cite_check.sh" 2>&1 | sed 's/^/  /' || echo "  ! sync failed (using stale copy)"
+  CITE="$HOME/.local/share/cite_check/cite_check.py"
+  if [ -f "$CITE" ]; then
+    cite_bad=0
+    for repo in "$PF" "$HOME/BazaarTalks" "$HOME/repos/global-market-scanners" \
+                "$HOME/repos/market-screener-rag" "$HOME/repos/piotroski-liquidity-research" \
+                "$HOME/repos/global-stock-screener" "$HOME/repos/global-market-data" \
+                "$HOME/price_prediction_backtest"; do
+      [ -d "$repo" ] || continue
+      out=$(cd "$repo" && "$PY" "$CITE" --all 2>/dev/null | grep -E '^UNKNOWN|^YEAR\?' || true)
+      if [ -n "$out" ]; then
+        echo "  $(basename "$repo"):"
+        echo "$out" | sed 's/^/    /'
+        echo "$out" | grep -q '^UNKNOWN' && cite_bad=$((cite_bad+1))
+      fi
+    done
+    if [ "$cite_bad" -gt 0 ]; then
+      echo "  ! UNKNOWN citations in $cite_bad repo(s) — fix or add to references.bib"
+      FAILS=$((FAILS+1))
+    else
+      echo "  ok: all wired repos cite-clean"
+    fi
+  else
+    echo "  cite_check not installed — skipped"
   fi
 
   # 4. BACKUP — mirror to Dropbox (+ weekly pg dump), then the INDEPENDENT gate.
