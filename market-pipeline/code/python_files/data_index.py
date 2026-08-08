@@ -267,6 +267,21 @@ def assess(d: R.Dataset) -> dict:
             return {"key": d.key, "status": status, "age_days": age,
                     "coverage": cov, "detail": detail}
 
+    # An ARCHIVE keeps every run's output forever, so its old members are history
+    # and coverage is the wrong question — 17 retained daily workbooks score ~12%
+    # within 1.5d on a day the writer is working perfectly, which pins the dataset
+    # to STALE permanently and teaches the operator to ignore the whole report.
+    # For these the only meaningful test is whether the LATEST run landed.
+    if getattr(d, "shape", R.MIRROR) == R.ARCHIVE:
+        status = OK if age <= d.max_age_days else STALE
+        n = len(_mtimes(d.path))
+        detail = (f"newest {age:.1f}d old (limit {d.max_age_days:g}d), "
+                  f"{n:,} archived — old members are history, not staleness")
+        if status is STALE:
+            detail = (f"latest run is {age:.1f}d old, over the {d.max_age_days:g}d "
+                      f"limit — the writer has not produced a new artifact")
+        return {"key": d.key, "status": status, "age_days": age, "detail": detail}
+
     # Judge on coverage, not on the newest member. A partially-refreshed cache is
     # not a fresh cache, and the newest file cannot tell the two apart.
     cov = _coverage(d.path, d.max_age_days)

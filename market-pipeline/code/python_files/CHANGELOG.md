@@ -2,6 +2,45 @@
 
 Decisions and material changes to the pipeline, newest first.
 
+## 2026-08-08 — data_index reported six datasets STALE forever; they were never stale
+
+`data_index.py` flagged `scan.india/us/europe/japan/korea` and `report.combined`
+as STALE every single day, while printing `newest is 0.0d old` in the same line.
+All six had that morning's file. The brief built from them and went out fine.
+
+Cause: one rule applied to two different dataset shapes. `_coverage()` requires
+80% of a directory's files to be within `max_age_days` — correct for a MIRROR,
+where the set is one logical snapshot spread over many files, and where the
+newest member lies (2026-07-20: a US OHLC refresh advanced 2,658 of 7,641
+tickers, `max(mtime)` said fresh, the gate passed over a 57%-stale cache). But
+the scan directories are ARCHIVES: each run writes a *new* timestamped workbook
+and leaves yesterday's alone. Retaining 17 daily workbooks scores ~12% within
+1.5d on a day the writer is working perfectly. Coverage cannot be satisfied by
+an append-only directory, so those six were pinned to STALE permanently.
+
+Six standing false alarms is worse than no check — it is what trains an operator
+to skim past the two lines that matter. The run that prompted this had 10
+flagged datasets, of which 6 were structural noise.
+
+- **DECISION: add a `shape` field, do NOT relax `COVERAGE_REQUIRED`.** The
+  obvious fix — lower the 80%, or judge everything on the newest member — walks
+  straight back into the 2026-07-20 bug. The two shapes need two rules, so the
+  registry now declares which one each dataset is. `MIRROR` stays the default:
+  a dataset is coverage-judged unless it says otherwise, so the failure mode of
+  forgetting to classify a new dataset is a false ALARM, not a false all-clear.
+- **DECISION: ARCHIVE is judged on the newest member alone.** For an append-only
+  directory the only meaningful question is whether the latest run landed; its
+  old members are history and carry no staleness information.
+- Marked exactly the six demonstrable archives. Anything whose writer rewrites
+  files in place stays a MIRROR — `cache.ohlc`, `intl_pit.cache` and the
+  correlation outputs are unchanged and still coverage-judged.
+- Verified in both directions, because "always OK" would be the worse bug: an
+  archive whose latest run is 5d old still reports STALE; an archive with 1 fresh
+  + 16 old members reports OK; and a MIRROR with a brand-new file but 90% of
+  members 4d old still reports STALE (the 2026-07-20 case, unregressed).
+
+Report goes from 10 stale/missing to 4, and all 4 are real.
+
 ## 2026-08-07 — Unbounded RSS fetch cost a full day's brief; timeout added at two layers
 
 The 03:00 data phase fired on time, ran steps 1–4 clean, entered step [5/13]
