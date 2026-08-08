@@ -2,6 +2,25 @@
 
 Decisions and material changes to the pipeline, newest first.
 
+## 2026-08-05 — bhavcopy_cache de-duplicated; cold data moved off local to Dropbox
+
+- **`BHAV_CACHE` default repointed** (commit `0750b1fc`) from `~/Downloads/data/bhavcopy_cache`
+  to the canonical `~/market-pipeline/data/bhavcopy_cache` in all 6 scripts that hard-coded the
+  old path (build_mailer, ipo_monitor, liquidity, market_calendar, ohlcv_cache, screener_kit).
+  The two dirs held the same data twice (~1.7 GB); the market-pipeline copy is fresher (the daily
+  pipeline writes there) and a verified superset (0 Downloads-only files), already mirrored to
+  Dropbox (`bhavcopy_cache` tree). Deleted the Downloads copy → −854 MB. DECISION: repoint the
+  default, don't just delete — 6 standalone-run scripts defaulted to the Downloads path, so a bare
+  delete would have broken them.
+- **Machine disk cleanup (94% → 75%, ~37 GB freed), all reclaim from redundancy — nothing live
+  touched.** Regenerable correlation-matrix CSVs → float16 zstd parquet (kept, same names);
+  `branch-archives/*.bundle` (1.4 GB) + `{china,hk}_scan` matrices → Dropbox; MemPalace (5.9 GB,
+  dormant 14 d, redundant with MEMORY.md/ruflo) → Dropbox + plugin disabled; unused Homebrew
+  packages (llvm/julia/flink/pytorch/kafka/…, −5.3 GB); LM Studio orphan (1.3 GB); stale Claude
+  agent worktrees (2 GB); `global-market-data` LFS cache shed 1.2 GB→16 KB by deleting two
+  triply-archived pre-rewrite branches (`old-main*`) then `git lfs prune`. Dropbox archive paths:
+  `market-data-archive/{archives,lfs_archive}/` (branch bundles + full LFS tarballs).
+
 ## 2026-08-01 — Does ownership show up in behaviour? Partly, and one prediction was backwards
 
 `ownership_behaviour.py` + `reports/ownership_behaviour.md`. Takes the ownership tables from
