@@ -1,0 +1,157 @@
+---
+# SPIKE — throwaway diagnostic, not part of the daily pipeline.
+#
+# Question it answers: can a GitHub Actions runner fetch the data the daily
+# market pipeline needs, or does NSE (and/or Yahoo) block datacenter egress?
+#
+# This decides the migration architecture:
+#   all three legs PASS  -> lift the whole pipeline to Actions + Dropbox
+#   NSE fails            -> hybrid; India needs a residential-IP path
+#
+# Read-only: fetches public EOD files into the runner's temp dir and throws
+# them away. Touches no repo data, needs no secrets, writes nothing back.
+# Delete this file once the answer is recorded.
+
+name: spike · cloud egress reachability
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    strategy:
+      fail-fast: false
+      matrix:
+        # Two different egress IP classes for the price of one run.
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+
+    steps:
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install the exact clients the pipeline uses
+        run: pip install --quiet 'nse>=3.0' 'yfinance>=0.2.40' requests pandas
+
+      - name: Egress identity (who does NSE think we are)
+        continue-on-error: true
+        run: |
+          echo "runner: ${{ matrix.os }}"
+          curl -s --max-time 20 https://ipinfo.io/json || echo "ipinfo unreachable"
+
+      # ---- Leg 1: NSE bhavcopy, via the same `nse` client bhavcopy_history.py uses ----
+      # The library's cookie bootstrap against nseindia.com is the exact thing
+      # NSE's edge filters on, so we go through it rather than curl a URL.
+      - name: 'Leg 1 · NSE bhavcopy (nse.NSE.equityBhavcopy)'
+        id: nse
+        continue-on-error: true
+        run: |
+          python -u - <<'PY'
+          import datetime as dt, tempfile, traceback, sys
+          from nse import NSE
+
+          # Walk back over recent weekdays so a holiday doesn't read as a block.
+          days, d = [], dt.date.today() - dt.timedelta(days=1)
+          while len(days) < 7:
+              if d.weekday() < 5:
+                  days.append(d)
+              d -= dt.timedelta(days=1)
+
+          try:
+              client = NSE(download_folder=tempfile.mkdtemp())
+          except Exception:
+              print("!! FAIL — NSE() bootstrap refused (cookie/session handshake blocked)")
+              traceback.print_exc()
+              sys.exit(1)
+
+          for day in days:
+              try:
+                  p = client.equityBhavcopy(date=dt.datetime(day.year, day.month, day.day))
+                  print(f"ok PASS — {day} bhavcopy retrieved -> {p}")
+                  sys.exit(0)
+              except Exception as e:
+                  print(f"   {day}: {type(e).__name__}: {e}")
+
+          print("!! FAIL — no bhavcopy retrieved across 7 weekdays (treat as blocked)")
+          sys.exit(1)
+          PY
+
+      # ---- Leg 2: BSE bhavcopy, the literal URL from bhavcopy_history.py:211 ----
+      - name: 'Leg 2 · BSE bhavcopy (direct CSV)'
+        id: bse
+        continue-on-error: true
+        run: |
+          python -u - <<'PY'
+          import datetime as dt, sys, requests
+
+          sess = requests.Session()
+          sess.headers.update({"User-Agent": "Mozilla/5.0",
+                               "Referer": "https://www.bseindia.com/"})
+
+          days, d = [], dt.date.today() - dt.timedelta(days=1)
+          while len(days) < 7:
+              if d.weekday() < 5:
+                  days.append(d)
+              d -= dt.timedelta(days=1)
+
+          for day in days:
+              url = ("https://www.bseindia.com/download/BhavCopy/Equity/"
+                     f"BhavCopy_BSE_CM_0_0_0_{day:%Y%m%d}_F_0000.CSV")
+              try:
+                  r = sess.get(url, timeout=30)
+                  print(f"   {day}: HTTP {r.status_code}, {len(r.content)} bytes")
+                  if r.status_code == 200 and len(r.content) > 1000:
+                      print(f"ok PASS — {day} BSE bhavcopy retrieved")
+                      sys.exit(0)
+              except Exception as e:
+                  print(f"   {day}: {type(e).__name__}: {e}")
+
+          print("!! FAIL — no BSE bhavcopy retrieved across 7 weekdays")
+          sys.exit(1)
+          PY
+
+      # ---- Leg 3: yfinance, which every non-India leg depends on ----
+      # Yahoo throttles datacenter IPs harder than residential. A pass here is
+      # necessary but NOT sufficient — real runs pull thousands of symbols.
+      - name: 'Leg 3 · yfinance sample'
+        id: yf
+        continue-on-error: true
+        run: |
+          python -u - <<'PY'
+          import sys, yfinance as yf
+
+          # One per market the pipeline covers.
+          tickers = ["RELIANCE.NS", "AAPL", "ADS.DE", "7203.T", "005930.KS"]
+          got = []
+          for t in tickers:
+              try:
+                  h = yf.Ticker(t).history(period="5d")
+                  n = len(h)
+                  print(f"   {t}: {n} bars")
+                  if n:
+                      got.append(t)
+              except Exception as e:
+                  print(f"   {t}: {type(e).__name__}: {e}")
+
+          print(f"{len(got)}/{len(tickers)} tickers returned data")
+          # Partial success still means throttling worth knowing about.
+          sys.exit(0 if len(got) == len(tickers) else 1)
+          PY
+
+      - name: Summary
+        if: always()
+        run: |
+          {
+            echo "### ${{ matrix.os }}"
+            echo ""
+            echo "| leg | source | result |"
+            echo "|---|---|---|"
+            echo "| 1 | NSE bhavcopy | ${{ steps.nse.outcome }} |"
+            echo "| 2 | BSE bhavcopy | ${{ steps.bse.outcome }} |"
+            echo "| 3 | yfinance     | ${{ steps.yf.outcome  }} |"
+          } >> "$GITHUB_STEP_SUMMARY"
