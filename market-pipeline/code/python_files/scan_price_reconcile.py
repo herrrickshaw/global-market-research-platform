@@ -101,9 +101,21 @@ def market_open_now(mkt: str) -> bool:
 #      is idiosyncratic; a re-served cache moves the whole sample together.
 # Outside session hours nothing explains a gap but bad data, so one name over
 # tolerance still fails — that path is unchanged.
+#
+# 2026-08-12: the quorum was `(n + 1) // 2`, which is a majority only for ODD n.
+# At the default --sample 8 it returned 4 — exactly half — and 4/8 breaching
+# suppressed the brief. All four flagged prices (FINCABLES, KOLTEPATIL,
+# GODAVARIB, INDSWFTLAB) matched the 11 Aug NSE close to the paisa; they were
+# momentum breakouts that had run 12-20% on 9-45x volume the previous session
+# and kept moving on the 12th. Correct scan, real drift, blocked send. Rounding
+# the other way makes the threshold a genuine majority at every sample size.
 def _quorum(n: int) -> int:
-    """Names that must breach together before an in-session FAIL."""
-    return max(2, (n + 1) // 2)
+    """Names that must breach together before an in-session FAIL.
+
+    A strict majority: more than half of what was actually checked. Floor of 2
+    so a degenerate one-name sample can never fail on a single quote.
+    """
+    return max(2, n // 2 + 1)
 
 
 def warehouse_prev_close(market: str) -> pd.DataFrame:
@@ -238,7 +250,13 @@ def reconcile(market: str, sample: int, tolerance: float) -> bool:
     if n_checked == 0:
         print(f"  [{market}] live spot-check unavailable (yfinance) — "
               f"warehouse signature only")
-        return n_sig < max(2, len(liquid) // 2)
+        # Same majority threshold as Check 1 — which already returned False if it
+        # was met, so reaching here means the signature test passed and there is
+        # no live data left to judge on. Spelled via _quorum() rather than a
+        # hand-inlined formula: the previous `max(2, len(liquid) // 2)` was a
+        # THIRD variant that, at small samples (n=4: 2 vs quorum 3), failed scans
+        # Check 1 had just cleared.
+        return n_sig < _quorum(len(liquid))
 
     # In session, one name over tolerance is drift and does not block; only a
     # SYSTEMATIC breach does. Closed, any breach still fails — see the block above.
