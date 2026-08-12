@@ -52,6 +52,8 @@ import time
 import pandas as pd
 import requests
 
+import price_sources
+
 UA = {"User-Agent": "Mozilla/5.0 (research)"}
 BASE = "https://www.screener.in/company/{}/"
 
@@ -91,36 +93,18 @@ def _scan_staleness_note(path: str) -> str:
             f"below is stale data, not a bad pick.")
 
 
-def _fetch(sym: str) -> dict:
-    """Parse screener.in's header: '<Name> Rs 1,099 -1.72% 14 Jul - close price'."""
-    try:
-        r = requests.get(BASE.format(sym), headers=UA, timeout=25)
-    except Exception as e:
-        return {"error": f"fetch: {str(e)[:60]}"}
-    if r.status_code == 404:
-        # BSE-only names 404 on the NSE-shaped URL (AUSTENG = Austin Engineering).
-        # NOT evidence the pick is bogus — just unverifiable here.
-        return {"error": "404"}
-    if r.status_code != 200:
-        return {"error": f"http {r.status_code}"}
-    try:
-        from bs4 import BeautifulSoup
-        soup = BeautifulSoup(r.text, "lxml")
-        top = soup.select_one("#top") or soup
-        txt = re.sub(r"\s+", " ", top.get_text(" ", strip=True))[:400]
-    except Exception as e:
-        return {"error": f"parse: {str(e)[:60]}"}
-
-    price = re.search(r"₹\s*([\d,]+(?:\.\d+)?)", txt)
-    chg = re.search(r"([+-]?\d+(?:\.\d+)?)\s*%", txt)
-    date = re.search(r"(\d{1,2}\s+[A-Z][a-z]{2})\s*-?\s*close price", txt)
-    if not price:
-        return {"error": "no price in header"}
-    return {
-        "price": float(price.group(1).replace(",", "")),
-        "change": float(chg.group(1)) if chg else None,
-        "date": date.group(1) if date else None,
-    }
+def _scan_date(path: str) -> _dt.date:
+    """The day the workbook was built. Sources are anchored to this rather than to
+    'now', which is what lets the gate run at any hour: the question becomes 'what
+    did this close at on or before <scan day>?', and that has the same answer at
+    11:00 as it does at 06:30."""
+    m = re.search(r"_(\d{8})_\d{4}\.xlsx$", path.rsplit("/", 1)[-1])
+    if m:
+        try:
+            return _dt.datetime.strptime(m.group(1), "%Y%m%d").date()
+        except ValueError:
+            pass
+    return _dt.date.today()
 
 
 def validate(sample: int, tol: float) -> dict:
@@ -129,75 +113,107 @@ def validate(sample: int, tol: float) -> dict:
         return {"ok": False, "reason": "no India scan workbook found", "checks": []}
     note = _scan_staleness_note(f)
     if note:
-        print(note)
+        # stderr, not stdout: --json is consumed by machines and a human-readable
+        # banner ahead of the document makes it unparseable.
+        print(note, file=sys.stderr)
     d = pd.read_excel(f, "All_Stocks")
     if "Median_Turnover" in d.columns:
         d = d.sort_values("Median_Turnover", ascending=False)
     picks = d.head(sample * 3)          # over-sample: BSE-only names will 404
 
-    checks, verified = [], 0
+    asof = _scan_date(f)
+    run_ts = _dt.datetime.now().isoformat(timespec="seconds")
+    checks, verified, ledger = [], 0, []
+
     for r in picks.to_dict("records"):
         if verified >= sample:
             break
-        sym = str(r["Symbol"])
-        got = _fetch(sym)
-        time.sleep(0.6)                 # be polite to screener.in
-        if got.get("error"):
-            checks.append({"symbol": sym, "status": "skip", "why": got["error"]})
-            continue
-        ours, theirs = float(r["LTP"]), got["price"]
-        diff = abs(ours - theirs) / theirs * 100 if theirs else 999
-        ok = diff <= tol
-        verified += 1
-        checks.append({"symbol": sym, "status": "ok" if ok else "MISMATCH",
-                       "ours": ours, "screener": theirs,
-                       "diff_pct": round(diff, 2), "date": got.get("date")})
+        sym, ours = str(r["Symbol"]), float(r["LTP"])
+        answered = {}
+        for src, got in price_sources.fetch_all(sym, asof).items():
+            row = {"run_ts": run_ts, "asof": asof.isoformat(), "symbol": sym,
+                   "source": src, "ours": ours, "theirs": None, "diff_pct": None,
+                   "their_date": None, "verdict": "", "error": got.get("error", "")}
+            if not got.get("error"):
+                theirs = got["price"]
+                diff = abs(ours - theirs) / theirs * 100 if theirs else 999
+                verdict = "agree" if diff <= tol else "disagree"
+                row.update(theirs=theirs, diff_pct=round(diff, 3),
+                           their_date=got["date"].isoformat(), verdict=verdict)
+                answered[src] = {"price": theirs, "date": got["date"],
+                                 "diff_pct": round(diff, 2), "verdict": verdict}
+            ledger.append(row)
 
+        # AGREED RULE: pass on one, suppress on zero. A name with no answering
+        # source is unverifiable — skipped, not failed, because a 404 on a
+        # BSE-only name (AUSTENG) says nothing about the pick.
+        if not answered:
+            checks.append({"symbol": sym, "status": "skip", "why": "no source answered"})
+            continue
+        verified += 1
+        agree = [s for s, v in answered.items() if v["verdict"] == "agree"]
+        dis = [s for s, v in answered.items() if v["verdict"] == "disagree"]
+        # Majority of the sources that ANSWERED. With a single answer that is just
+        # that answer; a tie counts as disagreement, because the gate's job is to
+        # catch bad data and a split jury is not a confirmation.
+        checks.append({"symbol": sym, "status": "ok" if len(agree) > len(dis) else "MISMATCH",
+                       "ours": ours, "sources": answered,
+                       "agree": agree, "disagree": dis})
+
+    price_sources.record(ledger)
     bad = [c for c in checks if c["status"] == "MISMATCH"]
 
-    # Date agreement across verified names. A single odd date is a holiday/listing
-    # quirk; a majority disagreeing means the whole scan is on the wrong day —
-    # which is exactly the frozen-data failure this exists to catch.
-    dates = [c["date"] for c in checks if c.get("date")]
-    common = max(set(dates), key=dates.count) if dates else None
-    off = [c["symbol"] for c in checks if c.get("date") and c["date"] != common]
+    # Date agreement WITHIN each source, across names. Deliberately not across
+    # sources: measured 2026-08-12, yfinance returned the 08-10 close while
+    # screener returned 08-11 for the same request — both correct, they just
+    # publish on different lags. Comparing dates between sources would fail on
+    # that lag alone, every single run.
+    #
+    # Within a source the check keeps its original teeth: every pick is liquidity
+    # -gated and therefore trades daily, so one name carrying an older close is
+    # stale data, not a holiday quirk. That is the MODISONLTD case — a single name
+    # frozen seven weeks back while every other check passed.
+    off, stale_feed = [], []
+    for src in price_sources.SOURCES:
+        ds = [c["sources"][src]["date"] for c in checks if src in c.get("sources", {})]
+        if len(ds) < 2:
+            continue
+        common = max(set(ds), key=ds.count)
+        off += [f"{c['symbol']}@{src}" for c in checks
+                if src in c.get("sources", {}) and c["sources"][src]["date"] != common]
+        # A source whose whole feed is frozen agrees with itself perfectly, so the
+        # per-name check above cannot see it. Lag is normal (yfinance is routinely
+        # a day behind); a week is not.
+        if (asof - common).days > 5:
+            stale_feed.append(f"{src} newest close {common} vs scan {asof}")
 
-    # MARKET-HOURS GUARD. screener.in only prints "<date> - close price" when the
-    # market is CLOSED; once NSE opens it shows a live intraday quote with no date.
-    # The date check — the strong one — then parses nothing and silently passes,
-    # while prices get compared against live ticks rather than the close (observed
-    # 2026-07-15 09:15 IST: 5 of 6 dates None, INFY 1.48% off on a 2% tolerance).
-    # Unverifiable is NOT verified: say so rather than quietly downgrade to a
-    # price-only check. The 00:30 production run is unaffected (market closed).
-    dated = len(dates)
-    date_unverifiable = dated < max(2, (verified + 1) // 2)
-
-    # ANY date disagreement fails. This used to tolerate one odd name as a
-    # "holiday/listing quirk", which pre-dates the liquidity gate: every pick now
-    # clears ~$120k/day and therefore trades daily, so an older close date is not a
-    # quirk, it is stale data. Tolerating one is exactly how the MODISONLTD case
-    # (a single name frozen seven weeks back) would slip through — and the earlier
-    # code reported the disagreement while still returning ok=True, which reads as
-    # a pass. A false alarm here costs a draft instead of a send; the reverse costs
-    # a confidently wrong brief in your inbox.
-    ok = (verified >= MIN_VERIFIED) and not bad and not date_unverifiable and not off
+    # The old MARKET-HOURS GUARD is gone, and deliberately so. It existed because
+    # screener.in serves an undated live quote once NSE opens, so the date check
+    # silently parsed nothing and prices were compared against intraday ticks
+    # (2026-07-15 09:15 IST: 5 of 6 dates None). That is now handled at the source:
+    # _screener() returns an error rather than an undated price, so an undated tick
+    # can never reach this function, and yfinance is date-anchored and answers at
+    # any hour. Unverifiable still means unverifiable — it just no longer means
+    # "the market happens to be open".
+    ok = (verified >= MIN_VERIFIED) and not bad and not off and not stale_feed
     reason = ""
     if verified < MIN_VERIFIED:
-        reason = f"only {verified} of {sample} verifiable (need {MIN_VERIFIED}) — cannot confirm"
+        reason = (f"only {verified} of {sample} verifiable (need {MIN_VERIFIED}) — "
+                  f"no source answered for the rest; cannot confirm")
     elif bad:
-        reason = f"{len(bad)} price mismatch(es) beyond {tol}%"
-    elif date_unverifiable:
-        reason = (f"close date unverifiable — only {dated}/{verified} names showed a "
-                  f"'close price' date. screener.in is likely showing LIVE quotes "
-                  f"(market open), so prices are being compared against intraday "
-                  f"ticks, not the close. Re-run when the market is shut.")
+        names = ", ".join(f"{c['symbol']} (ours {c['ours']}, "
+                          + "; ".join(f"{s} {v['price']} {v['diff_pct']}%"
+                                      for s, v in c["sources"].items()) + ")"
+                          for c in bad)
+        reason = f"{len(bad)} price mismatch(es) beyond {tol}%: {names}"
     elif off:
-        reason = (f"close dates disagree — {off} vs majority {common}. These names are "
+        reason = (f"close dates disagree within a source — {off}. These names are "
                   f"liquidity-gated so they trade every day; an older close means "
                   f"stale data, not a quirk.")
-    return {"ok": ok, "reason": reason, "scan": f.split("/")[-1],
-            "verified": verified, "dated": dated, "close_date": common,
-            "checks": checks}
+    elif stale_feed:
+        reason = f"source feed frozen — {'; '.join(stale_feed)}"
+    return {"ok": ok, "reason": reason, "scan": f.split("/")[-1], "asof": asof.isoformat(),
+            "verified": verified, "checks": checks}
 
 
 def main() -> int:
@@ -205,24 +221,50 @@ def main() -> int:
     ap.add_argument("--sample", type=int, default=6)
     ap.add_argument("--tolerance", type=float, default=PRICE_TOL_PCT)
     ap.add_argument("--json", action="store_true")
+    ap.add_argument("--source-report", type=int, nargs="?", const=30, metavar="DAYS",
+                    help="print each source's measured track record and exit")
     a = ap.parse_args()
+
+    # Reporting only reads the ledger, so it must never be able to fail a send.
+    if a.source_report:
+        rep = price_sources.report(a.source_report)
+        print(json.dumps(rep, indent=1) if a.json else
+              "\n".join(f"  {r['source']:10s} {r['checks']:5d} checks · "
+                        f"answered {r['response_rate']:5.1f}% · "
+                        f"agreed {r['agree_rate']:5.1f}% · "
+                        f"{r['disagreements']} disagreement(s) · "
+                        f"avg |diff| {r['avg_abs_diff_pct']}%" for r in rep)
+              or "  (no checks recorded yet)")
+        return 0
 
     r = validate(a.sample, a.tolerance)
     if a.json:
-        print(json.dumps(r, indent=1))
+        # default=str: `checks` carries real date objects because the staleness
+        # arithmetic below needs them; only the wire format wants strings.
+        print(json.dumps(r, indent=1, default=str))
         return 0 if r["ok"] else 1
 
-    print(f"  validating {r.get('scan','?')} against screener.in "
-          f"(tolerance {a.tolerance}%)")
+    # 🔴 THIS BRANCH IS THE PRODUCTION PATH. daily_mailer.sh calls this script
+    # WITHOUT --json and reads only the exit code, so anything that raises in
+    # here exits non-zero and is indistinguishable from a real validation
+    # failure — a formatting bug would silently suppress every send forever.
+    # Keep it in step with the shape `validate()` actually returns.
+    srcs = ", ".join(price_sources.SOURCES)
+    print(f"  validating {r.get('scan','?')} against {srcs} "
+          f"(tolerance {a.tolerance}%, asof {r.get('asof','?')})")
     for c in r["checks"]:
         if c["status"] == "skip":
             print(f"    -  {c['symbol']:12s} skipped ({c['why']})")
-        else:
-            mark = "ok" if c["status"] == "ok" else "!!"
-            print(f"    {mark} {c['symbol']:12s} ours={c['ours']:<10} "
-                  f"screener={c['screener']:<10} diff={c['diff_pct']}%  {c.get('date')}")
+            continue
+        # round for display only: yfinance carries float32 artifacts
+        # (1431.800048828125), which are noise here and make the line unreadable.
+        detail = " · ".join(
+            f"{s} {v['price']:.2f} ({v['diff_pct']}%) @{v['date']}"
+            for s, v in c["sources"].items())
+        print(f"    {'ok' if c['status'] == 'ok' else '!!'} {c['symbol']:12s} "
+              f"ours={c['ours']:<10} {detail}")
     if r["ok"]:
-        print(f"  ✓ validated: {r['verified']} names agree, close date {r['close_date']}")
+        print(f"  ✓ validated: {r['verified']} names, every answering source agreed")
         return 0
     bar = "=" * 72
     print(f"\n{bar}\n  ❌  BRIEF FAILED EXTERNAL VALIDATION — DO NOT SEND\n  {r['reason']}\n{bar}\n")
