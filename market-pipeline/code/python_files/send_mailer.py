@@ -29,6 +29,14 @@ from pathlib import Path
 
 from build_mailer import build
 
+# 2026-08-12 (user): the brief covers India and the US — the two markets an
+# Indian investor can actually trade — and nothing else. This switch controls
+# the "Also watching" Darvas-count strip for tier 2/3 (EU/JP/KR + the weekly
+# long tail). The scans behind it still run daily in daily_research.sh and
+# still populate market_daily.snapshots; only the email stops carrying them.
+# Set back to True to restore the strip — _technical_section() is unchanged.
+INCLUDE_TECHNICAL_MARKETS = False
+
 
 def _digest_section() -> tuple:
     """(html, subject_suffix) for the watchlist digest, appended below the
@@ -269,7 +277,7 @@ if __name__ == "__main__":
 
     subject, text, html = build()
     digest_html, digest_subj, digest_full, pngs = _digest_section()
-    technical_html = _technical_section()
+    technical_html = _technical_section() if INCLUDE_TECHNICAL_MARKETS else ""
 
     # Web copy of the full watchlist (2026-07-27): upload to GDrive via rclone
     # and put the share link at the top of the digest — the attachment stays,

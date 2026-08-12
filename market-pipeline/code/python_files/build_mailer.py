@@ -426,8 +426,8 @@ def _darvas_section(market: str, cap: int = None) -> str:
         )
     head = (
         "<tr><th>Tier</th><th>Symbol</th><th>Name</th><th>Exch</th>"
-        "<th>LTP</th><th>Day</th><th>Box Pos</th><th>Upside</th>"
-        "<th>50/200</th><th>GC</th></tr>"
+        "<th>LTP</th><th>Day</th><th>Darvas Box</th><th>vs Box Top</th>"
+        "<th>Box Pos</th><th>50/200</th><th>GC</th></tr>"
     )
     body = dbrk.rows_html(df.head(cap), market)
     return (
@@ -439,7 +439,11 @@ def _darvas_section(market: str, cap: int = None) -> str:
         f"{head}{body}</table></div>"
         f'<p style="font-size:11px;color:#888;margin-top:4px">Tier 1 = Golden Cross + '
         f"Darvas breakout, box position ≤130%. Tier 2 = box position 100–120%, above "
-        f'200-DMA, up day, ≥250 daily bars. "Box Pos" &gt;100% = trading above the box.</p>'
+        f'200-DMA, up day, ≥250 daily bars. <b>Darvas Box</b> = bottom–top of the '
+        f'current box; the top is the breakout level. <b>vs Box Top</b> = how far '
+        f'price sits above that level (+) or below it (−) — every fresh breakout is '
+        f'above by definition, so amber (&gt;+5%) marks a move already extended past '
+        f'its trigger. "Box Pos" &gt;100% = trading above the box.</p>'
     )
 
 
@@ -549,11 +553,14 @@ def _as_of_html() -> str:
 
     # Other markets: report when their scan ran; the prices in it are that run's
     # last available close.
+    #
+    # 2026-08-12: EU/JP/KR removed alongside their sections. A vintage row for a
+    # market the brief no longer quotes is worse than no row — it reads as a
+    # coverage claim ("we looked at Korea at 11:07") for content that isn't
+    # there. The scans still run and the files still exist; they are simply not
+    # this email's subject any more.
     for label, pat in (
         ("🇺🇸 US", "us_full_scan/us_full_scan_*.xlsx"),
-        ("🇪🇺 Europe", "european_scan/european_market_scan*.xlsx"),
-        ("🇯🇵 Japan", "japan_scan/japan_market_scan_*.xlsx"),
-        ("🇰🇷 Korea", "korea_scan/korea_market_scan_*.xlsx"),
     ):
         try:
             fs = sorted(glob.glob(pat))
@@ -676,21 +683,20 @@ def build():
     as_of_html = _as_of_html()
     snapshot_html = _market_snapshot_html()
 
-    # 1. India / US / Europe / Japan / Korea fundamentals screener picks
+    # 1. India / US fundamentals screener picks.
+    #
+    # 2026-08-12 (user): the brief covers the two markets an Indian investor can
+    # actually TRADE — India directly, US via LRS/international brokerage — in
+    # depth, instead of spreading across five. EU/JP/KR were never tradeable in
+    # practice for this reader, and their fundamentals could not support a
+    # per-name claim anyway (watchlist_markets.PARKED), so the sections were
+    # costing space without earning it. _eu/_jp/_kr_picks_rows() and
+    # _darvas_section("EU") are deliberately LEFT IN PLACE and still importable:
+    # the scans keep running daily in daily_research.sh and still populate
+    # market_daily.snapshots, so restoring a market is re-adding its block here,
+    # not rebuilding the pipeline.
     ind_picks_rows = _market_picks_rows(ind_data, "IN")
     us_picks_rows = _market_picks_rows(us_data, "US")
-    try:
-        eu_picks_rows = _eu_picks_rows()
-    except Exception:
-        eu_picks_rows = []
-    try:
-        jp_picks_rows = _jp_picks_rows()
-    except Exception:
-        jp_picks_rows = []
-    try:
-        kr_picks_rows = _kr_picks_rows()
-    except Exception:
-        kr_picks_rows = []
 
     # 2. India CCC screen (screener.in 228040)
     ccc_rows = _ccc_rows()
@@ -710,10 +716,10 @@ def build():
     in_talk_rows = _talk_rows(ind_data)
     us_talk_rows = _talk_rows(us_data)
 
-    # 6. Darvas Breakouts — India / US / Europe
+    # 6. Darvas Breakouts — India / US (always rendered, both markets).
+    # The EU section is dropped with the rest of the parked markets above.
     darvas_in = _darvas_section("IN")
     darvas_us = _darvas_section("US")
-    darvas_eu = _darvas_section("EU")
 
     # 7. Global momentum (top 15 overall)
     allh = rga.load_highlights()
@@ -844,19 +850,6 @@ h3{{font-size:14px;margin:14px 0 6px;color:#333}}
 <h3 style="font-size:13px;margin:14px 0 4px;color:#333">🗞️ Talk on the Street</h3>
 {_table(["Symbol", "Sentiment", "Score", "Articles"], us_talk_rows) if us_talk_rows else "<p class='mut' style='color:#777'>No per-ticker news matches today.</p>"}
 {darvas_us}
-
-<h2 style="font-size:16px;border-bottom:2px solid #1a73e8;padding-bottom:3px;margin-top:26px">🇪🇺 Europe</h2>
-<h3 style="font-size:13px;margin:12px 0 4px;color:#333">Fundamentals picks</h3>
-{_table(["Symbol", "Name", "Tier", "Screens", "Piotroski"], eu_picks_rows) if eu_picks_rows else "<p>no European scan available today</p>"}
-{darvas_eu}
-
-<h2 style="font-size:16px;border-bottom:2px solid #1a73e8;padding-bottom:3px;margin-top:26px">🇯🇵 Japan</h2>
-<h3 style="font-size:13px;margin:12px 0 4px;color:#333">Fundamentals picks</h3>
-{_table(["Code", "Name", "Tier", "Screens", "Piotroski"], jp_picks_rows) if jp_picks_rows else "<p>no Japan scan available today</p>"}
-
-<h2 style="font-size:16px;border-bottom:2px solid #1a73e8;padding-bottom:3px;margin-top:26px">🇰🇷 Korea</h2>
-<h3 style="font-size:13px;margin:12px 0 4px;color:#333">Fundamentals picks</h3>
-{_table(["Code", "Name", "Tier", "Screens", "Piotroski"], kr_picks_rows) if kr_picks_rows else "<p>no Korea scan available today</p>"}
 
 <h2 style="font-size:16px;border-bottom:2px solid #1a73e8;padding-bottom:3px;margin-top:26px">🌍 Global context</h2>
 <h3 style="font-size:13px;margin:12px 0 4px;color:#333">Momentum — top 15 across 20 markets</h3>

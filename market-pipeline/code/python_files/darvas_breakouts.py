@@ -260,6 +260,28 @@ def _fmt(v, nd=2):
     return "n/a" if v is None or (isinstance(v, float) and pd.isna(v)) else f"{v:,.{nd}f}"
 
 
+def gap_to_top_pct(ltp, box_top):
+    """Price relative to the Darvas box top, in percent of the box top.
+
+    POSITIVE = trading ABOVE the top (already extended past the breakout level);
+    NEGATIVE = still inside the box with that much room to the top.
+
+    This replaces reading `Upside_to_Top%` directly, which is measured against
+    LTP and is therefore always a small NEGATIVE number for a fresh breakout —
+    every row in the table is above its box by construction, so a column headed
+    "Upside" showing "-1.20%" invited exactly the wrong read. Same fact, signed
+    the way the sentence is spoken: "1.2% above the box top".
+    """
+    if ltp is None or box_top is None:
+        return None
+    try:
+        if not box_top:
+            return None
+        return (float(ltp) - float(box_top)) / float(box_top) * 100.0
+    except (TypeError, ValueError, ZeroDivisionError):
+        return None
+
+
 def rows_html(df: pd.DataFrame, market: str) -> str:
     cur = CUR[market]
     body = []
@@ -267,6 +289,17 @@ def rows_html(df: pd.DataFrame, market: str) -> str:
         tier = int(r["Tier"])
         badge = ("🥇 T1" if tier == 1 else "🥈 T2" if tier == 2 else "•")
         gap = r.get("50/200_Gap%")
+        top, bot = r.get("Box_Top"), r.get("Box_Bottom")
+        # The box itself, in price terms. Percentages alone ("121.6%") do not
+        # tell you WHERE the breakout level is, which is the number you need to
+        # place a stop or judge whether the extension is worth chasing.
+        box_txt = ("n/a" if top is None or bot is None
+                   else f"{_fmt(bot)}–{_fmt(top)}")
+        g2t = gap_to_top_pct(r.get("LTP"), top)
+        # Above the top is the normal breakout state, so it is not coloured as a
+        # warning; far above it is the one worth flagging (chasing an extended
+        # move), which the >5% amber picks up.
+        g2t_col = "#777" if g2t is None else ("#b26a00" if g2t > 5 else "#2e7d32" if g2t >= 0 else "#0b5fa5")
         body.append(
             f"<tr><td>{badge}</td>"
             f"<td><b>{r['Symbol']}</b></td>"
@@ -275,8 +308,10 @@ def rows_html(df: pd.DataFrame, market: str) -> str:
             f"<td style='text-align:right'>{cur}{_fmt(r['LTP'])}</td>"
             f"<td style='text-align:right;color:{'#2e7d32' if (r['Change%'] or 0) >= 0 else '#c62828'}'>"
             f"{(r['Change%'] or 0):+.2f}%</td>"
+            f"<td style='text-align:right;white-space:nowrap'>{cur}{box_txt}</td>"
+            f"<td style='text-align:right;color:{g2t_col};font-weight:600'>"
+            f"{'n/a' if g2t is None else f'{g2t:+.2f}%'}</td>"
             f"<td style='text-align:right'>{_fmt(r['Position_in_Box%'], 0)}%</td>"
-            f"<td style='text-align:right'>{_fmt(r['Upside_to_Top%'], 1)}%</td>"
             f"<td style='text-align:right'>{'n/a' if gap is None else f'{gap:+.1f}%'}</td>"
             f"<td>{r['Golden_Cross']}</td></tr>"
         )
@@ -291,8 +326,8 @@ def to_html(df: pd.DataFrame, market: str) -> str:
     n1 = int((df["Tier"] == 1).sum())
     n2 = int((df["Tier"] == 2).sum())
     head = ("<tr><th>Tier</th><th>Symbol</th><th>Name</th><th>Exch</th>"
-            "<th>LTP</th><th>Day</th><th>Box Pos</th><th>Upside</th>"
-            "<th>50/200</th><th>GC</th></tr>")
+            "<th>LTP</th><th>Day</th><th>Darvas Box</th><th>vs Box Top</th>"
+            "<th>Box Pos</th><th>50/200</th><th>GC</th></tr>")
     return (
         f'<h3>📈 {label} — Darvas Breakouts '
         f'<span style="font-weight:400;color:#777">({n1} Tier-1 · {n2} Tier-2)</span></h3>'
@@ -301,7 +336,11 @@ def to_html(df: pd.DataFrame, market: str) -> str:
         f'{head}{rows_html(df, market)}</table></div>'
         f'<p style="font-size:11px;color:#888;margin-top:4px">Tier 1 = Golden Cross + '
         f'Darvas breakout, box position ≤130%. Tier 2 = box position 100–120%, above '
-        f'200-DMA, up day, ≥250 daily bars. "Box Pos" &gt;100% = trading above the box.</p>'
+        f'200-DMA, up day, ≥250 daily bars. <b>Darvas Box</b> = bottom–top of the '
+        f'current box; the top is the breakout level. <b>vs Box Top</b> = how far '
+        f'price sits above that level (+) or below it (−) — every fresh breakout is '
+        f'above by definition, so amber (&gt;+5%) marks a move already extended past '
+        f'its trigger. "Box Pos" &gt;100% = trading above the box.</p>'
     )
 
 
