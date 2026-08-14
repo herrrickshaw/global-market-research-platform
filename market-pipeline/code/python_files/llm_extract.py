@@ -7,6 +7,15 @@ repo's existing Groq (OpenAI-compatible) LLM pattern (see repo-inventory/
 canonicalize.py) with a Gemini fallback -- both already configured via
 ~/.env.local for the "AI Advisor" feature.
 
+Primary provider is NVIDIA's Nemotron-3.5-Lightning (30B total / 3B active
+hybrid Mamba-Transformer MoE, tuned for fast structured extraction and tool
+calling -- see https://github.com/NVIDIA-NeMo/Nemotron/tree/main/usage-cookbook/Nemotron-3.5-Lightning).
+At 3B active parameters vs. Groq's 70B default it cuts both latency and
+per-call load for this schema-in/JSON-out workload; Groq then Gemini remain
+as fallbacks if NVIDIA_API_KEY isn't set or the call fails. Confirm the
+exact NVIDIA_MODEL slug on build.nvidia.com for your account/region and
+override the env var if it differs from the default below.
+
 Derived from patents MY269019 "System and method for generating queryable
 structured document from an unstructured document using machine learning"
 (IIIT-Hyderabad, LTRC) and MY269128 "System for extracting and analyzing
@@ -35,7 +44,6 @@ import json
 import os
 import re
 from pathlib import Path
-from typing import Optional
 
 
 def _load_env_local() -> dict:
@@ -58,6 +66,12 @@ def _client_and_model(provider: str):
     env = {**_load_env_local(), **os.environ}
     from openai import OpenAI
 
+    if provider == "nvidia":
+        key = env.get("NVIDIA_API_KEY")
+        if not key:
+            raise RuntimeError("NVIDIA_API_KEY not found in ~/.env.local or environment")
+        return (OpenAI(api_key=key, base_url="https://integrate.api.nvidia.com/v1"),
+                env.get("NVIDIA_MODEL", "nvidia/nemotron-3.5-lightning"))
     if provider == "groq":
         key = env.get("GROQ_API_KEY")
         if not key:
@@ -98,8 +112,8 @@ def extract_structured(
     text: str,
     schema: dict,
     instructions: str = "",
-    provider: str = "groq",
-    fallback_provider: Optional[str] = "gemini",
+    provider: str = "nvidia",
+    fallback_provider: str | list[str] | None = ("groq", "gemini"),
     require_citations: bool = True,
 ) -> dict:
     """
@@ -168,7 +182,13 @@ def extract_structured(
             f"Document text:\n{text}"
         )
 
-    providers = [provider] + ([fallback_provider] if fallback_provider else [])
+    if fallback_provider is None:
+        fallbacks = []
+    elif isinstance(fallback_provider, str):
+        fallbacks = [fallback_provider]
+    else:
+        fallbacks = list(fallback_provider)
+    providers = [provider] + fallbacks
     last_error = None
     for p in providers:
         try:
