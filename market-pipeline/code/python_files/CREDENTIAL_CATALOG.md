@@ -29,8 +29,9 @@ Regenerate the canonical file from the (still-present) legacy stores with
 | `NEWSAPI_KEY` | NewsAPI.org | headlines | `earnings_dates_dart.py` |
 | `NEWSDATA_KEY` | NewsData.io | headlines | `sentiment_pipeline.py`, `earnings_dates_dart.py` |
 | `FRED_API_KEY` | FRED (St. Louis Fed) | FX rates, macro series | `liquidity.py` |
-| `GEMINI_API_KEY` / `GEMINI_MODEL` | Google Gemini | LLM extraction | `llm_extract.py` |
-| `GROQ_API_KEY` / `GROQ_MODEL` | Groq | LLM extraction | `llm_extract.py` |
+| `NVIDIA_API_KEY` / `NVIDIA_MODEL` | NVIDIA (build.nvidia.com, Nemotron-3.5-Lightning) | LLM extraction (primary — fast/low-load) | `llm_extract.py` |
+| `GROQ_API_KEY` / `GROQ_MODEL` | Groq | LLM extraction (1st fallback) | `llm_extract.py` |
+| `GEMINI_API_KEY` / `GEMINI_MODEL` | Google Gemini | LLM extraction (2nd fallback) | `llm_extract.py` |
 | `GROW_API_KEY` / `GROW_API_SECRET` | Groww | India broker / quotes | (broker layer) |
 | `JQUANTS_API_KEY` | J-Quants | Japan fundamentals | `jquants_validator.py` |
 | `SCREENER_EMAIL` / `SCREENER_PASSWORD` | screener.in | India 10y fundamentals | `decision_log.py`, `backtest_screeners.py` |

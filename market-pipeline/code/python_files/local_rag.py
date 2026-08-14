@@ -10,6 +10,10 @@ outputs (never hallucinated); the retriever only supplies explanatory context.
 A local LLM is OPTIONAL: if an OpenAI-compatible server is up (LM Studio :1234 or
 ollama :11434) it's used to phrase the final answer; otherwise the answer is extractive
 (structured table + top retrieved passages). Either way it runs on your machine for free.
+For that local slot, NVIDIA's Nemotron-3.5-Lightning (3B active params, tuned for fast
+inference — see https://github.com/NVIDIA-NeMo/Nemotron/tree/main/usage-cookbook/Nemotron-3.5-Lightning)
+is a good fit if you want a quicker local model than a generic 7-8B chat model: pull it
+into ollama/LM Studio like any other local weight, no code change needed here.
 
 Usage:
   python local_rag.py "korea buy signals"
