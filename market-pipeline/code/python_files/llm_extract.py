@@ -12,9 +12,10 @@ hybrid Mamba-Transformer MoE, tuned for fast structured extraction and tool
 calling -- see https://github.com/NVIDIA-NeMo/Nemotron/tree/main/usage-cookbook/Nemotron-3.5-Lightning).
 At 3B active parameters vs. Groq's 70B default it cuts both latency and
 per-call load for this schema-in/JSON-out workload; Groq then Gemini remain
-as fallbacks if NVIDIA_API_KEY isn't set or the call fails. Confirm the
-exact NVIDIA_MODEL slug on build.nvidia.com for your account/region and
-override the env var if it differs from the default below.
+as fallbacks if NVIDIA_API_KEY isn't set or the call fails. Model slug
+confirmed against build.nvidia.com's catalog as of 2026-08:
+https://build.nvidia.com/nvidia/nemotron-3.5-lightning-30b-a3b
+-- override via NVIDIA_MODEL if NVIDIA renames/retags it later.
 
 Derived from patents MY269019 "System and method for generating queryable
 structured document from an unstructured document using machine learning"
@@ -71,7 +72,7 @@ def _client_and_model(provider: str):
         if not key:
             raise RuntimeError("NVIDIA_API_KEY not found in ~/.env.local or environment")
         return (OpenAI(api_key=key, base_url="https://integrate.api.nvidia.com/v1"),
-                env.get("NVIDIA_MODEL", "nvidia/nemotron-3.5-lightning"))
+                env.get("NVIDIA_MODEL", "nvidia/nemotron-3.5-lightning-30b-a3b"))
     if provider == "groq":
         key = env.get("GROQ_API_KEY")
         if not key:
