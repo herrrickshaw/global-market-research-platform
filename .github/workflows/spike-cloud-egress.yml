@@ -143,6 +143,38 @@ jobs:
           sys.exit(0 if len(got) == len(tickers) else 1)
           PY
 
+      # ---- Leg 4: NVIDIA NIM API (integrate.api.nvidia.com) ----
+      # llm_extract.py (PR #7) routes structured extraction through NVIDIA's
+      # Nemotron-3.5-Lightning as the new primary provider. This host was
+      # unreachable from the Claude Code sandbox's own egress proxy while
+      # building that change -- this leg checks whether it's *also* blocked
+      # from a GitHub Actions runner, which is what actually matters for
+      # production. No NVIDIA_API_KEY secret is configured, so this sends an
+      # unauthenticated request: any HTTP response (401/403 included) proves
+      # the host is reachable; only a connection/DNS/timeout error means
+      # egress is blocked.
+      - name: 'Leg 4 · NVIDIA NIM API (integrate.api.nvidia.com)'
+        id: nvidia
+        continue-on-error: true
+        run: |
+          python -u - <<'PY'
+          import sys, requests
+
+          url = "https://integrate.api.nvidia.com/v1/chat/completions"
+          try:
+              r = requests.post(url, json={
+                  "model": "nvidia/nemotron-3.5-lightning-30b-a3b",
+                  "messages": [{"role": "user", "content": "ping"}],
+              }, timeout=20)
+              print(f"HTTP {r.status_code}")
+              print(r.text[:500])
+              print("ok PASS — host reachable (egress not blocked)")
+              sys.exit(0)
+          except requests.exceptions.RequestException as e:
+              print(f"!! FAIL — {type(e).__name__}: {e}")
+              sys.exit(1)
+          PY
+
       - name: Summary
         if: always()
         run: |
@@ -151,7 +183,8 @@ jobs:
             echo ""
             echo "| leg | source | result |"
             echo "|---|---|---|"
-            echo "| 1 | NSE bhavcopy | ${{ steps.nse.outcome }} |"
-            echo "| 2 | BSE bhavcopy | ${{ steps.bse.outcome }} |"
-            echo "| 3 | yfinance     | ${{ steps.yf.outcome  }} |"
+            echo "| 1 | NSE bhavcopy    | ${{ steps.nse.outcome }} |"
+            echo "| 2 | BSE bhavcopy    | ${{ steps.bse.outcome }} |"
+            echo "| 3 | yfinance        | ${{ steps.yf.outcome  }} |"
+            echo "| 4 | NVIDIA NIM API  | ${{ steps.nvidia.outcome }} |"
           } >> "$GITHUB_STEP_SUMMARY"
