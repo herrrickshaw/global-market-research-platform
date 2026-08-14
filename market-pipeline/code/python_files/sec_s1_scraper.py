@@ -7,6 +7,30 @@ prospectus) filings from SEC EDGAR. No Selenium needed here, unlike SEBI's
 site -- EDGAR serves a real, public, no-auth Atom feed of "current" filings
 by form type, so this is a plain HTTP fetch + parse.
 
+RELATIONSHIP TO EXISTING IPO CODE (checked 2026-08, before this would have
+shipped as an unwitting duplicate): this repo already has a mature IPO
+pipeline --
+  - ipo_monitor.py + universe_sources.us_sec() detect a new US ticker once
+    it's LISTED, by diffing SEC's full company_tickers.json registry
+    snapshot-over-snapshot (see stock_ddd/domain/ipo/entities.py's
+    NewListingEvent, wired via stock_ddd/infrastructure/ipo/legacy_adapter.py).
+  - ipo_tracker.py enriches + screens (Darvas/Golden Cross/Piotroski/etc.)
+    new listings post-listing, India-only (NSE bhavcopy diff).
+  - edgar_india_screener.py's name is a false cognate -- despite the name it
+    has nothing to do with SEC EDGAR; it's a screener.in fundamentals puller.
+Neither existing script reads a REGISTRATION filing before the stock lists --
+ipo_tracker.py's own docstring flags DRHP financials as an input-quality
+risk rather than something it parses. This module fills that specific gap
+(pre-listing filing-stage tracking, the same lifecycle stage
+SEBI_web_scraper.ipynb covers for India's DRHPs) rather than re-detecting
+listings ipo_monitor.py already catches -- filing and listing are different,
+non-redundant events, often weeks to months apart.
+
+SEC User-Agent: reuses universe_sources._SEC_UA (this repo's existing,
+already-working answer to SEC's "compliant contact identity" requirement --
+https://www.sec.gov/os/webmaster-faq#developers) rather than inventing a
+second mechanism for the same non-secret contact string.
+
 Methodology note (2026-08): informed by gtfintechlab's IPO-Mine project
 (github.com/gtfintechlab/IPO-Mine, "Section-Structured Analysis of Long,
 Multimodal IPO Documents" -- coverage fresh through 2026) and by
@@ -30,17 +54,11 @@ Two modes:
                          schema (company name, offering size, price range,
                          listing exchange, ticker).
 
-SEC requires a compliant User-Agent (a real name + contact email) on every
-request -- https://www.sec.gov/os/webmaster-faq#developers -- or it starts
-throttling/blocking the IP. Set SEC_EDGAR_USER_AGENT via env_loader.py's
-credential store, e.g. "MyResearchTool contact@example.com".
-
 NOTE: www.sec.gov was unreachable from the sandbox this was written in
 (network egress proxy blocks it, same as it blocked build.nvidia.com and
-huggingface.co while building the rest of this change) -- so this has NOT
-been run against live EDGAR yet. See .github/workflows/spike-cloud-egress.yml
-(Leg 5) for a CI-runner reachability check before relying on this in
-production.
+huggingface.co while building the rest of this change) -- confirmed
+reachable from a GitHub Actions runner instead, see
+.github/workflows/spike-cloud-egress.yml (Leg 5).
 
 Usage:
   python sec_s1_scraper.py                       # list-only, 40 filings
@@ -58,7 +76,7 @@ import feedparser
 import requests
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-import env_loader  # noqa: E402
+from universe_sources import _SEC_UA  # noqa: E402
 from llm_extract import extract_structured  # noqa: E402
 
 EDGAR_CURRENT_FEED = (
@@ -81,23 +99,11 @@ SCHEMA = {
 _TITLE_RE = re.compile(r"^(\S+)\s*-\s*(.+?)\s*\(\d+\)")
 
 
-def _user_agent() -> str:
-    ua = env_loader.get("SEC_EDGAR_USER_AGENT")
-    if not ua:
-        raise RuntimeError(
-            "SEC_EDGAR_USER_AGENT not set -- SEC requires a real contact "
-            "identity on every request (name + email) or it throttles/blocks "
-            'the IP. Set it in the credential store, e.g. '
-            '"MyResearchTool contact@example.com".'
-        )
-    return ua
-
-
 def fetch_recent_s1_filings(count: int = 40) -> list[dict]:
     """Recent S-1 filings across all filers, from SEC EDGAR's public
     'current filings' Atom feed -- no auth, no Selenium, unlike SEBI's site."""
     sess = requests.Session()
-    sess.headers.update({"User-Agent": _user_agent()})
+    sess.headers.update(_SEC_UA)
     r = sess.get(EDGAR_CURRENT_FEED.format(count=count), timeout=30)
     r.raise_for_status()
     feed = feedparser.parse(r.content)
@@ -162,7 +168,7 @@ def main() -> int:
 
     if args.extract:
         sess = requests.Session()
-        sess.headers.update({"User-Agent": _user_agent()})
+        sess.headers.update(_SEC_UA)
         for f in filings:
             try:
                 fields = extract_filing_fields(sess, f["filing_index_url"])

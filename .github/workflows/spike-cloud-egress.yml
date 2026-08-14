@@ -177,10 +177,10 @@ jobs:
 
       # ---- Leg 5: SEC EDGAR (sec_s1_scraper.py, US S-1 IPO filings) ----
       # www.sec.gov was also unreachable from the sandbox this was written in.
-      # No SEC_EDGAR_USER_AGENT secret is configured for this throwaway probe --
-      # SEC just requires SOME compliant "name email" identity string, so this
-      # uses a clearly-throwaway one; the real script requires the env var and
-      # will refuse to run without it (see sec_s1_scraper.py's _user_agent()).
+      # SEC just requires SOME compliant "name email" identity string on every
+      # request, so this probe uses a clearly-throwaway one; the real script
+      # (and universe_sources.us_sec(), which already talks to the same host)
+      # sends the repo's real contact string via universe_sources._SEC_UA.
       - name: 'Leg 5 · SEC EDGAR (current S-1 filings feed)'
         id: edgar
         continue-on-error: true
