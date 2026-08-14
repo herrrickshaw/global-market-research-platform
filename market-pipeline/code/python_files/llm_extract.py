@@ -27,6 +27,28 @@ rely on brittle regex/layout parsing:
   - SEBI DRHP filing text (SEBI_web_scraper.ipynb)
   - Portfolio broker-statement text (portfolio.py's PDF parsing)
 
+Page-level grounding (2026-08): citations can optionally be tied to a page
+number, not just a text span. This mirrors the methodology used by
+scholarly360/indian_ipo_prospectus_data_with_pageno on Hugging Face (the
+closest public dataset to this module's actual DRHP-extraction use case --
+though at 100 prospectuses from 2022 it's too small/stale to train or
+benchmark against directly) and by gtfintechlab's IPO-Mine project (fresh
+through 2026, but SEC/US filings, not SEBI): both ground extracted claims to
+a specific page in a long multi-page filing rather than "somewhere in the
+document." Pass `text` as a list of (page_number, page_text) tuples instead
+of a single string to get page numbers in `_grounding`, incl. a
+`page_verified` flag catching the case where the model cites real text but
+attributes it to the wrong page.
+
+(Also evaluated: numind/NuExtract3, a 4B VLM purpose-built for schema-in/
+JSON-out extraction, released May 2026 -- genuinely fresh and worth adding
+as another `_client_and_model` provider if/when this module needs
+image-input extraction (scanned DRHPs) rather than pre-OCR'd text; not
+added here since the current callers are text-only. kdave/Indian_Financial_
+News (sentiment) was also checked and ruled out: stale since 01/2024, and
+labeled via an ad-hoc Google-Sheets GPT add-on rather than a documented
+methodology -- not a sound base for this repo's sentiment_pipeline.py.)
+
 Usage:
     from llm_extract import extract_structured
 
@@ -38,6 +60,8 @@ Usage:
         "listing_exchange": "string, e.g. NSE/BSE/both",
     }
     result = extract_structured(drhp_text, schema)
+    # or, for page-grounded citations:
+    result = extract_structured([(1, page1_text), (2, page2_text)], schema)
 """
 from __future__ import annotations
 
@@ -102,15 +126,46 @@ def _normalize_whitespace(s: str) -> str:
     return re.sub(r"\s+", " ", s).strip()
 
 
-def _verify_citation(span: object, source_text: str) -> bool:
+def _paginate(text: str | list[tuple[int, str]]) -> list[tuple[int, str]]:
+    """Normalize *text* into a list of (page_number, page_text). A plain
+    string becomes a single unnumbered page (page 1)."""
+    if isinstance(text, str):
+        return [(1, text)]
+    return list(text)
+
+
+def _span_in(span: object, source_text: str) -> bool:
     """True if *span* appears verbatim (allowing whitespace differences) in source_text."""
     if not isinstance(span, str) or not span.strip():
         return False
     return _normalize_whitespace(span) in _normalize_whitespace(source_text)
 
 
+def _verify_citation(citation: object, pages: list[tuple[int, str]]) -> dict:
+    """
+    Checks a citation -- either a plain span string, or a page-grounded
+    {"span": ..., "page": ...} object -- against *pages*.
+
+    Returns {"grounded": bool, "span": str|None, "page": int|None,
+    "page_verified": bool}. "grounded" is True iff the span appears
+    ANYWHERE across all pages (the original, page-agnostic check).
+    "page_verified" is the stronger check: True iff the span appears
+    specifically on the claimed page -- catches the model citing real
+    document text but attributing it to the wrong page.
+    """
+    full_text = "\n".join(t for _, t in pages)
+    if isinstance(citation, dict):
+        span, page = citation.get("span"), citation.get("page")
+    else:
+        span, page = citation, None
+    grounded = _span_in(span, full_text)
+    page_text = next((t for n, t in pages if n == page), None) if page is not None else None
+    page_verified = grounded and (page_text is not None) and _span_in(span, page_text)
+    return {"grounded": grounded, "span": span, "page": page, "page_verified": page_verified}
+
+
 def extract_structured(
-    text: str,
+    text: str | list[tuple[int, str]],
     schema: dict,
     instructions: str = "",
     provider: str = "nvidia",
@@ -134,13 +189,20 @@ def extract_structured(
     "trust the JSON" extraction is not a safe default for this domain.
 
     Adds a "_grounding" key to the result: {field: {"grounded": bool, "span":
-    str|None}}. An ungrounded field is NOT dropped from the result -- it's
-    still returned as extracted -- but is flagged grounded=False so callers
-    can decide whether to trust it (e.g. skip it, flag it for manual review,
-    or log it). This catches the class of hallucination where the model
-    invents a value with no textual basis in the document at all, which
-    schema-only prompting (require_citations=False, the original behavior)
-    can't catch.
+    str|None, "page": int|None, "page_verified": bool}}. An ungrounded field
+    is NOT dropped from the result -- it's still returned as extracted --
+    but is flagged grounded=False so callers can decide whether to trust it
+    (e.g. skip it, flag it for manual review, or log it). This catches the
+    class of hallucination where the model invents a value with no textual
+    basis in the document at all, which schema-only prompting
+    (require_citations=False, the original behavior) can't catch.
+
+    Pass *text* as a list of (page_number, page_text) tuples (instead of a
+    single string) to also get each citation tied to a page: "page" is the
+    page the model claims the span came from, and "page_verified" is True
+    only if the span actually appears on THAT page -- catching the model
+    citing real document text but attributing it to the wrong page, which
+    "grounded" alone (span found ANYWHERE in the document) would miss.
 
     KNOWN LIMITATION, confirmed by testing: grounding only verifies the
     cited SPAN is real text copied from the document -- it does not verify
@@ -157,21 +219,35 @@ def extract_structured(
     parse fails, then raises if that fails too -- callers should catch and
     degrade gracefully (e.g. skip the field, don't crash a whole report).
     """
+    pages = _paginate(text)
+    paginated = len(pages) > 1
+    document_text = "\n\n".join(f"[page {n}]\n{t}" for n, t in pages) if paginated else pages[0][1]
     schema_lines = "\n".join(f'  "{k}": {v}' for k, v in schema.items())
 
     if require_citations:
+        if paginated:
+            citation_shape = (
+                'the value must be an object {"span": <the exact verbatim substring of the '
+                'document text below that supports the extracted value -- copy it exactly, do '
+                'not paraphrase or summarize>, "page": <the page number from the [page N] '
+                "marker immediately above where that span appears>}. For null fields, use null."
+            )
+        else:
+            citation_shape = (
+                "the value must be the exact verbatim substring of the document text below "
+                "that supports the extracted value (copy it exactly, do not paraphrase or "
+                "summarize). For null fields, use null."
+            )
         prompt = (
             "Extract the following fields from the document text below. "
             "Respond with ONLY a single JSON object with exactly two top-level keys, "
             '"fields" and "citations" -- no prose, no markdown fences.\n\n'
             f'"fields" must have these keys:\n{schema_lines}\n'
             "Use null for any field not present in the text.\n\n"
-            '"citations" must have the SAME keys as "fields". For each non-null field, '
-            "the value must be the exact verbatim substring of the document text below "
-            "that supports the extracted value (copy it exactly, do not paraphrase or "
-            "summarize). For null fields, use null.\n\n"
+            f'"citations" must have the SAME keys as "fields". For each non-null field, '
+            f"{citation_shape}\n\n"
             f"{instructions}\n\n"
-            f"Document text:\n{text}"
+            f"Document text:\n{document_text}"
         )
     else:
         prompt = (
@@ -180,7 +256,7 @@ def extract_structured(
             "Use null for any field not present in the text.\n\n"
             f"Fields:\n{schema_lines}\n\n"
             f"{instructions}\n\n"
-            f"Document text:\n{text}"
+            f"Document text:\n{document_text}"
         )
 
     if fallback_provider is None:
@@ -208,11 +284,11 @@ def extract_structured(
             grounding = {}
             for key in schema:
                 value = fields.get(key)
-                span = citations.get(key)
-                grounding[key] = {
-                    "grounded": (value is None) or _verify_citation(span, text),
-                    "span": span,
-                }
+                citation = citations.get(key)
+                if value is None:
+                    grounding[key] = {"grounded": True, "span": None, "page": None, "page_verified": True}
+                else:
+                    grounding[key] = _verify_citation(citation, pages)
             result = dict(fields)
             result["_grounding"] = grounding
             return result
