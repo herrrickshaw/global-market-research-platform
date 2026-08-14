@@ -143,6 +143,102 @@ jobs:
           sys.exit(0 if len(got) == len(tickers) else 1)
           PY
 
+      # ---- Leg 4: NVIDIA NIM API (integrate.api.nvidia.com) ----
+      # llm_extract.py (PR #7) routes structured extraction through NVIDIA's
+      # Nemotron-3.5-Lightning as the new primary provider. This host was
+      # unreachable from the Claude Code sandbox's own egress proxy while
+      # building that change -- this leg checks whether it's *also* blocked
+      # from a GitHub Actions runner, which is what actually matters for
+      # production. No NVIDIA_API_KEY secret is configured, so this sends an
+      # unauthenticated request: any HTTP response (401/403 included) proves
+      # the host is reachable; only a connection/DNS/timeout error means
+      # egress is blocked.
+      - name: 'Leg 4 · NVIDIA NIM API (integrate.api.nvidia.com)'
+        id: nvidia
+        continue-on-error: true
+        run: |
+          python -u - <<'PY'
+          import sys, requests
+
+          url = "https://integrate.api.nvidia.com/v1/chat/completions"
+          try:
+              r = requests.post(url, json={
+                  "model": "nvidia/nemotron-3.5-lightning-30b-a3b",
+                  "messages": [{"role": "user", "content": "ping"}],
+              }, timeout=20)
+              print(f"HTTP {r.status_code}")
+              print(r.text[:500])
+              print("ok PASS — host reachable (egress not blocked)")
+              sys.exit(0)
+          except requests.exceptions.RequestException as e:
+              print(f"!! FAIL — {type(e).__name__}: {e}")
+              sys.exit(1)
+          PY
+
+      # ---- Leg 5: SEC EDGAR (sec_s1_scraper.py, US S-1 IPO filings) ----
+      # www.sec.gov was also unreachable from the sandbox this was written in.
+      # SEC just requires SOME compliant "name email" identity string on every
+      # request, so this probe uses a clearly-throwaway one; the real script
+      # (and universe_sources.us_sec(), which already talks to the same host)
+      # sends the repo's real contact string via universe_sources._SEC_UA.
+      - name: 'Leg 5 · SEC EDGAR (current S-1 filings feed)'
+        id: edgar
+        continue-on-error: true
+        run: |
+          python -u - <<'PY'
+          import sys, requests
+
+          url = ("https://www.sec.gov/cgi-bin/browse-edgar?action=getcurrent"
+                 "&type=S-1&company=&dateb=&owner=include&count=5&output=atom")
+          headers = {"User-Agent": "spike-cloud-egress-probe test@example.com"}
+          try:
+              r = requests.get(url, headers=headers, timeout=20)
+              print(f"HTTP {r.status_code}, {len(r.content)} bytes")
+              print(r.text[:300])
+              if r.status_code == 200 and len(r.content) > 200:
+                  print("ok PASS — EDGAR reachable and returned a feed")
+                  sys.exit(0)
+              print("!! FAIL — reachable but not a usable response")
+              sys.exit(1)
+          except requests.exceptions.RequestException as e:
+              print(f"!! FAIL — {type(e).__name__}: {e}")
+              sys.exit(1)
+          PY
+
+      # ---- Leg 6: Hugging Face (datasets referenced from llm_extract.py's
+      # 2026-08 research pass -- scholarly360's DRHP dataset, gtfintechlab's
+      # IPO-Mine) ----
+      # huggingface.co itself was unreachable from the sandbox this was
+      # written in. Uses the public, unauthenticated datasets-server API
+      # (no HF token needed for public datasets) rather than the `datasets`
+      # package, to keep this leg fast.
+      - name: 'Leg 6 · Hugging Face datasets-server (scholarly360 + gtfintechlab)'
+        id: hf
+        continue-on-error: true
+        run: |
+          python -u - <<'PY'
+          import sys, requests
+
+          datasets = [
+              "scholarly360/indian_ipo_prospectus_data",
+              "gtfintechlab/ipo-tables",
+          ]
+          ok = []
+          for ds in datasets:
+              url = (f"https://datasets-server.huggingface.co/rows?dataset={ds}"
+                     "&config=default&split=train&offset=0&length=1")
+              try:
+                  r = requests.get(url, timeout=20)
+                  print(f"   {ds}: HTTP {r.status_code}, {len(r.content)} bytes")
+                  if r.status_code == 200:
+                      ok.append(ds)
+              except requests.exceptions.RequestException as e:
+                  print(f"   {ds}: {type(e).__name__}: {e}")
+
+          print(f"{len(ok)}/{len(datasets)} datasets reachable")
+          sys.exit(0 if ok else 1)
+          PY
+
       - name: Summary
         if: always()
         run: |
@@ -151,7 +247,10 @@ jobs:
             echo ""
             echo "| leg | source | result |"
             echo "|---|---|---|"
-            echo "| 1 | NSE bhavcopy | ${{ steps.nse.outcome }} |"
-            echo "| 2 | BSE bhavcopy | ${{ steps.bse.outcome }} |"
-            echo "| 3 | yfinance     | ${{ steps.yf.outcome  }} |"
+            echo "| 1 | NSE bhavcopy       | ${{ steps.nse.outcome }} |"
+            echo "| 2 | BSE bhavcopy       | ${{ steps.bse.outcome }} |"
+            echo "| 3 | yfinance           | ${{ steps.yf.outcome  }} |"
+            echo "| 4 | NVIDIA NIM API     | ${{ steps.nvidia.outcome }} |"
+            echo "| 5 | SEC EDGAR          | ${{ steps.edgar.outcome }} |"
+            echo "| 6 | Hugging Face (HF)  | ${{ steps.hf.outcome }} |"
           } >> "$GITHUB_STEP_SUMMARY"
