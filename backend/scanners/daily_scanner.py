@@ -16,7 +16,11 @@ Darvas / Buffett  (0–16 max with all data):
   D11 EMA-20 > EMA-50  [if available]      → +1   (short MA above long)
   D12 BB %B > 0.5      [if available]      → +1   (price in upper Bollinger zone)
   D13 Stoch %K 20–80 & K > D [if avail]   → +1   (stoch bullish, not extreme)
-  BUY ≥ 5 · WATCH ≥ 3 · AVOID < 3
+  BUY ≥ 5/6 of max_score · WATCH ≥ 0.70 · AVOID below
+  (a FRACTION of what was evaluable for that row, not a flat count — "[if
+   available]" above is real, so a flat cut-off silently graded rows against
+   criteria they never had. Fundamentals labelled median_imputed or, for pe/pb,
+   derived_roe_only are treated as unavailable: a placeholder must not score.)
 
 Piotroski (0–11 max with all data):
   F1  ROE > 0          [if available]      → +1
@@ -38,6 +42,12 @@ import math
 
 import numpy as np
 import pandas as pd
+
+# Darvas signal cut-offs, as a fraction of the criteria actually evaluable for a
+# row (score / max_score). See the block above the `signal` assignment in
+# scan_darvas for the calibration and why these are fractions rather than counts.
+BUY_RATIO = 5 / 6      # unchanged stringency: reproduces `score >= 5` at max 6
+WATCH_RATIO = 0.70     # retuned from 0.50 to hold WATCH's universe share
 
 
 # ── helpers ───────────────────────────────────────────────────────────────────
@@ -85,7 +95,7 @@ def _strs(df: pd.DataFrame, col: str, default: str = '') -> list:
 
 # ── Darvas / Buffett ──────────────────────────────────────────────────────────
 
-def scan_darvas(df: pd.DataFrame, lazy_load: bool = True) -> list[dict]:
+def scan_darvas(df: pd.DataFrame, lazy_load: bool = False) -> list[dict]:
     """
     OPTIMIZATION #3: Lazy-load optional metrics.
     Set lazy_load=False to load all metrics (e.g., for detailed analysis).
@@ -173,9 +183,29 @@ def scan_darvas(df: pd.DataFrame, lazy_load: bool = True) -> list[dict]:
     v_d2  = cmp.notna() & e50.notna()
     v_d3  = cmp.notna() & h52.notna() & l52.notna() & (h52 - l52).gt(0)
     v_d4  = rsi.notna()
-    v_d5  = roe.notna()
-    v_d6  = pe.notna()
-    v_d7  = de.notna()
+    # 🔴 AN IMPUTED FUNDAMENTAL IS NOT AN OBSERVATION, SO IT MUST NOT SCORE.
+    # fundamentals_source labels each row 'median_imputed' | 'derived_price_join'
+    # | 'derived_roe_only' | 'statements'. A median_imputed pe is the market
+    # median by construction, which lands inside the Buffett 5-30 band every
+    # time and hands out a free point; derived_roe_only rows carry a real roe but
+    # left pe/pb untouched, so their pe is still that placeholder.
+    #
+    # This was harmless while lazy_load nulled these fields before scoring. The
+    # moment the overlay was switched on it became load-bearing: 165 of Japan's
+    # 319 BUYs (52%) and 14 of India's 23 sat on a placeholder pe. Gating here
+    # rather than at read time keeps the values available to other consumers.
+    #
+    # Treating them as UNAVAILABLE (not as failures) is the correct move: they
+    # drop out of max_score too, so a row with two known criteria is judged on
+    # those two rather than penalised for what nobody measured.
+    _src = _strs(d, 'fundamentals_source')
+    _src = pd.Series(_src, index=d.index) if _src else pd.Series('', index=d.index)
+    pe_measured = ~_src.isin(('median_imputed', 'derived_roe_only'))
+    fund_measured = _src.ne('median_imputed')
+
+    v_d5  = roe.notna() & fund_measured      # roe is real on derived_roe_only
+    v_d6  = pe.notna() & pe_measured
+    v_d7  = de.notna() & fund_measured
     v_d8  = cmp.notna() & e200.notna()
     v_d9  = macd.notna() & msig.notna()
     v_d10 = vr.notna()
@@ -212,7 +242,43 @@ def scan_darvas(df: pd.DataFrame, lazy_load: bool = True) -> list[dict]:
         + v_d11.astype(int) + v_d12.astype(int) + v_d13.astype(int)
     )
 
-    signal = np.where(score >= 5, 'BUY', np.where(score >= 3, 'WATCH', 'AVOID'))
+    # ── thresholds are a FRACTION of what was actually evaluable ──────────────
+    # 🔴 max_score was computed above and then thrown away: the signal used flat
+    # `score >= 5 / >= 3` regardless of how many criteria existed. Combined with
+    # the lazy_load default (which nulled roe/pe/pb/de, MACD, Bollinger,
+    # stochastics and EMA-20/200 BEFORE scoring), production was scoring 4 of 13
+    # criteria against a 15-point scale's thresholds — so `>= 5` meant 5 of 6,
+    # and 31.4% of the whole universe came out BUY. A third of everything is not
+    # a screen.
+    #
+    # Scoring on the fraction fixes both halves at once, and makes lazy_load a
+    # coverage choice rather than a silent change of meaning: at max_score=6 the
+    # BUY ratio reproduces `score >= 5` exactly, so this is a retune, not a
+    # redefinition of BUY.
+    #
+    # BUY keeps today's stringency (5/6) — deliberately NOT re-fitted to a target
+    # count. WATCH moved 0.50 -> 0.70 to hold its universe share. Measured
+    # 2026-08-15 over 16,192 names, full criteria set, imputed fundamentals gated
+    # out of both score and max_score:
+    #     BUY   0.833 -> 1,197 names ( 7.4%)  [was 5,083 = 31.4%]
+    #     WATCH 0.700 -> 2,827 names (17.5%)  [was 3,231 = 20.0%]
+    #     total flagged 24.9%                 [was 51.4%]
+    # Keeping WATCH at 0.50 would have flagged 44%+ of the universe as WATCH.
+    #
+    # Gating raises BUY relative to an ungated run (504 -> 1,197) because most
+    # imputed criteria were FAILING: dropping a failed criterion removes it from
+    # score and max_score alike, so a name stops being penalised for a number
+    # nobody measured. Tightening BUY to 0.85 would restore ~3.4%, but that
+    # target has no justification beyond matching a pre-gating measurement, so
+    # the existing definition is kept instead.
+    #
+    # NOT calibrated against realised returns — that needs a walk-forward replay
+    # on stock_quotes_history, which starts accumulating from 2026-08-15 and has
+    # no depth yet. These ratios preserve the existing definition of BUY; they do
+    # not claim it is the profit-maximising one.
+    frac = score / max_score
+    signal = np.where(frac >= BUY_RATIO, 'BUY',
+                      np.where(frac >= WATCH_RATIO, 'WATCH', 'AVOID'))
 
     n_avail = (v_d1.astype(int) + v_d2.astype(int) + v_d3.astype(int) + v_d4.astype(int) +
                v_d5.astype(int) + v_d6.astype(int) + v_d7.astype(int) + v_d8.astype(int) +

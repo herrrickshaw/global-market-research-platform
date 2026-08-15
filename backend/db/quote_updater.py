@@ -58,7 +58,7 @@ _QUOTE_COLS: tuple[str, ...] = ('market', 'yf_ticker', 'fetched_at') + _VALUE_CO
 # Read shapes: select_in omits `market` (it is the WHERE key); the scanner read
 # omits `fetched_at` as well (it does not use it).
 _SELECT_IN_COLS: tuple[str, ...] = ('yf_ticker', 'fetched_at') + _VALUE_COLS
-_SCAN_COLS:      tuple[str, ...] = ('yf_ticker',) + _VALUE_COLS
+_SCAN_COLS:      tuple[str, ...] = ('yf_ticker',) + _VALUE_COLS + ('fundamentals_source',)
 
 # ── OPTIMIZATION #2: Instrument List Cache ────────────────────────────
 # Cache instrument lookups (name, exchange) to reduce daily database queries
@@ -404,6 +404,10 @@ def get_market_quotes_df(market: str) -> pd.DataFrame:
             'stoch_k':         getattr(r, 'stoch_k', None),
             'stoch_d':         getattr(r, 'stoch_d', None),
             '_exchange':       exch_map.get(r.yf_ticker, ''),
+            # Provenance travels WITH the values. The scanners need it to tell a
+            # measured PE from a market-median placeholder — without it the
+            # Buffett overlay scores fabricated fundamentals as if observed.
+            'fundamentals_source': getattr(r, 'fundamentals_source', None) or '',
         }
         records.append(rec)
 

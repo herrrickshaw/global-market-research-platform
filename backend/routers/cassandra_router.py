@@ -341,11 +341,14 @@ def _run_daily_scan(markets: list[str], scan_types: list[str]) -> dict:
                 continue
 
             # Run scan (scanner is reused across markets)
-            # OPTIMIZATION #3: Use lazy_load=True to skip optional metrics
-            if scan_type == 'darvas' and fn.__name__ == 'scan_darvas':
-                rows = fn(df, lazy_load=True)  # Skip optional metrics for daily phase
-            else:
-                rows = fn(df) if scan_type != 'darvas' else fn(df, lazy_load=True)
+            # lazy_load=True used to be forced here "to skip expensive metrics
+            # (reduces token load by ~2-3%)" — but nothing here spends tokens, it
+            # is a DataFrame read, and the flag nulls roe/pe/pb/debt_to_equity,
+            # MACD, Bollinger, stochastics and EMA-20/200 BEFORE they are scored.
+            # The daily scan was therefore evaluating 4 of 13 criteria and the
+            # documented Buffett overlay never fired at all. Measured cost of the
+            # full set on the live universe: ~2s across 16,192 names.
+            rows = fn(df)
 
             # Process results
             for row in rows:
