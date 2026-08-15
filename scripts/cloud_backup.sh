@@ -110,6 +110,19 @@ TREES=(
   "cache_seed|$HOME/market-pipeline/code/python_files/cache_seed"
   "gmd_cache_seed|$HOME/repos/global-market-data/cache_seed"
   "warehouse_duckdb|$HOME/data"
+  # ── ADDED 2026-08-15 — the rest of market-pipeline/data ────────────────────
+  # Only bhavcopy_cache (951M) was covered, leaving ~193M of this tree as the
+  # ONLY copy on the machine. Policy is now that the laptop holds no sole copy
+  # of anything durable, so the remaining subdirectories are enumerated rather
+  # than backing up data/ wholesale — that would re-sweep bhavcopy_cache into a
+  # second destination and double the nightly transfer.
+  "china_scan|$HOME/market-pipeline/data/china_scan"
+  "nse_factsheets|$HOME/market-pipeline/data/nse_factsheets"
+  "reference_data|$HOME/market-pipeline/data/reference_data"
+  "sentiment_link_results|$HOME/market-pipeline/data/sentiment_link_results"
+  "europe_scan|$HOME/market-pipeline/data/europe_scan"
+  "backtest_results|$HOME/market-pipeline/data/backtest_results"
+  "pattern_results|$HOME/market-pipeline/data/pattern_results"
   # 🔴 ADDED 2026-08-02 — THE OMISSION THAT MATTERED MOST. This tree is the deep
   # price panel every downstream thing reads: the regime backtest, zone rules,
   # warehouse_insights, ownership studies. It was the ONE dataset not backed up
