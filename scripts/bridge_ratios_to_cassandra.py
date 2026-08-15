@@ -315,6 +315,7 @@ def build_ratios(market: str) -> pd.DataFrame:
     f = load_fundamentals(fund_code)
     f["ticker"] = resolve_tickers(market, f.ticker)
     px, stamp = load_cassandra_price(cass_market)
+    price_source_is_panel = False   # cmp path; see the KNOWN_QUIRKS note below
     n_before = len(f)
     f["close"] = f.ticker.map(px)
     # A missing price costs pe/pb but not roe, so price-less rows are kept.
@@ -328,9 +329,26 @@ def build_ratios(market: str) -> pd.DataFrame:
         f["net_income"] = f.net_income * scale
         f["equity"] = f.equity * scale
 
-    for predicate, divisor in KNOWN_QUIRKS.get(market, []):
-        mask = predicate(f.ticker)
-        f.loc[mask, "close"] = f.loc[mask, "close"] / divisor
+    # 🔴 THE QUIRK TABLE BELONGS TO THE PANEL, NOT TO cmp. KNOWN_QUIRKS was
+    # calibrated when `close` came from the OHLCV panel, where LSE quotes in GBp
+    # and global_fundamentals reports UK filings in GBP — hence the /100 on .L.
+    # Cassandra's cmp comes from yfinance and is ALREADY in the same unit as
+    # market_cap. Verified 2026-08-15 with shares x cmp / yfinance market_cap,
+    # per exchange suffix:
+    #     .L  n=173  median 1.01  98% within +/-30%
+    #     and .AS .AT .CO .F .HE .LS .MC .MI .PA .ST all median 0.99-1.02
+    # Applying the panel's /100 here would have divided every UK price by a
+    # hundred and shipped P/Es two orders of magnitude too low across the
+    # largest European exchange — the exact class of confidently-wrong number
+    # this table exists to prevent, caused by the table itself under a source it
+    # was never measured against.
+    if price_source_is_panel:
+        for predicate, divisor in KNOWN_QUIRKS.get(market, []):
+            mask = predicate(f.ticker)
+            f.loc[mask, "close"] = f.loc[mask, "close"] / divisor
+    elif KNOWN_QUIRKS.get(market):
+        print(f"  skipped {len(KNOWN_QUIRKS[market])} panel-calibrated quirk(s) — "
+              f"price came from cmp, which is already unit-normalised")
 
     age_years = (pd.Timestamp.now() - f.fy_end).dt.days / 365.25
     stale = age_years > MAX_FISCAL_AGE_YEARS
