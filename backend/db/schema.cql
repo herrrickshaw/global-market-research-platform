@@ -107,6 +107,14 @@ CREATE TABLE IF NOT EXISTS stock_quotes (
     atr_14         double,
     stoch_k        double,
     stoch_d        double,
+    fundamentals_source text,
+    roce            double,
+    piotroski       double,
+    quality_score   int,
+    eps_growth      double,
+    asset_turnover  double,
+    interest_cov    double,
+    enterprise_val  bigint,
     PRIMARY KEY (market, yf_ticker)
 ) WITH CLUSTERING ORDER BY (yf_ticker ASC);
 
@@ -161,6 +169,14 @@ CREATE TABLE IF NOT EXISTS stock_quotes_history (
     atr_14          double,
     stoch_k         double,
     stoch_d         double,
+    fundamentals_source text,
+    roce            double,
+    piotroski       double,
+    quality_score   int,
+    eps_growth      double,
+    asset_turnover  double,
+    interest_cov    double,
+    enterprise_val  bigint,
     PRIMARY KEY ((market, yf_ticker), snapshot_date)
 ) WITH CLUSTERING ORDER BY (snapshot_date DESC);
 

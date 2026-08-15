@@ -172,6 +172,28 @@ _MIGRATIONS: list[str] = [
     f"ALTER TABLE {KEYSPACE}.stock_quotes ADD atr_14         double",
     f"ALTER TABLE {KEYSPACE}.stock_quotes ADD stoch_k        double",
     f"ALTER TABLE {KEYSPACE}.stock_quotes ADD stoch_d        double",
+    # Added to the live table out-of-band by scripts/bridge_ratios_to_cassandra.py,
+    # which ALTERed stock_quotes directly. Declared here 2026-08-15 so the backend
+    # schema matches production — without them the live table had 49 columns while
+    # this file declared 41, and fundamentals_source ('median_imputed' |
+    # 'derived_price_join' | 'statements') was invisible to every backend query.
+    f"ALTER TABLE {KEYSPACE}.stock_quotes ADD fundamentals_source text",
+    f"ALTER TABLE {KEYSPACE}.stock_quotes ADD roce           double",
+    f"ALTER TABLE {KEYSPACE}.stock_quotes ADD piotroski      double",
+    f"ALTER TABLE {KEYSPACE}.stock_quotes ADD quality_score  int",
+    f"ALTER TABLE {KEYSPACE}.stock_quotes ADD eps_growth     double",
+    f"ALTER TABLE {KEYSPACE}.stock_quotes ADD asset_turnover double",
+    f"ALTER TABLE {KEYSPACE}.stock_quotes ADD interest_cov   double",
+    f"ALTER TABLE {KEYSPACE}.stock_quotes ADD enterprise_val bigint",
+    # Same eight on the history table, so a snapshot preserves provenance.
+    f"ALTER TABLE {KEYSPACE}.stock_quotes_history ADD fundamentals_source text",
+    f"ALTER TABLE {KEYSPACE}.stock_quotes_history ADD roce           double",
+    f"ALTER TABLE {KEYSPACE}.stock_quotes_history ADD piotroski      double",
+    f"ALTER TABLE {KEYSPACE}.stock_quotes_history ADD quality_score  int",
+    f"ALTER TABLE {KEYSPACE}.stock_quotes_history ADD eps_growth     double",
+    f"ALTER TABLE {KEYSPACE}.stock_quotes_history ADD asset_turnover double",
+    f"ALTER TABLE {KEYSPACE}.stock_quotes_history ADD interest_cov   double",
+    f"ALTER TABLE {KEYSPACE}.stock_quotes_history ADD enterprise_val bigint",
 ]
 
 
