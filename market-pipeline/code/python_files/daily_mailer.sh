@@ -98,6 +98,28 @@ if ! mkdir "$LOCKDIR" 2>/dev/null; then
   if [ -n "$_owner" ] && kill -0 "$_owner" 2>/dev/null; then
     echo "daily_mailer: pipeline already running (pid $_owner) — exiting so the"
     echo "two runs do not interleave writes to watchlist.csv."
+    # 🔴 A LOST SEND MUST NOT LOOK LIKE A SUCCESS. Exiting 0 here meant launchd
+    # recorded success for a job that did nothing: on 2026-08-15 the data phase
+    # overran to 07:27, the 06:30 send hit this branch, and no brief went out
+    # with nothing anywhere reporting it. Only reading the log tail revealed it.
+    #
+    # A send that never happened is a failure of this job, so say so — both to
+    # the operator and to launchd (exit 75, EX_TEMPFAIL: the run is legitimately
+    # blocked by another, not broken). The data phase keeps exit 0 because being
+    # pre-empted by a still-running peer is a real no-op, not a lost deliverable.
+    # Read the flags off "$@" directly: RUN_DATA/RUN_SEND are not parsed until
+    # well after this lock is taken, so testing them here would always be false.
+    case " $* " in
+      *" --send "*)
+        echo "  🔴 SEND LOST — the brief for $(date +%F) did NOT go out. The lock"
+        echo "     was held by pid $_owner, so this send did no work. Re-run once"
+        echo "     that finishes:  ./daily_mailer.sh --send"
+        $PY send_alert.py --pipeline daily_mailer.sh --log "$LOG" \
+            --failures "send lost: lock held by pid $_owner, no brief for $(date +%F)" \
+            >/dev/null 2>&1 || echo "     (alert could not be sent either)"
+        exit 75
+        ;;
+    esac
     exit 0
   fi
   rm -rf "$LOCKDIR"; mkdir "$LOCKDIR" || exit 1

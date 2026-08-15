@@ -111,6 +111,16 @@ def _emit(s, mkt, filt, direction) -> list:
 
 def main() -> int:
     allp = pd.concat([screen(m) for m in ["IN", "US", "KR", "JP", "EU"]], ignore_index=True)
+
+    # An empty result is a legitimate outcome — no name passed the playbook
+    # filters today — but `allp.groupby("market")` below raises KeyError on a
+    # frame with no columns, so "nothing passed" crashed instead of reporting.
+    # Seen 2026-08-15 once backtest_pe_anomalies stopped crashing first and this
+    # became the visible failure (E-006). Exit cleanly and say so.
+    if allp.empty or "market" not in allp.columns:
+        print("playbook picks: 0 across markets — no name passed the filters today")
+        print("watchlist: +0 new 'playbook' entries")
+        return 0
     allp.to_csv(REP / "playbook_picks.csv", index=False)
 
     # ---- feed into the watchlist for performance monitoring ----
