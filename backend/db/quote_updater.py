@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import logging
 import math
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from typing import Any, Optional
 
 import pandas as pd
@@ -19,6 +19,29 @@ log = logging.getLogger(__name__)
 
 _stmts: dict[str, Any] = {}
 _hist_stmts: dict[str, Any] = {}
+
+# ── canonical column order for stock_quotes ───────────────────────────────────
+# Single source of truth for every query against stock_quotes and
+# stock_quotes_history. This list used to be spelled out by hand in three places
+# (the upsert, select_in, and get_market_quotes_df); the 2026-07-29 data loss was
+# a column-handling bug, and hand-maintained duplicates of this list are the same
+# class of hazard. Order matches the table declaration in cassandra_client.py.
+_VALUE_COLS: tuple[str, ...] = (
+    'cmp', 'rsi', 'ema_20', 'ema_50', 'ema_200', 'rsi_signal',
+    'macd', 'macd_signal', 'pe', 'pb', 'roe', 'opm', 'market_cap',
+    'volume', 'volume_20d_avg', 'volume_ratio', 'high_52w', 'low_52w',
+    'debt_to_equity', 'beta', 'current_ratio', 'revenue_growth', 'eps',
+    'dividend_yield',
+    'ret_1d', 'ret_1w', 'ret_1m', 'ret_3m', 'ret_6m', 'ret_1y',
+    'sector', 'industry',
+    'bb_upper', 'bb_lower', 'bb_pct', 'atr_14', 'stoch_k', 'stoch_d',
+)
+# Full stock_quotes column set, in INSERT order.
+_QUOTE_COLS: tuple[str, ...] = ('market', 'yf_ticker', 'fetched_at') + _VALUE_COLS
+# Read shapes: select_in omits `market` (it is the WHERE key); the scanner read
+# omits `fetched_at` as well (it does not use it).
+_SELECT_IN_COLS: tuple[str, ...] = ('yf_ticker', 'fetched_at') + _VALUE_COLS
+_SCAN_COLS:      tuple[str, ...] = ('yf_ticker',) + _VALUE_COLS
 
 # ── OPTIMIZATION #2: Instrument List Cache ────────────────────────────
 # Cache instrument lookups (name, exchange) to reduce daily database queries
@@ -69,25 +92,26 @@ def _prepare(s) -> None:
         return
     ks = cass.KEYSPACE
     _stmts['upsert'] = s.prepare(
-        f"INSERT INTO {ks}.stock_quotes "
-        "(market, yf_ticker, fetched_at, cmp, rsi, ema_20, ema_50, ema_200, rsi_signal, "
-        " macd, macd_signal, pe, pb, roe, opm, market_cap, volume, volume_20d_avg, "
-        " volume_ratio, high_52w, low_52w, debt_to_equity, beta, current_ratio, "
-        " revenue_growth, eps, dividend_yield, "
-        " ret_1d, ret_1w, ret_1m, ret_3m, ret_6m, ret_1y, "
-        " sector, industry, "
-        " bb_upper, bb_lower, bb_pct, atr_14, stoch_k, stoch_d) "
-        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
+        f"INSERT INTO {ks}.stock_quotes ({', '.join(_QUOTE_COLS)}) "
+        f"VALUES ({', '.join('?' * len(_QUOTE_COLS))})"
     )
     _stmts['select_in'] = s.prepare(
-        f"SELECT yf_ticker, fetched_at, cmp, rsi, ema_20, ema_50, ema_200, rsi_signal, "
-        f"macd, macd_signal, pe, pb, roe, opm, market_cap, volume, volume_20d_avg, "
-        f"volume_ratio, high_52w, low_52w, debt_to_equity, beta, current_ratio, "
-        f"revenue_growth, eps, dividend_yield, "
-        f"ret_1d, ret_1w, ret_1m, ret_3m, ret_6m, ret_1y, "
-        f"sector, industry, "
-        f"bb_upper, bb_lower, bb_pct, atr_14, stoch_k, stoch_d "
+        f"SELECT {', '.join(_SELECT_IN_COLS)} "
         f"FROM {ks}.stock_quotes WHERE market = ? AND yf_ticker IN ?"
+    )
+    # Snapshot read: the whole market in one partition read, feeding
+    # snapshot_market(). Same shape as select_in, without the IN restriction.
+    _stmts['select_market'] = s.prepare(
+        f"SELECT {', '.join(_SELECT_IN_COLS)} "
+        f"FROM {ks}.stock_quotes WHERE market = ?"
+    )
+    # History append. Binds plain values (nulls included) — NOT UNSET_VALUE:
+    # a null here means "not known on this date", which is a fact worth keeping.
+    # The append-bias rationale below applies to the serving row only.
+    _stmts['snapshot'] = s.prepare(
+        f"INSERT INTO {ks}.stock_quotes_history "
+        f"(market, yf_ticker, snapshot_date, fetched_at, {', '.join(_VALUE_COLS)}) "
+        f"VALUES ({', '.join('?' * (4 + len(_VALUE_COLS)))})"
     )
 
 
@@ -272,13 +296,7 @@ def get_market_quotes_df(market: str) -> pd.DataFrame:
     # Read all quotes for the market
     try:
         quote_rows = list(s.execute(
-            f"SELECT yf_ticker, cmp, rsi, ema_20, ema_50, ema_200, rsi_signal, macd, macd_signal, "
-            f"pe, pb, roe, opm, market_cap, volume, volume_20d_avg, volume_ratio, "
-            f"high_52w, low_52w, debt_to_equity, beta, current_ratio, "
-            f"revenue_growth, eps, dividend_yield, "
-            f"ret_1d, ret_1w, ret_1m, ret_3m, ret_6m, ret_1y, "
-            f"sector, industry, "
-            f"bb_upper, bb_lower, bb_pct, atr_14, stoch_k, stoch_d "
+            f"SELECT {', '.join(_SCAN_COLS)} "
             f"FROM {cass.KEYSPACE}.stock_quotes WHERE market = %s",
             (market,),
         ))
@@ -373,6 +391,91 @@ def get_market_quotes_df(market: str) -> pd.DataFrame:
         records.append(rec)
 
     return pd.DataFrame(records) if records else pd.DataFrame()
+
+
+def snapshot_market(market: str, day: date | None = None) -> int:
+    """
+    Append the current merged serving row for every ticker in `market` to
+    stock_quotes_history, as one complete row per ticker for `day`.
+
+    Idempotent per (market, yf_ticker, day) — re-running overwrites that day's
+    row rather than appending a duplicate, which matters because the scheduler
+    runs with misfire_grace_time=3600 and a late fire is expected.
+
+    Deliberately reads stock_quotes back rather than snapshotting what was just
+    written: a serving row is the accumulated MERGE of several partial writes
+    (see the UNSET_VALUE note in upsert_quotes), so only the stored row is a
+    complete picture. Snapshotting the write payload would append half-rows.
+
+    Blocking — must be dispatched from a background thread.
+    Returns the number of rows written.
+    """
+    s = cass.session()
+    if s is None:
+        return 0
+
+    _prepare(s)
+    day = day or datetime.now(timezone.utc).date()
+
+    try:
+        rows = list(s.execute(_stmts['select_market'], (market,)))
+    except Exception as exc:
+        log.warning('snapshot_market: read error for %s: %s', market, exc)
+        return 0
+
+    if not rows:
+        return 0
+
+    payload = [
+        (market, r.yf_ticker, day, r.fetched_at,
+         *(getattr(r, c, None) for c in _VALUE_COLS))
+        for r in rows if r.yf_ticker
+    ]
+    if not payload:
+        return 0
+
+    try:
+        from cassandra.concurrent import execute_concurrent_with_args
+        execute_concurrent_with_args(s, _stmts['snapshot'], payload, concurrency=50)
+        log.info('snapshot_market: wrote %d history rows for %s @ %s',
+                 len(payload), market, day)
+        return len(payload)
+    except Exception as exc:
+        log.warning('snapshot_market: write error for %s: %s', market, exc)
+        return 0
+
+
+def get_quote_history(market: str, yf_ticker: str, limit: int = 250) -> list[dict]:
+    """
+    Read one instrument's snapshot history, newest first — a single partition
+    read. `limit` defaults to roughly one trading year.
+
+    For cross-sectional work ("every ticker as of date D") do NOT loop this:
+    that is one partition read per ticker. Export to Parquet/DuckDB instead —
+    see MIGRATION_stock_quotes_history.md.
+    """
+    s = cass.session()
+    if s is None:
+        return []
+    try:
+        rows = s.execute(
+            f"SELECT snapshot_date, fetched_at, {', '.join(_VALUE_COLS)} "
+            f"FROM {cass.KEYSPACE}.stock_quotes_history "
+            f"WHERE market = %s AND yf_ticker = %s LIMIT %s",
+            (market, yf_ticker, limit),
+        )
+    except Exception as exc:
+        log.warning('get_quote_history: read error for %s/%s: %s', market, yf_ticker, exc)
+        return []
+
+    return [
+        {
+            'snapshot_date': r.snapshot_date.isoformat() if r.snapshot_date else None,
+            'fetched_at':    r.fetched_at.isoformat() if r.fetched_at else None,
+            **{c: getattr(r, c, None) for c in _VALUE_COLS},
+        }
+        for r in rows
+    ]
 
 
 def get_quotes(market: str, yf_tickers: list[str]) -> dict[str, dict]:

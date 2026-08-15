@@ -77,6 +77,58 @@ _SCHEMA: list[str] = [
         debt_to_equity  double,
         PRIMARY KEY (market, yf_ticker)
     ) WITH CLUSTERING ORDER BY (yf_ticker ASC)""",
+    # ── append-only daily snapshot of stock_quotes ───────────────────────────
+    # stock_quotes is overwritten in place, so every derived value it carries is
+    # lost on the next fetch. This table keeps one complete row per instrument
+    # per day so signals can be backtested against their real historical inputs.
+    # Written by quote_updater.snapshot_market() at the end of the nightly batch
+    # — NOT from upsert_quotes(), see MIGRATION_stock_quotes_history.md.
+    # Partition is (market, yf_ticker): ~250 rows/year, clustered newest-first.
+    f"""CREATE TABLE IF NOT EXISTS {KEYSPACE}.stock_quotes_history (
+        market          text,
+        yf_ticker       text,
+        snapshot_date   date,
+        fetched_at      timestamp,
+        cmp             double,
+        rsi             double,
+        ema_20          double,
+        ema_50          double,
+        ema_200         double,
+        rsi_signal      text,
+        macd            double,
+        macd_signal     double,
+        pe              double,
+        pb              double,
+        roe             double,
+        opm             double,
+        market_cap      double,
+        volume          bigint,
+        volume_20d_avg  bigint,
+        volume_ratio    double,
+        high_52w        double,
+        low_52w         double,
+        debt_to_equity  double,
+        beta            double,
+        current_ratio   double,
+        revenue_growth  double,
+        eps             double,
+        dividend_yield  double,
+        ret_1d          double,
+        ret_1w          double,
+        ret_1m          double,
+        ret_3m          double,
+        ret_6m          double,
+        ret_1y          double,
+        sector          text,
+        industry        text,
+        bb_upper        double,
+        bb_lower        double,
+        bb_pct          double,
+        atr_14          double,
+        stoch_k         double,
+        stoch_d         double,
+        PRIMARY KEY ((market, yf_ticker), snapshot_date)
+    ) WITH CLUSTERING ORDER BY (snapshot_date DESC)""",
     # ── historical price cache (date of purchase lookups) ────────────────────
     f"""CREATE TABLE IF NOT EXISTS {KEYSPACE}.price_history (
         yf_ticker   text,
