@@ -100,9 +100,58 @@ MARKETS = {
 KNOWN_QUIRKS = {
     "EUROPE": [(lambda t: t.str.endswith(".L"), 100)],   # LSE: GBp vs GBP, see CVSG.L
 }
+# NOTE (2026-08-15): the price now comes from Cassandra's cmp, not the panel, so
+# each quirk above has to be re-confirmed against THAT source before the market
+# it covers is run again. yfinance also quotes .L in pence, so the /100 is very
+# likely still right — but "likely" is the standard this table was explicitly
+# built to avoid, and EUROPE is not being run here, so it is left untouched.
+
+# 🔴 THE WAREHOUSE ABOVE NO LONGER EXISTS. repos/global-market-data was deleted
+# and recreated LFS-free on 2026-08-04; warehouse/ohlcv/ was LFS content and went
+# with it, so every market in MARKETS points at a dead path. The surviving panels
+# for Japan and Korea are the cleaned_long_*.parquet files in cache_seed, which
+# carry the same Symbol/Close/Date columns load_latest_price() already expects.
+#
+# Only JAPAN and KOREA are repointed here, because only those two were verified
+# (2026-08-15) against a source already in use — Cassandra's own stock_quotes.cmp:
+#   JP  3,062 overlapping tickers, median panel/cassandra 0.9913, log-corr 0.9958
+#   KR  2,592 overlapping tickers, median 1.0724,            log-corr 0.9919
+# Both correlate at 0.99+, so there is no unit or scale mismatch of the kind the
+# .L pence bug was. KR's 7% median offset is consistent with a market move across
+# the two-week gap between the panel's last date and the Cassandra fetch, but it
+# is an offset that flows straight into pe/pb — see the coverage note printed at
+# run time. US/EUROPE/INDIA/CHINA are deliberately left pointing at the dead path
+# rather than guessed at: repointing a market whose panel has not been
+# cross-checked is exactly the confidently-wrong write this script exists to avoid.
+PANEL_OVERRIDE = {
+    "JAPAN": "/Users/umashankar/repos/global-market-data/cache_seed/cleaned_long_JP.parquet",
+    "KOREA": "/Users/umashankar/repos/global-market-data/cache_seed/cleaned_long_KR.parquet",
+}
 
 MAX_PLAUSIBLE_PE = 200
 MAX_PLAUSIBLE_PB = 50
+
+# 🔴 ROE IS A PERCENT IN THIS COLUMN, NOT A FRACTION. The docstring above used to
+# claim the fraction "matches the convention already in Cassandra's rows" — that
+# was circular: it matched only the rows THIS script had written. The app's own
+# contract is a percent, stated in two places that predate this script:
+#   backend/fetchers/providers/base.py:56   roe: Optional[float] = None   # %
+#   backend/fetchers/providers/yahoo.py:127 _pct(returnOnEquity)  -> *100
+# and the consumer reads it that way: daily_scanner.py:191 is `roe > 12`, i.e.
+# 12 PERCENT. Writing 0.094 for a 9.4% ROE meant every row this script "fixed"
+# scored 0% on the Buffett ROE criterion by construction, while the
+# median_imputed placeholders it replaced passed 4-24% of the time — the fix
+# made the column strictly worse for its only consumer. Measured 2026-08-15
+# across the rows already written: derived_price_join median roe 0.094 with 0%
+# above 12, against median_imputed median 9.0 and statements median 20.4.
+ROE_AS_PERCENT = 100.0
+
+# Same near-zero-denominator failure mode as pb (both divide by equity), but ROE
+# had no ceiling — Korea's dry run produced roe as low as -1312 (i.e. -131,200%)
+# from 8 symbols with equity <= 0. A real operating ROE outside +/-200% is
+# essentially always an artifact of near-zero equity, so it is dropped and
+# reported rather than written with confidence.
+MAX_PLAUSIBLE_ROE_PCT = 200
 
 # 🔴 A RATIO CAN BE PLAUSIBLE AND STILL WRONG IF THE FUNDAMENTALS ARE STALE.
 # Found building the US bridge: 328 of 3,465 candidate symbols (9.5%) had their
@@ -140,17 +189,114 @@ def load_fundamentals(fund_code: str) -> pd.DataFrame:
         WHERE market = %s
           AND net_income IS NOT NULL
           AND equity IS NOT NULL
-          AND shares IS NOT NULL
-          AND shares > 0
     """, pg_client.get_connection(), params=[fund_code])
+    # 🔴 `shares` IS REQUIRED FOR pe/pb BUT NOT FOR roe. roe = net_income/equity
+    # needs neither a share count nor a price. Requiring shares up front silently
+    # discarded every ticker DART supplies without one — and that is not a long
+    # tail: all 10,143 bare-coded KR rows lack shares (dart_history_collect.py
+    # takes shares from KR.parquet as a proxy and leaves them null here), which
+    # is why Samsung Electronics, SK Hynix and Hyundai Motor — three of Korea's
+    # four largest listings — produced no ratio at all. Their net_income and
+    # equity are present and give roe 10.36%, 35.63% and 8.12%.
+    #
+    # So rows are kept on (net_income, equity) alone. A row without usable shares
+    # yields roe only; pe/pb come out NaN and are simply not written. Ranking a
+    # ticker on a real ROE beats excluding it because one of three inputs is
+    # missing.
+    #
+    # Sorting on (fy_end, shares-present) so that when a ticker has both a newer
+    # shares-less row and an older complete one, the newer row wins on recency
+    # for roe — the previous keep='last' on fy_end alone was already doing this,
+    # but only among rows that all had shares.
     d["fy_end"] = pd.to_datetime(d.fy_end)
+    d["shares"] = pd.to_numeric(d.shares, errors="coerce")
+    d.loc[d.shares.le(0), "shares"] = float("nan")
     return d.sort_values("fy_end").drop_duplicates("ticker", keep="last")
 
 
-def load_latest_price(panel_dir: str, panel_glob: str) -> pd.Series:
-    files = sorted(glob.glob(f"{WAREHOUSE}/{panel_dir}/{panel_glob}"))
+def resolve_tickers(market: str, tickers: pd.Series) -> pd.Series:
+    """
+    Korea only: global_fundamentals stores 2,729 of its 4,938 KR tickers as bare
+    6-digit codes ('264660') and the rest exchange-qualified ('019660.KQ'), while
+    both the price panel and Cassandra use the qualified form throughout. Left
+    unresolved, every bare row fails the price join and is silently dropped.
+
+    🔴 THE SUFFIX IS NOT INFERABLE FROM THE CODE. '.KS' (KOSPI) and '.KQ'
+    (KOSDAQ) are exchange facts, not string patterns, so this resolves each stem
+    against Cassandra's `instruments` table — the same allowlist the rest of the
+    system treats as authoritative for what is listed where — and never appends a
+    suffix by guessing. Checked before relying on it: all 2,768 korea stems map to
+    exactly ONE qualified ticker, so the mapping is deterministic, not a
+    best-guess. A stem absent from the allowlist stays bare and drops out at the
+    price join, which is the correct outcome for something KRX does not list.
+    """
+    if market != "KOREA":
+        return tickers
+    from cassandra.cluster import Cluster
+    s = Cluster(["127.0.0.1"]).connect("herrrickshaw")
+    stem: dict[str, list[str]] = {}
+    for row in s.execute("SELECT yf_ticker FROM instruments WHERE market = 'korea'"):
+        stem.setdefault(row.yf_ticker.split(".")[0], []).append(row.yf_ticker)
+    s.shutdown()
+    unique = {k: v[0] for k, v in stem.items() if len(v) == 1}
+    if len(unique) != len(stem):
+        print(f"  {len(stem) - len(unique)} ambiguous stem(s) left unresolved "
+              f"(more than one listed suffix) — not guessed")
+    bare = ~tickers.str.contains(r"\.", regex=True)
+    out = tickers.where(~bare, tickers.map(unique).fillna(tickers))
+    n = int((out != tickers).sum())
+    print(f"  resolved {n:,} bare KR code(s) to exchange-qualified tickers via "
+          f"the instruments allowlist ({int(bare.sum()) - n:,} left bare — not listed)")
+    return out
+
+
+def load_cassandra_price(cass_market: str) -> tuple[pd.Series, str]:
+    """
+    Price straight from the row this script is about to update.
+
+    🔴 THE PRICE MUST COME FROM THE SAME ROW THE RATIO LANDS IN. An external
+    panel is a different observation on a different date, so `pe` computed from
+    it does NOT satisfy pe == cmp/eps for the row it is written to — the row
+    contradicts itself and anyone recomputing gets a third answer. Measured
+    2026-08-15 with the cache_seed panel: PE recomputed from the row's own cmp
+    moved by a median 4.8% (JAPAN) / 7.1% (KOREA), and by >10% for 21% / 39% of
+    symbols. That is the whole reason for reading cmp here instead.
+
+    This makes freshness a precondition rather than a detail: the ratio is only
+    as current as cmp, so refresh the market (bulk_fetcher Phase 1) BEFORE
+    running this, and check the reported cmp age below.
+    """
+    from cassandra.cluster import Cluster
+    s = Cluster(["127.0.0.1"]).connect("herrrickshaw")
+    px, ages = {}, []
+    for r in s.execute("SELECT yf_ticker, cmp, fetched_at FROM stock_quotes "
+                       "WHERE market = %s", (cass_market,)):
+        if r.cmp is not None and r.cmp > 0:
+            px[r.yf_ticker] = r.cmp
+            if r.fetched_at is not None:
+                ages.append(r.fetched_at)
+    s.shutdown()
+    if not px:
+        raise SystemExit(f"no cmp in stock_quotes for {cass_market} — run the "
+                         f"backend fetch first; this script will not fall back "
+                         f"to a stale panel")
+    newest = max(ages).date() if ages else None
+    age_days = (pd.Timestamp.now().date() - newest).days if newest else None
+    stamp = f"cmp from stock_quotes, newest fetched_at {newest} ({age_days}d old)"
+    if age_days is not None and age_days > 3:
+        print(f"  🔴 cmp is {age_days} days old ({newest}). Every pe/pb written "
+              f"will carry that staleness. Refresh with bulk_fetcher Phase 1 "
+              f"before relying on these ratios.")
+    return pd.Series(px), stamp
+
+
+def load_latest_price(market: str, panel_dir: str, panel_glob: str) -> pd.Series:
+    override = PANEL_OVERRIDE.get(market)
+    files = ([override] if override and glob.glob(override)
+             else sorted(glob.glob(f"{WAREHOUSE}/{panel_dir}/{panel_glob}")))
     if not files:
-        raise SystemExit(f"no price panel found at {WAREHOUSE}/{panel_dir}/{panel_glob}")
+        raise SystemExit(f"no price panel found for {market} at "
+                         f"{override or f'{WAREHOUSE}/{panel_dir}/{panel_glob}'}")
     c = duckdb.connect()
     src = ", ".join(f"'{f}'" for f in files)
     d = c.execute(f"""
@@ -165,11 +311,17 @@ def load_latest_price(panel_dir: str, panel_glob: str) -> pd.Series:
 
 
 def build_ratios(market: str) -> pd.DataFrame:
-    fund_code, _, panel_dir, panel_glob = MARKETS[market]
+    fund_code, cass_market, _, _ = MARKETS[market]
     f = load_fundamentals(fund_code)
-    px = load_latest_price(panel_dir, panel_glob)
+    f["ticker"] = resolve_tickers(market, f.ticker)
+    px, stamp = load_cassandra_price(cass_market)
+    n_before = len(f)
     f["close"] = f.ticker.map(px)
-    f = f.dropna(subset=["close"])
+    # A missing price costs pe/pb but not roe, so price-less rows are kept.
+    n_priced = int(f.close.notna().sum())
+    print(f"  price source: {stamp}")
+    print(f"  {n_priced:,}/{n_before:,} symbol(s) matched a cmp "
+          f"({n_before - n_priced:,} keep roe only)")
 
     scale = FUND_SCALE.get(market)
     if scale:
@@ -191,9 +343,16 @@ def build_ratios(market: str) -> pd.DataFrame:
 
     f["eps"] = f.net_income / f.shares
     f["bvps"] = f.equity / f.shares
-    f["roe"] = f.net_income / f.equity
+    f["roe"] = f.net_income / f.equity * ROE_AS_PERCENT
     f["pe"] = (f.close / f.eps).where(f.eps > 0)
     f["pb"] = (f.close / f.bvps).where(f.bvps > 0)
+
+    wild_roe = f.roe.abs() > MAX_PLAUSIBLE_ROE_PCT
+    if int(wild_roe.sum()):
+        print(f"  dropped roe on {int(wild_roe.sum())} symbol(s) outside "
+              f"+/-{MAX_PLAUSIBLE_ROE_PCT:.0f}% — near-zero or negative equity, "
+              f"not a real return on capital")
+    f.loc[wild_roe, "roe"] = float("nan")
 
     implausible = (f.pe.abs() > MAX_PLAUSIBLE_PE) | (f.pb.abs() > MAX_PLAUSIBLE_PB)
     n_dropped = int(implausible.sum())
@@ -204,8 +363,10 @@ def build_ratios(market: str) -> pd.DataFrame:
               f"whose 'fundamentals' don't describe an operating company")
     f = f[~implausible]
 
+    # Keep a row if ANY of the three is derivable — roe-only rows are the point
+    # of the shares relaxation above, and dropping them here would undo it.
     return f[["ticker", "fy_end", "close", "pe", "pb", "roe"]].dropna(
-        subset=["pe", "pb"], how="all")
+        subset=["pe", "pb", "roe"], how="all")
 
 
 def write_cassandra(d: pd.DataFrame, cass_market: str) -> tuple[int, int]:
@@ -233,7 +394,10 @@ def write_cassandra(d: pd.DataFrame, cass_market: str) -> tuple[int, int]:
         pe = float(r.pe) if pd.notna(r.pe) else UNSET_VALUE
         pb = float(r.pb) if pd.notna(r.pb) else UNSET_VALUE
         roe = float(r.roe) if pd.notna(r.roe) else UNSET_VALUE
-        if pe is UNSET_VALUE and pb is UNSET_VALUE:
+        # roe alone is worth writing: it needs no share count and no price, and
+        # for the DART-sourced Korean mega-caps it is the ONLY ratio derivable.
+        # Gating on pe/pb here would have silently discarded them again.
+        if pe is UNSET_VALUE and pb is UNSET_VALUE and roe is UNSET_VALUE:
             skipped += 1
             continue
         s.execute(stmt, (pe, pb, roe, cass_market, r.ticker))
