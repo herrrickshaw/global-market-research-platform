@@ -58,9 +58,22 @@ trap 'rmdir "$LOCK" 2>/dev/null' EXIT
 # This lock WAITS instead of exiting, which is the opposite of the daily_pipeline
 # lock and deliberately so: a duplicate pipeline run is redundant work, but a
 # skipped backup is lost coverage, and these two write to different destinations
-# so both genuinely have to run. After 90 minutes it gives up waiting and
-# proceeds anyway — a slow backup beats no backup, and a wedged peer must not be
-# able to suppress this one indefinitely.
+# so both genuinely have to run.
+#
+# 🔴 IT USED TO PROCEED CONCURRENTLY AFTER 90 MINUTES. "A slow backup beats no
+# backup" is the wrong trade when the two runs share an rclone remote: sync with
+# --backup-dir and --delete-excluded means a concurrent peer can delete or
+# version files this run is still transferring, which is the hash-mismatch this
+# file already warns about above. Observed 2026-08-15: THREE syncs live at once
+# against overlapping Dropbox paths, one of them orphaned and 29 hours old, and
+# [R14] appeared wedged as a result.
+#
+# So the wait is still bounded — a hung peer must not stall this forever — but
+# the timeout now EXITS instead of racing. A skipped run is recoverable (rclone
+# sync is idempotent; the next run copies whatever is missing); a corrupted
+# mirror is not. Exit 75 (EX_TEMPFAIL) and log loudly, so a peer that is
+# permanently stuck shows up as repeated failures rather than as silence —
+# the same reasoning as the mailer's lost-send guard.
 ACCT_LOCK="/tmp/cloud_backup.rclone-dropbox.lock"
 ACCT_OWNED=0
 _acct_waited=0
@@ -73,8 +86,12 @@ while :; do
     rm -rf "$ACCT_LOCK" 2>/dev/null; continue          # stale: owner is gone
   fi
   if [ "$_acct_waited" -ge 5400 ]; then
-    echo "cloud_backup: waited 90m on $ACCT_LOCK (pid $_acct_peer) — proceeding concurrently" >> "$LOG"
-    break
+    echo "cloud_backup: waited 90m on $ACCT_LOCK (pid $_acct_peer) — NOT proceeding." >> "$LOG"
+    echo "  Refusing to sync concurrently against the same rclone remote: --backup-dir" >> "$LOG"
+    echo "  and --delete-excluded make an overlapping peer able to delete or version" >> "$LOG"
+    echo "  files this run is still transferring. Skipping is recoverable; a corrupted" >> "$LOG"
+    echo "  mirror is not. Check pid $_acct_peer — if it is wedged, kill it and re-run." >> "$LOG"
+    exit 75
   fi
   [ "$_acct_waited" = 0 ] && echo "cloud_backup: waiting for rclone account lock (pid $_acct_peer)" >> "$LOG"
   sleep 30; _acct_waited=$((_acct_waited + 30))
