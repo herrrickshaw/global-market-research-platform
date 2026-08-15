@@ -114,8 +114,12 @@ if ! mkdir "$LOCKDIR" 2>/dev/null; then
         echo "  🔴 SEND LOST — the brief for $(date +%F) did NOT go out. The lock"
         echo "     was held by pid $_owner, so this send did no work. Re-run once"
         echo "     that finishes:  ./daily_mailer.sh --send"
+        # Failures are POSITIONAL — the trailer at the end of this script calls
+        # `send_alert.py --pipeline ... --log ... "${FAILURES[@]}"`. Passing
+        # --failures put the literal flag through as its own failed-step name,
+        # which is what the 2026-08-15 alerts showed ("- --failures").
         $PY send_alert.py --pipeline daily_mailer.sh --log "$LOG" \
-            --failures "send lost: lock held by pid $_owner, no brief for $(date +%F)" \
+            "send lost: lock held by pid $_owner, no brief for $(date +%F)" \
             >/dev/null 2>&1 || echo "     (alert could not be sent either)"
         exit 75
         ;;
