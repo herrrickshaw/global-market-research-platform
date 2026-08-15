@@ -36,6 +36,23 @@ _VALUE_COLS: tuple[str, ...] = (
     'sector', 'industry',
     'bb_upper', 'bb_lower', 'bb_pct', 'atr_14', 'stoch_k', 'stoch_d',
 )
+# Columns added to the live stock_quotes by scripts/bridge_ratios_to_cassandra.py,
+# which ALTERed the table directly — the backend schema never learned about them,
+# so until 2026-08-15 all eight were invisible to every query in this file.
+# fundamentals_source is the important one: it labels each row
+# 'median_imputed' | 'derived_price_join' | 'statements'. Without it a history
+# row cannot distinguish an imputed ROE from a measured one, and 77% of the
+# serving table is currently imputed.
+#
+# Kept SEPARATE from _VALUE_COLS because upsert_quotes binds its tuple
+# positionally and the live fetch path does not produce any of these — only the
+# bridge does. They are read and snapshotted, never written from here.
+_BRIDGE_COLS: tuple[str, ...] = (
+    'fundamentals_source', 'roce', 'piotroski', 'quality_score',
+    'eps_growth', 'asset_turnover', 'interest_cov', 'enterprise_val',
+)
+# Everything a history row carries: what the fetch writes plus what the bridge adds.
+_HISTORY_VALUE_COLS: tuple[str, ...] = _VALUE_COLS + _BRIDGE_COLS
 # Full stock_quotes column set, in INSERT order.
 _QUOTE_COLS: tuple[str, ...] = ('market', 'yf_ticker', 'fetched_at') + _VALUE_COLS
 # Read shapes: select_in omits `market` (it is the WHERE key); the scanner read
@@ -102,7 +119,7 @@ def _prepare(s) -> None:
     # Snapshot read: the whole market in one partition read, feeding
     # snapshot_market(). Same shape as select_in, without the IN restriction.
     _stmts['select_market'] = s.prepare(
-        f"SELECT {', '.join(_SELECT_IN_COLS)} "
+        f"SELECT yf_ticker, fetched_at, {', '.join(_HISTORY_VALUE_COLS)} "
         f"FROM {ks}.stock_quotes WHERE market = ?"
     )
     # History append. Binds plain values (nulls included) — NOT UNSET_VALUE:
@@ -110,8 +127,8 @@ def _prepare(s) -> None:
     # The append-bias rationale below applies to the serving row only.
     _stmts['snapshot'] = s.prepare(
         f"INSERT INTO {ks}.stock_quotes_history "
-        f"(market, yf_ticker, snapshot_date, fetched_at, {', '.join(_VALUE_COLS)}) "
-        f"VALUES ({', '.join('?' * (4 + len(_VALUE_COLS)))})"
+        f"(market, yf_ticker, snapshot_date, fetched_at, {', '.join(_HISTORY_VALUE_COLS)}) "
+        f"VALUES ({', '.join('?' * (4 + len(_HISTORY_VALUE_COLS)))})"
     )
 
 
@@ -449,7 +466,7 @@ def snapshot_market(market: str, day: date | None = None,
             stale += 1
             continue
         fresh.append((market, r.yf_ticker, day, ts,
-                      *(getattr(r, c, None) for c in _VALUE_COLS)))
+                      *(getattr(r, c, None) for c in _HISTORY_VALUE_COLS)))
 
     if stale:
         log.warning('snapshot_market: %s — skipped %d row(s) with data older than '
@@ -485,7 +502,7 @@ def get_quote_history(market: str, yf_ticker: str, limit: int = 250) -> list[dic
         return []
     try:
         rows = s.execute(
-            f"SELECT snapshot_date, fetched_at, {', '.join(_VALUE_COLS)} "
+            f"SELECT snapshot_date, fetched_at, {', '.join(_HISTORY_VALUE_COLS)} "
             f"FROM {cass.KEYSPACE}.stock_quotes_history "
             f"WHERE market = %s AND yf_ticker = %s LIMIT %s",
             (market, yf_ticker, limit),
@@ -501,7 +518,7 @@ def get_quote_history(market: str, yf_ticker: str, limit: int = 250) -> list[dic
             # that and datetime.date.
             'snapshot_date': str(r.snapshot_date) if r.snapshot_date is not None else None,
             'fetched_at':    r.fetched_at.isoformat() if r.fetched_at else None,
-            **{c: getattr(r, c, None) for c in _VALUE_COLS},
+            **{c: getattr(r, c, None) for c in _HISTORY_VALUE_COLS},
         }
         for r in rows
     ]
