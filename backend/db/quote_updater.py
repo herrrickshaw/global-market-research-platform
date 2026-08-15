@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import logging
 import math
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 from typing import Any, Optional
 
 import pandas as pd
@@ -393,7 +393,8 @@ def get_market_quotes_df(market: str) -> pd.DataFrame:
     return pd.DataFrame(records) if records else pd.DataFrame()
 
 
-def snapshot_market(market: str, day: date | None = None) -> int:
+def snapshot_market(market: str, day: date | None = None,
+                    max_age_days: int = 2) -> int:
     """
     Append the current merged serving row for every ticker in `market` to
     stock_quotes_history, as one complete row per ticker for `day`.
@@ -401,6 +402,10 @@ def snapshot_market(market: str, day: date | None = None) -> int:
     Idempotent per (market, yf_ticker, day) — re-running overwrites that day's
     row rather than appending a duplicate, which matters because the scheduler
     runs with misfire_grace_time=3600 and a late fire is expected.
+
+    Rows whose fetched_at is older than `max_age_days` before `day` (or absent)
+    are skipped: snapshot_date means "the state on this date", so copying a row
+    the fetch never refreshed would fabricate an observation.
 
     Deliberately reads stock_quotes back rather than snapshotting what was just
     written: a serving row is the accumulated MERGE of several partial writes
@@ -426,12 +431,33 @@ def snapshot_market(market: str, day: date | None = None) -> int:
     if not rows:
         return 0
 
-    payload = [
-        (market, r.yf_ticker, day, r.fetched_at,
-         *(getattr(r, c, None) for c in _VALUE_COLS))
-        for r in rows if r.yf_ticker
-    ]
+    # Only snapshot rows whose underlying data actually belongs to `day`.
+    # snapshot_date means "the state on this date" — writing a row the fetch
+    # never refreshed would fabricate an observation, and a backtest cannot tell
+    # a stale copy from a real one. A gap in history is honest; a duplicated
+    # stale row is not. Rows with no fetched_at are skipped for the same reason.
+    # Found in live testing: the serving table was 17 days stale (the app, and
+    # so the scheduler, had not run) and every row would have been recorded as
+    # a fresh observation for today.
+    cutoff = day - timedelta(days=max_age_days)
+    fresh, stale = [], 0
+    for r in rows:
+        if not r.yf_ticker:
+            continue
+        ts = r.fetched_at
+        if ts is None or ts.date() < cutoff:
+            stale += 1
+            continue
+        fresh.append((market, r.yf_ticker, day, ts,
+                      *(getattr(r, c, None) for c in _VALUE_COLS)))
+
+    if stale:
+        log.warning('snapshot_market: %s — skipped %d row(s) with data older than '
+                    '%s (max_age_days=%d); serving table may not have refreshed',
+                    market, stale, cutoff, max_age_days)
+    payload = fresh
     if not payload:
+        log.warning('snapshot_market: %s — nothing fresh to snapshot for %s', market, day)
         return 0
 
     try:
@@ -470,7 +496,10 @@ def get_quote_history(market: str, yf_ticker: str, limit: int = 250) -> list[dic
 
     return [
         {
-            'snapshot_date': r.snapshot_date.isoformat() if r.snapshot_date else None,
+            # str(), not .isoformat(): the driver returns cassandra.util.Date for a
+            # CQL `date` column, which has no isoformat(). str() yields ISO for both
+            # that and datetime.date.
+            'snapshot_date': str(r.snapshot_date) if r.snapshot_date is not None else None,
             'fetched_at':    r.fetched_at.isoformat() if r.fetched_at else None,
             **{c: getattr(r, c, None) for c in _VALUE_COLS},
         }
