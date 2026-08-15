@@ -61,8 +61,27 @@ def load_panel(mkt: str, years=None):
     `years` (list of ints) restricts partitions — used by the fast daily
     regime refresh, which only needs ~2y for the 52-week breadth."""
     parts = sorted(glob.glob(f"{WH}/{mkt}/year=*.parquet"))
+    if not parts:
+        raise FileNotFoundError(
+            f"no year partitions under {WH}/{mkt} — MARKET_WH points at an empty "
+            f"or missing warehouse. The local tree was cleaned and migrated to "
+            f"Dropbox on 2026-08-14; populate a cache from "
+            f"dropbox:market-data-archive/current/gmd_warehouse/ohlcv or point "
+            f"MARKET_WH at one.")
     if years:
+        want = set(years)
         parts = [p for p in parts if any(f"year={y}" in p for y in years)]
+        got = {int(p.split("year=")[1].split(".")[0]) for p in parts}
+        # 🔴 A SHORT PANEL IS WORSE THAN NO PANEL. The daily refresh needs only
+        # [yr-1, yr], so a 2-year cache serves it — but the full backtest
+        # (START=2016) globs every year with years=None, and against that same
+        # small cache it would silently produce a 2-year backtest reported as a
+        # 10-year one. Missing partitions fail loudly instead.
+        if want - got:
+            raise FileNotFoundError(
+                f"{mkt}: MARKET_WH={WH} is missing year(s) "
+                f"{sorted(want - got)} (has {sorted(got)}). Refusing to run on a "
+                f"truncated panel — populate the cache or widen MARKET_WH.")
     df = pd.concat((pd.read_parquet(p, columns=["Date","Symbol","Close","Volume"])
                     for p in parts), ignore_index=True)
     df["Date"] = pd.to_datetime(df["Date"])
@@ -173,8 +192,21 @@ def refresh_regime() -> int:
     if not path.exists():
         LOG.warning("zone_regime.json absent — run the full backtest first"); return 0
     zr = json.loads(path.read_text())
-    yr = max(int(p.split("year=")[1].split(".")[0])
-             for p in glob.glob(f"{WH}/IN/year=*.parquet"))
+    # This max() is what actually broke on 2026-08-15: the local warehouse had
+    # been cleaned and migrated to Dropbox, the glob returned [], and max() of an
+    # empty sequence raised — swallowed by the mailer's "|| continuing", so the
+    # step had been reporting nothing while doing nothing.
+    in_years = [int(p.split("year=")[1].split(".")[0])
+                for p in glob.glob(f"{WH}/IN/year=*.parquet")]
+    if not in_years:
+        LOG.error(f"no year partitions under {WH}/IN — MARKET_WH points at an "
+                  f"empty or missing warehouse. The local tree was cleaned and "
+                  f"migrated to Dropbox on 2026-08-14; populate a cache from "
+                  f"dropbox:market-data-archive/current/gmd_warehouse/ohlcv "
+                  f"(the daily refresh needs only the latest two years) or point "
+                  f"MARKET_WH at one. Regime map left unchanged.")
+        return 1
+    yr = max(in_years)
     with timed(LOG, "regime refresh (all markets)"):
         for mkt in MARKETS:
             if mkt not in zr:

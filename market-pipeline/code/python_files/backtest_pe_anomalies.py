@@ -37,6 +37,7 @@
 from __future__ import annotations
 
 import glob
+import os
 import sys
 
 import numpy as np
@@ -48,9 +49,41 @@ import pandas as pd
 # error. The backup is pure screener.in: 10y annual, NI in crore, shares =
 # CURRENT count applied historically — which pairs correctly with the
 # split-ADJUSTED price panel (validated: TCS FY24-26 EPS 120/133/136 ✓).
-FUND = ("/Users/umashankar/repos/global-stock-screener/cache_seed/"
-        "fundamentals_history/IN_screener_only_backup.parquet")
-PX_DIR = "/Users/umashankar/repos/global-market-data/warehouse/ohlcv_adj/IN"
+# Original was lost in the 2026-08-14 cleanup: deleted locally, present in git
+# only as a 132-byte LFS pointer (LFS was retired when the repos were recreated),
+# and in neither Dropbox nor gdrive. Not recoverable.
+#
+# The default below is a RECONSTRUCTION from public.global_fundamentals, not a
+# restoration — different source, same schema and units. net_income is ₹ crore
+# and shares absolute, which load_eps()'s `net_income * 1e7 / shares` expects;
+# verified independently on RELIANCE FY2026 (43,851 ₹cr / 13.53e9 sh = EPS 32.40,
+# its real figure), plus TCS 135.70 and HDFCBANK 48.51.
+#
+# 🔴 INCOMPLETE: `industry` is null in the reconstruction. No local source has
+# per-ticker India industry — Cassandra has it for 189 of 3,484 names (5%),
+# public.stocks has zero industry values and no India overlap, and
+# indices.factsheet_sector is index-level weights. Since industry drives the
+# sector-relative comparison this screen exists to make, it needs a screener.in
+# re-collection before the output means anything.
+FUND = os.environ.get(
+    "MARKET_FUND_IN",
+    os.path.expanduser(
+        "~/.cache/market-warehouse/fundamentals_history/"
+        "IN_screener_only_backup.parquet"))
+# The repo-local warehouse was cleaned and migrated to Dropbox on 2026-08-14, so
+# this path no longer exists and load_prices() died on "No objects to
+# concatenate" — which the mailer swallowed, taking the value-rerating, playbook
+# and small-cap screens down with it (step [10/13], 2026-08-15).
+#
+# Default is now a local cache holding the FULL India history (2016-2026, 64 MB),
+# because this backtest starts at 2017-01-31 — a two-year cache would silently
+# produce a two-year result. The Dropbox copy is online-only placeholders, so
+# pointing straight at ~/Dropbox would re-download on every read; populate with:
+#   rclone copy dropbox:market-data-archive/current/gmd_warehouse/ohlcv_adj/IN \
+#     ~/.cache/market-warehouse/ohlcv_adj/IN
+PX_DIR = os.environ.get(
+    "MARKET_WH_ADJ_IN",
+    os.path.expanduser("~/.cache/market-warehouse/ohlcv_adj/IN"))
 OUT_MD = "reports/pe_anomaly_backtest.md"
 
 START, END = "2017-01-31", "2026-06-30"
@@ -68,6 +101,19 @@ def month_ends(px: pd.DataFrame) -> pd.DataFrame:
 
 def load_prices() -> pd.DataFrame:
     parts = sorted(glob.glob(f"{PX_DIR}/year=*.parquet"))
+    if not parts:
+        raise FileNotFoundError(
+            f"no year partitions under {PX_DIR}. pd.concat's bare 'No objects to "
+            f"concatenate' is what this replaces — it gave no hint the warehouse "
+            f"was missing, and the mailer swallowed it. Populate the cache from "
+            f"dropbox:market-data-archive/current/gmd_warehouse/ohlcv_adj/IN or "
+            f"set MARKET_WH_ADJ_IN.")
+    have = sorted(int(p.split("year=")[1].split(".")[0]) for p in parts)
+    need = pd.Timestamp(START).year
+    if have[0] > need:
+        raise FileNotFoundError(
+            f"{PX_DIR} starts at {have[0]} but START={START} needs {need}. "
+            f"Refusing to run a truncated backtest and report it as a full one.")
     px = pd.concat((pd.read_parquet(p, columns=["Date", "Symbol", "Close"])
                     for p in parts), ignore_index=True)
     px["Date"] = pd.to_datetime(px["Date"])

@@ -50,6 +50,35 @@
 set -uo pipefail
 cd "$(dirname "$0")"
 
+# ── hold a power assertion for the whole run ──────────────────────────────────
+# 🔴 THE PIPELINE IS NOT SLOW, IT IS SUSPENDED. Measured 2026-08-15: the data
+# phase spanned 03:05→07:27 (262 min) and pmset logged 37 "Entering Sleep state"
+# events inside that window. The 11-minute runs on 08-13 and 08-14 logged ZERO.
+# Step boundaries land exactly on sleep timestamps — step [4/13]'s marker is
+# 04:33:55, which is a sleep event to the second.
+#
+# The actual work is tiny. Profiled on the same data: the step [3/13] rebuild
+# everyone assumed was the cost — re-pivot 268 dates, re-clean 7,941 symbols,
+# rewrite cleaned_long, rebuild the 94 MB LMDB — totals ~29 SECONDS
+# (clean 17.1s, LMDB 5.8s, regroup 2.2s, parquet 0.2s). It reported 61 minutes
+# because the machine slept through most of it. Making that rebuild incremental
+# would have saved 29s of a 3,670s step.
+#
+# This also silently defeated the cap() watchdog: it counts elapsed time in
+# `sleep 5` increments, which do not advance while the system is suspended, so
+# a 61-minute step never tripped CAP_BHAVCOPY=2400 and no TIMEOUT was logged.
+#
+# caffeinate -w ties the assertion to this shell's lifetime, so it releases on
+# exit however we exit — no re-exec, no trap, nothing left holding the machine
+# awake if the run dies. -i prevents idle sleep (what the log shows: "Sleep
+# Service Back to Sleep", PrevIdle), -m keeps the disk spun up. -s is
+# deliberately omitted: it only applies on AC and this Mac runs the 03:00 slot
+# on battery ("Using BATT" in every one of those 37 events).
+if command -v caffeinate >/dev/null 2>&1; then
+  caffeinate -i -m -w "$$" &
+  echo "  power assertion held for pid $$ (caffeinate -i -m)"
+fi
+
 # Never inherit python3 from the caller's PATH. A manual run from a plain shell
 # resolved it to homebrew 3.14 on 2026-07-22: step [0] flagged missing deps,
 # every scan died, and the validation gate correctly suppressed the send.
@@ -118,8 +147,15 @@ TIMED_OUT=()
 cap() {
   local secs="$1" label="$2"; shift 2
   "$@" &
-  local pid=$! waited=0
+  # Wall-clock, not an accumulator. The old form added CAP_POLL per iteration,
+  # and `sleep 5` does not advance while the machine is suspended — so on
+  # 2026-08-15, when the Mac slept 37 times mid-run, a 61-minute step [3/13]
+  # never reached CAP_BHAVCOPY=2400 and no TIMEOUT was ever logged. Comparing
+  # timestamps counts suspended time the way an observer does.
+  local pid=$! started waited=0
+  started=$(date +%s)
   while kill -0 "$pid" 2>/dev/null; do
+    waited=$(( $(date +%s) - started ))
     if [ "$waited" -ge "$secs" ]; then
       echo "  ⏱  TIMEOUT: '$label' exceeded ${secs}s — killing it and continuing"
       _kill_tree TERM "$pid"
@@ -133,7 +169,6 @@ cap() {
       return 124
     fi
     sleep "$CAP_POLL"
-    waited=$(( waited + CAP_POLL ))
   done
   wait "$pid"
 }
@@ -269,7 +304,26 @@ FAILURES=()
   cap $CAP_PREDICT "[11/13] re-entry ranking" \
     $PY reentry_engine.py || FAILURES+=("re-entry ranking")
 
+  # MARKET_WH is set HERE and nowhere else. The local warehouse tree was cleaned
+  # and migrated to Dropbox on 2026-08-14, which broke this step (it globbed
+  # year=*.parquet under the deleted path and died on max() of an empty
+  # sequence — silently, behind "|| continuing", every run since).
+  #
+  # The Dropbox copy is synced but ONLINE-ONLY: 886 MB of placeholders, 0 bytes
+  # resident, so pointing this at ~/Dropbox would re-download the whole tree on
+  # first read and again after every eviction. Instead a small local cache holds
+  # just the two years --refresh-regime actually loads (~119 MB):
+  #   rclone copy dropbox:market-data-archive/current/gmd_warehouse/ohlcv/$M \
+  #     ~/.cache/market-warehouse/ohlcv/$M --include "year=202[56].parquet"
+  #
+  # Scoped to this one command deliberately: the MONTHLY backtests
+  # (strategy_regime_survival without --refresh-regime, START=2016;
+  # backtest_zone_rules.py, START=2018) glob EVERY year, and against this 2-year
+  # cache they would report a 2-year result as a 10-year one. They keep the
+  # default path; load_panel() now raises on missing years rather than
+  # truncating, so if that assumption ever breaks it breaks loudly.
   step "[12/13] refresh live market regime (zone_regime.json)"
+  MARKET_WH="${MARKET_WH_DAILY:-$HOME/.cache/market-warehouse/ohlcv}" \
   cap $CAP_REGIME "[12/13] regime refresh" \
     $PY strategy_regime_survival.py --refresh-regime \
     || echo "  regime refresh failed (continuing)"
