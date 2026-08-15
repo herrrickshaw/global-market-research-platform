@@ -365,8 +365,30 @@ def build_ratios(market: str) -> pd.DataFrame:
 
     # Keep a row if ANY of the three is derivable — roe-only rows are the point
     # of the shares relaxation above, and dropping them here would undo it.
-    return f[["ticker", "fy_end", "close", "pe", "pb", "roe"]].dropna(
+    out = f[["ticker", "fy_end", "close", "pe", "pb", "roe"]].dropna(
         subset=["pe", "pb", "roe"], how="all")
+
+    # 🔴 DEDUPLICATE AFTER RESOLUTION, NOT BEFORE. load_fundamentals() dedupes on
+    # the RAW ticker, but resolve_tickers() then maps bare '003547' onto
+    # '003547.KS' — which often already exists as its own qualified row. The two
+    # collide only after resolution: KOREA came out with 4,749 rows for 2,667
+    # distinct tickers (4,164 duplicates); JAPAN, which has no bare codes, had
+    # none. The pairs agree on fy_end, close and roe and differ only in whether
+    # a share count was present, so one carries pe/pb and the other does not.
+    #
+    # Left unmerged, both get written and the LAST one wins arbitrarily — so a
+    # ticker could keep the roe-only write and lose a perfectly good pe, and its
+    # fundamentals_source label depended on row order. Sorting incomplete rows
+    # first and keeping the last makes the richer row win deterministically.
+    if out.ticker.duplicated().any():
+        n_dup = int(out.ticker.duplicated().sum())
+        out = (out.assign(_rank=out.pe.notna().astype(int) + out.pb.notna().astype(int))
+                  .sort_values(["ticker", "_rank"])
+                  .drop_duplicates("ticker", keep="last")
+                  .drop(columns="_rank"))
+        print(f"  merged {n_dup:,} duplicate ticker row(s) created by resolution "
+              f"— kept the most complete row per ticker")
+    return out
 
 
 def write_cassandra(d: pd.DataFrame, cass_market: str) -> tuple[int, int]:
@@ -384,26 +406,55 @@ def write_cassandra(d: pd.DataFrame, cass_market: str) -> tuple[int, int]:
     # host/keyspace ever need to be genuinely shared, the right unit to
     # extract is a small constants module, not this session-lifecycle import.
     s = Cluster(["127.0.0.1"]).connect("herrrickshaw")
-    stmt = s.prepare(
+    # 🔴 THE LABEL MUST DESCRIBE WHAT WAS ACTUALLY WRITTEN, PER ROW.
+    # A single unconditional 'derived_price_join' was correct only while every
+    # written row carried a pe. Once roe-only rows became writable (the `shares`
+    # relaxation above), a row with UNSET pe kept whatever pe was already there —
+    # a median_imputed placeholder — while being restamped as derived. Measured
+    # on the first --apply run: 348 japan and 1,005 korea rows (39% of Korea's
+    # derived set) claimed a derived PE that was still the market-median
+    # sentinel. That is the exact failure this column exists to prevent, just
+    # inverted from the Europe-run mistake the header describes.
+    stmt_full = s.prepare(
         "UPDATE stock_quotes SET pe = ?, pb = ?, roe = ?, "
         "fundamentals_source = 'derived_price_join' "
         "WHERE market = ? AND yf_ticker = ?"
     )
-    written = skipped = 0
+    stmt_roe = s.prepare(
+        "UPDATE stock_quotes SET roe = ?, "
+        "fundamentals_source = 'derived_roe_only' "
+        "WHERE market = ? AND yf_ticker = ?"
+    )
+    written = skipped = roe_only = 0
     for r in d.itertuples():
         pe = float(r.pe) if pd.notna(r.pe) else UNSET_VALUE
         pb = float(r.pb) if pd.notna(r.pb) else UNSET_VALUE
         roe = float(r.roe) if pd.notna(r.roe) else UNSET_VALUE
-        # roe alone is worth writing: it needs no share count and no price, and
-        # for the DART-sourced Korean mega-caps it is the ONLY ratio derivable.
-        # Gating on pe/pb here would have silently discarded them again.
         if pe is UNSET_VALUE and pb is UNSET_VALUE and roe is UNSET_VALUE:
             skipped += 1
             continue
-        s.execute(stmt, (pe, pb, roe, cass_market, r.ticker))
+        if pe is UNSET_VALUE and pb is UNSET_VALUE:
+            # roe alone is worth writing — for the DART-sourced Korean mega-caps
+            # it is the ONLY ratio derivable — but it must NOT claim a derived
+            # price ratio it did not compute. pe/pb are left untouched and the
+            # row is labelled for what it is.
+            s.execute(stmt_roe, (roe, cass_market, r.ticker))
+            roe_only += 1
+        else:
+            # 🔴 A ROW WITH pb BUT NO pe MUST NOT KEEP ITS OLD pe. pe is NaN here
+            # precisely when eps <= 0 — a loss-making company, for which a P/E is
+            # undefined. Binding UNSET would leave the market-median placeholder
+            # in place and then stamp the row 'derived', asserting a positive
+            # earnings multiple for a company that lost money: 830 KOREA rows on
+            # the first corrected run. An explicit NULL says "no P/E", which is
+            # the truth. This is a single deliberate column null, not the blanket
+            # UNSET/None confusion that caused the 2026-07-29 tombstone incident.
+            if pe is UNSET_VALUE:
+                pe = None
+            s.execute(stmt_full, (pe, pb, roe, cass_market, r.ticker))
         written += 1
     s.shutdown()
-    return written, skipped
+    return written, skipped, roe_only
 
 
 def main() -> int:
@@ -427,8 +478,10 @@ def main() -> int:
         print("\n(dry run — pass --apply to write to Cassandra)")
         return 0
 
-    written, skipped = write_cassandra(d, cass_market)
+    written, skipped, roe_only = write_cassandra(d, cass_market)
     print(f"\nwrote {written:,} symbol(s) to Cassandra ({cass_market}) · "
+          f"{written - roe_only:,} with pe/pb (derived_price_join) · "
+          f"{roe_only:,} roe-only (derived_roe_only, pe/pb left untouched) · "
           f"skipped {skipped:,} (no positive-denominator ratio)")
     return 0
 
