@@ -32,3 +32,29 @@ docs_cache/
 
 # runtime observability artifacts (obs.py)
 logs/
+
+# ── regenerated cache_seed outputs (exception to the rule above) ──
+# The convention above is deliberate and stays: cache_seed/*.parquet are durable
+# outputs and are versioned. These five are the exception — they are rewritten by
+# a named script on essentially every run, so they arrived as binary diffs with
+# nothing reviewable in them, and four of the five were sitting dirty in
+# `git status` before anyone edited a line.
+#
+#   data_ledger.parquet              <- data_ledger.py
+#   data_sources.parquet             <- source_registry.py
+#   data_sufficiency_history.parquet <- data_sufficiency.py
+#   india_ccc_screen.parquet         <- build_mailer.py / data_registry.py
+#   cleaned_long.parquet             <- bhavcopy_store.py
+#
+# Listed by name rather than by pattern, so adding a genuinely new seed dataset
+# stays tracked by default — the failure mode of a `cache_seed/*.parquet` rule is
+# that it silently swallows real seed data later.
+#
+# Durable copies verified in dropbox:market-data-archive/current/cache_seed on
+# 2026-08-15 before untracking; restore any of them with:
+#   rclone copy dropbox:market-data-archive/current/cache_seed/<name> cache_seed/
+cache_seed/data_ledger.parquet
+cache_seed/data_sources.parquet
+cache_seed/data_sufficiency_history.parquet
+cache_seed/india_ccc_screen.parquet
+cache_seed/cleaned_long.parquet
