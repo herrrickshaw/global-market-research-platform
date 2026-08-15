@@ -1,9 +1,9 @@
 # Migration: preserving quote history
 
-**Status:** implemented — verified statically and against a stubbed session.
-Steps 2, 3 and 5 of the rollout below still need a running Cassandra node
-(nothing was listening on 9042 at implementation time), so no row has been
-written to a real cluster yet.
+**Status:** implemented and verified against a live Cassandra 5.x node
+(2026-08-15). Rollout steps 1–3 and 5 done; step 4 (a week of scheduled runs)
+outstanding. Verification data was truncated afterwards, so the table is empty
+and awaiting its first real scheduled snapshot.
 **Touches:** `schema.cql`, `cassandra_client.py`, `quote_updater.py`, `scheduler.py`
 **Breaks:** nothing (additive)
 
@@ -140,8 +140,19 @@ japan 3,709 · korea 2,768) ≈ **17.5k instruments**, at ~250 trading days/year
 - **Partition size: ~250 rows/year**, ~100 KB/year. Cassandra's guidance is <100 MB and
   <100k rows per partition — this reaches neither within any horizon worth planning for.
 
-These are estimates from column types and row counts, not measurements. Worth re-checking
-against `nodetool tablestats` after the first month.
+**Measured 2026-08-15** (one full day, all 5 markets, `nodetool tablestats` after `flush`):
+
+| | estimated | measured |
+|---|---|---|
+| instruments/day | 17.5k | **21,198** (india 3,484 · us 9,458 · europe 1,826 · japan 3,664 · korea 2,766) |
+| bytes/row (raw) | ~400 B | **385 B** |
+| bytes/row (on disk) | — | **249 B** (LZ4 ratio 0.65) |
+| per year | ~1.8 GB raw | **1.90 GiB raw · 1.23 GiB on disk** |
+| partition after 10y | — | **0.59 MiB / 2,500 rows** (limits: 100 MiB / 100k rows) |
+
+The per-row estimate was close; the annual figure landed near the estimate despite 21%
+more instruments than `CLAUDE.md` documents. Write throughput was ~4,500 rows/s
+(21,198 rows across 5 markets in 4.5s total). No TTL needed at this rate.
 
 No TTL is proposed. The whole point is retention. If storage becomes a concern, a TTL on
 `stock_quotes_history` is the lever, but ~1 GB/year does not warrant one yet.
@@ -192,13 +203,53 @@ after the first slow backtest.
 
 1. ~~Add the table to `_SCHEMA` and `schema.cql`.~~ **Done.** Restart picks it up; existing
    tables are `IF NOT EXISTS` no-ops.
-2. ~~Ship `snapshot_market()`~~ **Done** — call it manually for one market. Verify one partition:
+2. ~~Ship `snapshot_market()` and call it manually for one market.~~ **Done** — verified one partition:
    `SELECT snapshot_date, cmp, rsi, pe FROM stock_quotes_history WHERE market='india' AND yf_ticker='RELIANCE';`
-3. Confirm null-vs-value handling: a Phase-1-only day should show real prices and null
-   fundamentals, not the previous day's fundamentals carried forward.
+3. ~~Confirm null-vs-value handling — a partial day must show real prices and null
+   fundamentals, not the previous day's carried forward.~~ **Done** — all 3,484 india
+   rows compared field by field against the serving table (132,392 values), 0 mismatches;
+   the 1,117 rows with no `cmp` recorded `cmp`/`rsi` as null rather than filled.
 4. ~~Wire into `_run_prefetch()`.~~ **Done** — snapshot count surfaces as
-   `total_snapshotted` in `/api/db/scheduler/status`. Let it run a week.
-5. Re-check sizing against `nodetool tablestats`; revisit TTL only if the estimate is well off.
+   `total_snapshotted` in `/api/db/scheduler/status`. **Still needs a week of real
+   scheduled runs**; that requires the FastAPI app to be running, which it currently
+   is not (hence the 17-day-stale serving table).
+5. ~~Re-check sizing against `nodetool tablestats`~~ **Done** — see Sizing above; estimate held, no TTL needed.
+
+### Found during live verification
+
+Two things a stubbed session could not have caught:
+
+**1. `cassandra.util.Date` has no `.isoformat()`.** The driver returns its own type for a
+CQL `date` column, so `get_quote_history()` raised `AttributeError` on the first real
+read. Fixed by using `str()`, which yields ISO for both that type and `datetime.date`.
+
+**2. Stale serving data would have been recorded as a fresh observation.** The serving
+table was 17 days old (every row `fetched_at = 2026-07-29`; the FastAPI app, and so the
+scheduler, had not run). The first snapshot happily wrote all 21,198 rows under
+`snapshot_date = 2026-08-15` — a fabricated observation that no backtest could distinguish
+from a real one. `snapshot_market()` now skips rows whose `fetched_at` is older than
+`max_age_days` (default 2) before `day`, or absent. A gap in history is honest; a
+duplicated stale row is not. Boundary-tested at 1, 2 and 3 days.
+
+### Unrelated data-quality finding
+
+While verifying null handling, the fundamentals in `stock_quotes` turned out to carry a
+single repeated value across a large share of every market:
+
+| market | most common `pe` | share | most common `roe` | share | rows with no `cmp` |
+|---|---|---|---|---|---|
+| india | 27.942288 | 35% | 9.0 | 54% | 1,117 (32%) |
+| us | 17.208014 | 53% | 5.179009 | 27% | 3,023 (32%) |
+| europe | 20.327778 | 45% | 10.48693 | 33% | 836 (46%) |
+| japan | 14.234 | 16% | 7.7846 | 18% | 21 |
+| korea | 10.6995 | 45% | 2.6002 | 10% | 9 |
+
+A distinct constant per market applied to 16–53% of rows is the signature of
+median-imputation, not observed data — and nothing in the schema distinguishes an imputed
+value from a real one. The Darvas/Buffett ROE-PE overlay and Piotroski consume these as
+if observed. **This predates the migration and is not caused by it**, but the history
+table will now record imputed values permanently and indistinguishably. Worth resolving
+before a long history accumulates — either stop imputing, or add a flag column.
 
 ### Regression guard
 
