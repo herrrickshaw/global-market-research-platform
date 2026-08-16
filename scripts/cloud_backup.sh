@@ -123,6 +123,19 @@ TREES=(
   "europe_scan|$HOME/market-pipeline/data/europe_scan"
   "backtest_results|$HOME/market-pipeline/data/backtest_results"
   "pattern_results|$HOME/market-pipeline/data/pattern_results"
+  # ── ADDED 2026-08-16 — the last sole-copy-local trees ─────────────────────
+  # Neither was in git NOR in any backup tree, so the laptop was the only copy.
+  #   reference/        532M of govt reports, books and papers — source material,
+  #                     not regenerable by any pipeline here.
+  #   correlation_scan/ 613M of correlation matrices. Technically reproducible,
+  #                     but [R4] takes minutes per market and the .csv.zst
+  #                     matrices are the expensive part — cheaper to store than
+  #                     to recompute after a loss.
+  # The per-market scan workbooks (us_full_scan/, japan_scan/ etc.) are left out
+  # deliberately: they are rebuilt from scratch every single run, so backing them
+  # up would add daily churn for something a re-run reproduces in minutes.
+  "reference|$HOME/reference"
+  "correlation_scan|$HOME/market-pipeline/code/python_files/correlation_scan"
   # 🔴 ADDED 2026-08-02 — THE OMISSION THAT MATTERED MOST. This tree is the deep
   # price panel every downstream thing reads: the regime backtest, zone rules,
   # warehouse_insights, ownership studies. It was the ONE dataset not backed up
