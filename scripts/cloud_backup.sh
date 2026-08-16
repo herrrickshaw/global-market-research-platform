@@ -136,6 +136,29 @@ TREES=(
   # up would add daily churn for something a re-run reproduces in minutes.
   "reference|$HOME/reference"
   "correlation_scan|$HOME/market-pipeline/code/python_files/correlation_scan"
+  # ── ADDED 2026-08-16 (second sweep) — remaining sole-copy data ────────────
+  #   .graphify/         knowledge graphs + their caches. The global map is 42
+  #                      repos / ~31,896 nodes; rebuilding means re-ingesting
+  #                      every repo, so this is expensive, not derived.
+  #   claude-provenance/ provenance records, SOP and summaries — documentation
+  #                      that exists nowhere else.
+  #   logs/              scraper operational logs; small and the only record of
+  #                      what those collectors actually did.
+  #
+  # 🔴 DELIBERATELY EXCLUDED, and not oversights:
+  #   ~/.claude/     2.1G of session transcripts. Backing these up would copy
+  #                  credentials pasted into sessions (an OpenAI key and Google
+  #                  refresh tokens are in there) to two more providers. Prune,
+  #                  do not replicate.
+  #   ~/Downloads/   holds client_secret_*.json OAuth credentials.
+  #   ~/Pictures/    personal, not tool data.
+  #   ~/.git/        already off-machine — origin global-market-research-platform.
+  #   .cache .venvs .npm .local node_modules bin .duckdb .ruvector .dropbox*
+  #                  derived or reinstallable; .duckdb/.ruvector are just
+  #                  downloadable extensions and models.
+  "graphify|$HOME/.graphify"
+  "claude_provenance|$HOME/claude-provenance"
+  "scraper_logs|$HOME/logs"
   # 🔴 ADDED 2026-08-02 — THE OMISSION THAT MATTERED MOST. This tree is the deep
   # price panel every downstream thing reads: the regime backtest, zone rules,
   # warehouse_insights, ownership studies. It was the ONE dataset not backed up
