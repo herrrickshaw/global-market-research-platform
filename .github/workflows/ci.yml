@@ -22,10 +22,17 @@
 
 name: CI
 
+# Push-only, deliberately. Check runs attach to the head commit, so a PR
+# displays these without a separate `pull_request:` trigger — adding one just
+# runs every job twice per commit (verified on PR #8: four check runs for two
+# jobs). The trade-offs of push-only: no run against the base+head merge
+# commit, so a semantic conflict with main surfaces after merge rather than
+# before, and PRs from forks get no CI since the push lands on the fork. Both
+# are fine while branches live in this repo; add `pull_request:` back if
+# outside contributors ever open PRs here.
 on:
   push:
     branches: ['**']
-  pull_request:
   workflow_dispatch:
 
 # A new push to the same branch makes the in-flight run obsolete.
