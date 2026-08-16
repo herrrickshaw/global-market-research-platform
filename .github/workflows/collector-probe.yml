@@ -1,0 +1,115 @@
+name: Collector Probe
+
+# Answers ONE question: can a GitHub runner actually reach the market-data
+# sources this platform depends on?
+#
+# WHY THIS EXISTS. market_movers.yml has run twice a weekday for months and
+# failed every time, in ~30s, at checkout — it pins a branch
+# (claude/event-driven-stock-news-msv0cq) that no longer exists, and calls two
+# scripts (scripts/market_movers_news.py, scripts/news_analysis.py) that are in
+# no branch's history. It never collected anything, so it proves nothing either
+# way about cloud collection. This does.
+#
+# It writes nothing, commits nothing and needs no secrets. It fetches, reports
+# what answered, and fails loudly if a source is unreachable — so a red run means
+# "the cloud path is blocked", not "the workflow is misconfigured".
+
+on:
+  workflow_dispatch:
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install
+        run: pip install --quiet yfinance requests pandas
+
+      - name: Probe the data sources
+        run: |
+          python3 - <<'PY'
+          import sys, datetime as dt, warnings
+          warnings.filterwarnings("ignore")
+          results, failed = [], []
+
+          # ── 1. yfinance, India (.NS) ─────────────────────────────────────────
+          # The daily brief's price reconcile and its validation gate both depend
+          # on this reaching Yahoo from wherever it runs.
+          try:
+              import yfinance as yf
+              h = yf.Ticker("RELIANCE.NS").history(period="5d")
+              if len(h):
+                  results.append(("yfinance IN", "ok",
+                                  f"RELIANCE.NS {h['Close'].iloc[-1]:.2f} @ {h.index[-1].date()}"))
+              else:
+                  failed.append(("yfinance IN", "empty response"))
+          except Exception as e:
+              failed.append(("yfinance IN", f"{type(e).__name__}: {e}"))
+
+          # ── 2. yfinance, US ──────────────────────────────────────────────────
+          try:
+              import yfinance as yf
+              h = yf.Ticker("AAPL").history(period="5d")
+              if len(h):
+                  results.append(("yfinance US", "ok",
+                                  f"AAPL {h['Close'].iloc[-1]:.2f} @ {h.index[-1].date()}"))
+              else:
+                  failed.append(("yfinance US", "empty response"))
+          except Exception as e:
+              failed.append(("yfinance US", f"{type(e).__name__}: {e}"))
+
+          # ── 3. NSE bhavcopy ──────────────────────────────────────────────────
+          # The India EOD source. NSE blocks some clouds outright, so this is the
+          # single most load-bearing check for a cloud migration. A browser UA is
+          # required — NSE 403s the default python-requests agent.
+          try:
+              import requests
+              d = dt.date.today()
+              for back in range(1, 6):           # walk back to the last trading day
+                  day = d - dt.timedelta(days=back)
+                  url = ("https://nsearchives.nseindia.com/content/cm/"
+                         f"BhavCopy_NSE_CM_0_0_0_{day:%Y%m%d}_F_0000.csv.zip")
+                  r = requests.get(url, timeout=30, headers={
+                      "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)",
+                      "Accept": "*/*", "Referer": "https://www.nseindia.com/"})
+                  if r.status_code == 200 and len(r.content) > 1000:
+                      results.append(("NSE bhavcopy", "ok",
+                                      f"{day} · {len(r.content)/1024:.0f} KB"))
+                      break
+              else:
+                  failed.append(("NSE bhavcopy", f"no trading day found in last 5 (last HTTP {r.status_code})"))
+          except Exception as e:
+              failed.append(("NSE bhavcopy", f"{type(e).__name__}: {e}"))
+
+          # ── 4. screener.in ───────────────────────────────────────────────────
+          # The independent witness in the send gate. If this is unreachable from
+          # a runner, the gate cannot validate and the brief cannot be trusted.
+          try:
+              import requests
+              r = requests.get("https://www.screener.in/company/RELIANCE/", timeout=30,
+                               headers={"User-Agent": "Mozilla/5.0 (research)"})
+              results.append(("screener.in", "ok" if r.status_code == 200 else "http %d" % r.status_code,
+                              f"HTTP {r.status_code}, {len(r.content)/1024:.0f} KB"))
+              if r.status_code != 200:
+                  failed.append(("screener.in", f"HTTP {r.status_code}"))
+          except Exception as e:
+              failed.append(("screener.in", f"{type(e).__name__}: {e}"))
+
+          print(f"\n{'SOURCE':<16}{'STATUS':<10}DETAIL")
+          for n, s, d_ in results:
+              print(f"{n:<16}{s:<10}{d_}")
+          for n, why in failed:
+              print(f"{n:<16}{'FAILED':<10}{why}")
+
+          print(f"\nreachable: {len(results)}  unreachable: {len(failed)}")
+          if failed:
+              print("\n🔴 At least one source is unreachable from a GitHub runner.")
+              print("   Cloud-only collection is NOT viable for those sources as-is.")
+              sys.exit(1)
+          print("\n✅ Every source answered. Cloud-only collection is viable for these.")
+          PY
