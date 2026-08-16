@@ -222,7 +222,12 @@ EXTRA_EXCLUDES=(--exclude "nse_xbrl/xml/**" --exclude "ohlc/**" --exclude "_back
     "$RCLONE" sync "$src" "$REMOTE/current/$name" \
       --backup-dir "$REMOTE/history/$TODAY/$name" \
       --exclude "*.tmp" --exclude "*.bak" --exclude "*.parquet.bak" \
-      --exclude "ohlcv.lmdb/**" --exclude ".DS_Store" \
+      --exclude "ohlcv.lmdb/**" \
+      `# gh-clones are re-clonable from their git remotes: 631M of .graphify's
+       # 663M and 18,073 of its 18,080 files. Storing them turns a 7-file,
+       # 34MB tree into an 18k-file upload that throttles on both providers
+       # for something 'git clone' reproduces.` \
+      --exclude "gh-clones/**" --exclude ".DS_Store" \
       "${EXTRA_EXCLUDES[@]}" \
       --transfers 4 --checkers 8 --dropbox-chunk-size 96M \
       --stats-one-line --stats 0 --log-level NOTICE \
