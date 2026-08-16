@@ -1,0 +1,98 @@
+# Python CI — the gate that was missing.
+#
+# The repo already had five workflows, but none of them ran a Python test:
+# jekyll-gh-pages (site deploy), market_movers (scheduled data job),
+# security-scan (weekly, and every step ends in `|| true` so it reports rather
+# than gates), repo-cleaner-ocaml (real build+test, but for the OCaml tool),
+# and spike-cloud-egress (a throwaway probe). pytest was declared in
+# requirements.txt and never invoked by CI.
+#
+# WHAT RUNS HERE
+#   lint  — ruff over the whole repo, bug-only rule set (see ruff.toml)
+#   test  — the two genuine pytest suites, 136 tests total
+#
+# WHAT DOES NOT RUN HERE, AND WHY
+#   market-pipeline/test_*.py are live API probes against DART, SEC EDGAR,
+#   J-Quants and Marketaux. They need network egress and API keys, and
+#   spike-cloud-egress.yml exists precisely because it is still unsettled
+#   whether datacenter IPs can reach some of these sources at all. Network
+#   flakiness in a merge gate trains people to ignore the gate.
+#   stock-screener/test_strategies_with_real_data.py is named test_* but is an
+#   analysis script — pytest collects zero tests from it.
+
+name: CI
+
+on:
+  push:
+    branches: ['**']
+  pull_request:
+  workflow_dispatch:
+
+# A new push to the same branch makes the in-flight run obsolete.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  lint:
+    name: ruff
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install ruff
+        run: pip install ruff==0.16.3
+
+      # `--config` is load-bearing, not decoration. Ruff picks config per-file
+      # from the nearest ancestor, and market-pipeline/code/python_files has its
+      # own pyproject.toml selecting E,F,I,W,UP,B,C4,SIM with ~306 known
+      # findings still queued for a deliberate sweep. Without the flag that
+      # subtree is linted under those rules and this job is red on day one for
+      # reasons that have nothing to do with the commit under test. The flag
+      # forces one uniform bug-gate; the nested config stays in force for that
+      # subtree's own `make lint`.
+      - name: Lint
+        run: ruff check . --config ruff.toml --output-format=github
+
+  test:
+    name: pytest
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      # Installed explicitly rather than from requirements.txt: that file is the
+      # union of every subsystem's needs (Cassandra, yfinance, R bridges, RL) and
+      # pulls far more than these two suites touch. bms/ needs only numpy at
+      # module scope; stock_evaluator needs numpy/pandas/scipy, plus psycopg2 and
+      # openpyxl for the Postgres- and Excel-ingest tests, which mock the network
+      # but still import the drivers.
+      - name: Install test dependencies
+        run: |
+          pip install --upgrade pip
+          pip install pytest numpy pandas scipy openpyxl psycopg2-binary
+
+      - name: Run BMS suite
+        run: python -m pytest tests/ -v
+
+      # `python -m pytest` (not bare `pytest`) is required: it puts the working
+      # directory on sys.path, which is how `import stock_evaluator` resolves
+      # without installing the package. Running this from the repo root fails
+      # with ModuleNotFoundError.
+      - name: Run portfolio-evaluator suite
+        working-directory: stock-portfolio-evaluator
+        run: python -m pytest tests/ -v

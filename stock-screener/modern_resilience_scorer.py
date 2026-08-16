@@ -141,6 +141,7 @@ class ModernResilienceScorer:
         """
         try:
             sector = self.info.get('sector', '')
+            industry = self.info.get('industry', '')
             revenue = self.info.get('totalRevenue', 0)
             gross_margin = self.info.get('grossMargins', 0)
             profit_margin = self.info.get('profitMargins', 0)

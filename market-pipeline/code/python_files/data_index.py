@@ -32,7 +32,7 @@ import json
 import sys
 import time
 from pathlib import Path
-from typing import Optional
+from typing import List, Optional
 
 import data_registry as R
 
