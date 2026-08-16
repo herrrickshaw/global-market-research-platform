@@ -151,8 +151,27 @@ print('graph: %d changed file(s) since last build' % r.get('new_total', 0))
 
   # 4. BACKUP — mirror to Dropbox (+ weekly pg dump), then the INDEPENDENT gate.
   echo "-- [4/4] backup --"
-  "$HOME/scripts/cloud_backup.sh" --with-pg && echo "  cloud_backup ok" \
-    || { echo "  ! cloud_backup reported failure"; FAILS=$((FAILS+1)); }
+  "$HOME/scripts/cloud_backup.sh" --with-pg && echo "  cloud_backup ok (dropbox)" \
+    || { echo "  ! cloud_backup reported failure (dropbox)"; FAILS=$((FAILS+1)); }
+
+  # SECOND PROVIDER. Until 2026-08-16 the file archive existed on Dropbox alone —
+  # gdrive held only the DART/EDINET sources and the nightly Postgres dumps, so a
+  # Dropbox-side account or sync problem would have taken every parquet with it.
+  # pg_cloud_backup.sh has verified dual-cloud dumps for months; this gives the
+  # FILES the same treatment.
+  #
+  # Sequential, not parallel, and that is deliberate: cloud_backup.sh takes a
+  # shared rclone account lock which now BLOCKS rather than racing (E-032), so a
+  # concurrent second invocation would simply wait 90 minutes and exit 75. Run
+  # after Dropbox, from the same local source — mirroring Dropbox->gdrive instead
+  # would download and re-upload 5.2 GiB for no benefit.
+  #
+  # Non-fatal on its own: losing the second copy is worth an alert, not a failed
+  # maintenance run, while the primary is still good.
+  CLOUD_REMOTE=googledrive:market-data-archive "$HOME/scripts/cloud_backup.sh" \
+    && echo "  cloud_backup ok (gdrive)" \
+    || { echo "  ! cloud_backup reported failure (gdrive) — primary dropbox copy unaffected"; \
+         FAILS=$((FAILS+1)); }
   if "$HOME/scripts/cloud_backup_verify.sh"; then
     echo "  verify gate PASS"
   else
