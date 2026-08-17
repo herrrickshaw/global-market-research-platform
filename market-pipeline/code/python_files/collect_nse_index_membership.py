@@ -121,6 +121,109 @@ def slug(name: str) -> str:
     return re.sub(r"[^a-z0-9]", "", name.lower())
 
 
+# ── niftyindices.com route: the one that reaches the factor indices ──────────
+#
+# 🔴 THE FILENAME CANNOT BE DERIVED, SO DO NOT TRY. nsearchives uses
+# `ind_nifty50list.csv` (lowercase, "list" suffix); niftyindices.com uses
+# `ind_Nifty50_Value20.csv` — CamelCase, underscores, no suffix — and the two do
+# not agree on where the underscore goes: ind_Nifty200_Momentum30.csv is a 404
+# while ind_Nifty50_Value20.csv is real. Guessing produced 100% failures across
+# every variant tried.
+#
+# 🔴 AND A 404 HERE ANSWERS 200. niftyindices.com serves its not-found page with
+# HTTP 200 and a text/html body, so `r.status_code == 200` is not evidence of a
+# file — the header must be checked. That is why the first sweep recorded 134
+# indices as "no constituent file" when some of them do publish one.
+#
+# So: read the link off each index page. One extra request per index, and it is
+# correct by construction rather than by pattern-matching luck.
+
+NIFTY_BASE = "https://www.niftyindices.com"
+CATEGORIES = ("broad-based-indices", "sectoral-indices", "strategy-indices",
+              "thematic-indices")
+
+
+def discover_index_pages(polite: float = 0.6) -> list[str]:
+    """Every /indices/equity/<category>/<slug> page linked from the site."""
+    seen: set[str] = set()
+    for src in (f"{NIFTY_BASE}/reports/daily-reports",
+                *(f"{NIFTY_BASE}/indices/equity/{c}" for c in CATEGORIES)):
+        try:
+            r = requests.get(src, headers=UA, timeout=45)
+            time.sleep(polite)
+        except Exception:                                          # noqa: BLE001
+            continue
+        if r.status_code != 200:
+            continue
+        seen |= {m for m in re.findall(r'/indices/equity/[A-Za-z-]+/[A-Za-z0-9\-]+', r.text)}
+    return sorted(seen)
+
+
+def constituent_url(page_path: str, polite: float = 0.5) -> str | None:
+    """Pull the IndexConstituent CSV link out of one index page."""
+    try:
+        r = requests.get(f"{NIFTY_BASE}{page_path}", headers=UA, timeout=45)
+    except Exception:                                              # noqa: BLE001
+        return None
+    finally:
+        time.sleep(polite)
+    if r.status_code != 200:
+        return None
+    m = re.search(r'https?://[^"\']*/IndexConstituent/[^"\']+\.csv', r.text, re.I)
+    return m.group(0) if m else None
+
+
+def fetch_csv(url: str, polite: float = 0.5) -> pd.DataFrame | None:
+    try:
+        r = requests.get(url, headers=UA, timeout=45)
+    except Exception:                                              # noqa: BLE001
+        return None
+    finally:
+        time.sleep(polite)
+    # Header check, NOT status check — see the note above.
+    if r.status_code != 200 or "Symbol" not in r.text[:400]:
+        return None
+    d = pd.read_csv(io.StringIO(r.text))
+    d.columns = [c.strip() for c in d.columns]
+    return d if "Symbol" in d.columns else None
+
+
+def collect_niftyindices() -> None:
+    """Walk every index page and store whatever constituent list it publishes."""
+    psql(DDL)
+    pages = discover_index_pages()
+    log(f"{len(pages)} index pages discovered across {len(CATEGORIES)} categories")
+    got = rows = 0
+    nolist: list[str] = []
+    for i, p in enumerate(pages, 1):
+        name = p.rsplit("/", 1)[-1]
+        url = constituent_url(p)
+        d = fetch_csv(url) if url else None
+        if d is None or d.empty:
+            nolist.append(name)
+            continue
+        # Index name from the CSV filename, which is NSE's own label for it.
+        idx = re.sub(r"^ind_|\.csv$", "", url.rsplit("/", 1)[-1])
+        vals = ",".join(
+            f"({q(idx)},{q(str(r.Symbol).strip().upper())},{q(getattr(r,'Company_Name',None))},"
+            f"{q(getattr(r,'Industry',None))},{q(getattr(r,'ISIN_Code',None))},"
+            f"{q(getattr(r,'Series',None))},now())"
+            for r in d.rename(columns=lambda c: c.replace(" ", "_")).itertuples())
+        psql(f"INSERT INTO {TABLE} (index_name,symbol,company,industry,isin,series,fetched_at) "
+             f"VALUES {vals} ON CONFLICT (index_name,symbol) DO UPDATE SET "
+             f"company=EXCLUDED.company, industry=EXCLUDED.industry, isin=EXCLUDED.isin, "
+             f"series=EXCLUDED.series, fetched_at=EXCLUDED.fetched_at")
+        got += 1
+        rows += len(d)
+        if i % 20 == 0:
+            log(f"  {i}/{len(pages)}  with-list={got} rows={rows} no-list={len(nolist)}")
+    log(f"niftyindices: {got} indices with constituents, {rows:,} memberships, "
+        f"{len(nolist)} without")
+    if nolist:
+        log(f"  no list published: {', '.join(nolist[:12])}"
+            + (f" … +{len(nolist)-12}" if len(nolist) > 12 else ""))
+
+
 def index_names(close_files: list[str]) -> list[str]:
     """Index universe from NSE's daily close-all files.
 
@@ -209,9 +312,14 @@ def main() -> int:
     p.add_argument("--from-close-file", nargs="*", default=[],
                    help="NSE ind_close_all_*.csv files; union is used")
     p.add_argument("--report", action="store_true")
+    p.add_argument("--niftyindices", action="store_true",
+                   help="walk niftyindices.com index pages — the only route that "
+                        "reaches the factor/strategy indices")
     a = p.parse_args()
     if a.report:
         report(); return 0
+    if a.niftyindices:
+        collect_niftyindices(); report(); return 0
     files = [f for pat in (a.from_close_file or
                            [os.path.expanduser("~/Downloads/ind_close_all_*.csv")])
              for f in glob.glob(pat)]
