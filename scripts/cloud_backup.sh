@@ -173,7 +173,24 @@ TREES=(
   # per-request throttling documented below simply does not apply. Year
   # partitioning is what makes that true — a daily run rewrites one ~8MB file per
   # market, not thousands of per-ticker files.
+  #
+  # 🔴 2026-08-17: ohlcv/ AND ohlcv_adj/ NO LONGER LIVE UNDER THIS PATH. They
+  # were migrated to the cloud store and untracked from the repo, so the local
+  # tree below is now ~124MB (audit, bhavcopy, cgd, energy, duckdb) rather than
+  # the 1.1GB described above. The remote gmd_warehouse/ohlcv is what
+  # market_paths.resolve() materialises from — a plain `sync` of this tree would
+  # therefore have DELETED the canonical panels to match a local directory that
+  # is empty by design. They are excluded from this tree (see EXTRA_EXCLUDES)
+  # and pushed from the cache by the two entries below, into the SAME remote
+  # paths, so the resolver keeps reading a current copy.
   "gmd_warehouse|$HOME/repos/global-market-data/warehouse"
+  # Rooted at the subdirectory so `$name` reproduces the remote layout exactly:
+  # these land in gmd_warehouse/ohlcv and gmd_warehouse/ohlcv_adj, which is
+  # where the resolver already looks. Anything writing panels (warehouse_update,
+  # price_adjuster) now writes the cache, so this is the leg that keeps the
+  # canonical copy fresh.
+  "gmd_warehouse/ohlcv|$HOME/.cache/market-warehouse/ohlcv"
+  "gmd_warehouse/ohlcv_adj|$HOME/.cache/market-warehouse/ohlcv_adj"
   # The tar.zst archives of many-small-file static subdirs (see below). Synced as
   # its own dataset so excluding the raw files does not lose the data.
   "backup_archives|$HOME/.backup-archives"
@@ -209,7 +226,17 @@ TREES=(
 # themselves in this sync — backing up a backup, and 45MB of pure duplication.
 # (It also must never live inside the panel dir; pyarrow would read a .bak back as
 # a second copy of that year. Kept outside, and excluded here.)
-EXTRA_EXCLUDES=(--exclude "nse_xbrl/xml/**" --exclude "ohlc/**" --exclude "_backup/**")
+#
+# 🔴 /ohlcv/** and /ohlcv_adj/** are LEADING-SLASH ANCHORED, which matters. They
+# exist to stop the gmd_warehouse tree from deleting the canonical panels off the
+# remote now that those subdirs are empty locally (2026-08-17 migration). Anchored,
+# they match only <tree-root>/ohlcv — so they hit the repo warehouse tree and NOT
+# the two cache-rooted entries that push the panels back in, whose own root IS
+# .../ohlcv. Unanchored, they would match at any depth and silently disable the
+# very upload that keeps the resolver's source current.
+# Verified before adding: no other synced tree has a top-level ohlcv/ directory.
+EXTRA_EXCLUDES=(--exclude "nse_xbrl/xml/**" --exclude "ohlc/**" --exclude "_backup/**"
+                --exclude "/ohlcv/**" --exclude "/ohlcv_adj/**")
 
 {
   echo "=== cloud backup $(date '+%Y-%m-%d %H:%M:%S %Z') -> $REMOTE ==="
