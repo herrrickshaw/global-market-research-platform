@@ -68,16 +68,23 @@ import pandas as pd
 # new collector: fetchers/providers/yahoo.py already returned sector+industry,
 # multi_source merged them and quote_updater wrote them — the data had simply
 # never been collected for India, because bulk_fetcher Phase 2 is documented as
-# "run occasionally, not daily". 987 of 1,459 tickers carry an industry (67.7%
-# of rows), giving 40 industries above MIN_IND across 770 names.
+# "run occasionally, not daily". 1,456 of 1,459 tickers now carry an industry
+# (99.8% of rows), giving 53 industries above MIN_IND across 1,261 names.
 #
-# Validation that it is the RIGHT industry and not merely a populated column:
-# Q1-Q5 at 6M came back +5.02% (t=2.47), reproducing the +5.3%/6M measured
-# before the source parquet was lost.
+# TWO INDEPENDENT VALIDATIONS, because a populated column proves nothing:
+#   1. Q1-Q5 at 6M = +5.06% (t=2.87), reproducing the +5.3%/6M measured before
+#      the source parquet was lost.
+#   2. Cross-checked against NSE's OFFICIAL sector list (the NIFTY Total Market
+#      constituent CSV on nsearchives, which carries an Industry column): on the
+#      449 overlapping names, 85.1% sit in their NSE sector's dominant yfinance
+#      sector — Financial Services 97%, Healthcare 97%, Realty and Construction
+#      100%. The two low cells are taxonomy differences rather than errors
+#      (NSE "Capital Goods" 67% and "Consumer Durables" 61% each span several
+#      yfinance sectors), so there is no systematic misclassification.
 #
-# 🔴 The remaining ~470 tickers are NOT known to lack an industry — they were
-# left unrecorded when Yahoo began rate-limiting, deliberately, so they are
-# retried rather than cached as absent. Re-run the collector to close them.
+# Coverage is what made the ranking well-behaved, not just bigger: at 67.7% the
+# 6M quintiles were non-monotonic (Q3 7.12% below Q4 8.23%). At 99.8% they run
+# clean 11.25 > 9.92 > 8.32 > 7.71 > 6.18.
 FUND = os.environ.get(
     "MARKET_FUND_IN",
     os.path.expanduser(
