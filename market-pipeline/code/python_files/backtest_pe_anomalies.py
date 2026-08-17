@@ -59,12 +59,25 @@ import pandas as pd
 # verified independently on RELIANCE FY2026 (43,851 ₹cr / 13.53e9 sh = EPS 32.40,
 # its real figure), plus TCS 135.70 and HDFCBANK 48.51.
 #
-# 🔴 INCOMPLETE: `industry` is null in the reconstruction. No local source has
-# per-ticker India industry — Cassandra has it for 189 of 3,484 names (5%),
-# public.stocks has zero industry values and no India overlap, and
-# indices.factsheet_sector is index-level weights. Since industry drives the
-# sector-relative comparison this screen exists to make, it needs a screener.in
-# re-collection before the output means anything.
+# `industry` was null in the E-004 reconstruction until 2026-08-17 (E-005), which
+# made section A a within-ONE-bucket ranking wearing the label of a
+# sector-relative one — it still printed quintile spreads, they just meant
+# something much weaker than the heading claimed.
+#
+# Backfilled by collect_india_industry.py from yfinance .info. The fix was not a
+# new collector: fetchers/providers/yahoo.py already returned sector+industry,
+# multi_source merged them and quote_updater wrote them — the data had simply
+# never been collected for India, because bulk_fetcher Phase 2 is documented as
+# "run occasionally, not daily". 987 of 1,459 tickers carry an industry (67.7%
+# of rows), giving 40 industries above MIN_IND across 770 names.
+#
+# Validation that it is the RIGHT industry and not merely a populated column:
+# Q1-Q5 at 6M came back +5.02% (t=2.47), reproducing the +5.3%/6M measured
+# before the source parquet was lost.
+#
+# 🔴 The remaining ~470 tickers are NOT known to lack an industry — they were
+# left unrecorded when Yahoo began rate-limiting, deliberately, so they are
+# retried rather than cached as absent. Re-run the collector to close them.
 FUND = os.environ.get(
     "MARKET_FUND_IN",
     os.path.expanduser(
