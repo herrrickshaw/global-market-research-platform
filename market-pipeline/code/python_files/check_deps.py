@@ -43,6 +43,7 @@ import argparse
 import ast
 import importlib.util
 import json
+import os
 import sys
 from pathlib import Path
 
@@ -264,7 +265,37 @@ def main() -> int:
         print(f"    {step:28s} needs: {', '.join(mods)}")
     if opt_missing:
         print(f"\n  (optional, guarded, fine to ignore: {', '.join(opt_missing)})")
-    print(f"\n  fix:  {r['python']} -m pip install {' '.join(req_missing)}")
+    # 🔴 NEVER SUGGEST `pip install` FOR A LOCAL MODULE. On 2026-08-18 this block
+    # printed "pip install market_paths" when ~/scripts was simply off sys.path.
+    # market_paths and warehouse_paths are OUR files; both names were checked and
+    # are UNCLAIMED on PyPI (HTTP 404). Following that advice would therefore
+    # install whatever a stranger later registers under the name, into a venv
+    # holding the credential store, Cassandra and Postgres — textbook dependency
+    # confusion, printed by our own tooling in an alert the operator is being
+    # urged to act on quickly.
+    #
+    # So split the advice: local modules get a PYTHONPATH/.pth fix, and only
+    # genuine third-party packages get a pip line.
+    local_dirs = [os.path.expanduser(p) for p in
+                  ("~/scripts", "~/backend", os.path.dirname(os.path.abspath(__file__)))]
+    local, third_party = [], []
+    for m in req_missing:
+        hit = next((d for d in local_dirs
+                    if os.path.exists(os.path.join(d, f"{m}.py"))), None)
+        (local if hit else third_party).append((m, hit))
+
+    if local:
+        print("\n  fix (LOCAL modules — do NOT pip install these, the names are")
+        print("  unclaimed on PyPI and installing would fetch a stranger's code):")
+        for m, d in local:
+            print(f"    {m}: exists at {d}/{m}.py but is not importable.")
+        sp = os.path.join(os.path.dirname(os.path.dirname(r['python'])),
+                          "lib", "python3.11", "site-packages")
+        for d in sorted({d for _m, d in local}):
+            print(f"    echo '{d}' >> {sp}/market_scripts.pth")
+    if third_party:
+        print(f"\n  fix:  {r['python']} -m pip install "
+              f"{' '.join(m for m, _ in third_party)}")
     print(f"{bar}\n")
     return 1
 
