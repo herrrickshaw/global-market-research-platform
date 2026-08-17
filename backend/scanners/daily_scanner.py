@@ -356,6 +356,66 @@ def scan_darvas(df: pd.DataFrame, lazy_load: bool = False) -> list[dict]:
 
 # ── Piotroski (simplified) ────────────────────────────────────────────────────
 
+def _winsor(s: pd.Series, lo: float = 0.01, hi: float = 0.99) -> pd.Series:
+    """Clip to the 1st/99th percentile before any z-score.
+
+    Without this a single ratio blow-up dominates the whole factor: a stock on a
+    P/B of 0.02 produces a B/P of 50 against a universe median near 0.3, and the
+    resulting z-score buries every other name at the bottom of the distribution.
+    Winsorising is the standard fix in factor construction and is why index
+    providers quote *normalised* scores rather than raw ratios.
+    """
+    v = s.dropna()
+    if len(v) < 20:
+        return s
+    return s.clip(v.quantile(lo), v.quantile(hi))
+
+
+def _z_within(value: pd.Series, group: pd.Series, min_n: int = 8) -> pd.Series:
+    """Z-score within industry, falling back to the whole universe.
+
+    🔴 WITHIN-INDUSTRY IS THE POINT, NOT A REFINEMENT. A bank's P/B and a
+    software firm's P/B are not comparable numbers, so a universe-wide value
+    z-score mostly ranks industries against each other and only incidentally
+    ranks companies. The platform already measured this: sector-relative
+    cheapness corrects at +5.06%/6M (t=2.87) while the raw cross-section is far
+    weaker. min_n mirrors the screen's own MIN_IND — an industry too small to
+    have a distribution gets scored against the universe instead of against
+    three peers, which would otherwise manufacture extreme z-scores from noise.
+    """
+    v = _winsor(value)
+    out = pd.Series(np.nan, index=v.index, dtype=float)
+    g = group.fillna("")
+    big = g.map(g.value_counts()) >= min_n
+    for key, idx in v.groupby(g).groups.items():
+        idx = pd.Index(idx)
+        sub = v.loc[idx]
+        if not key or not big.loc[idx].iloc[0] or sub.notna().sum() < min_n:
+            continue
+        sd = sub.std(ddof=0)
+        out.loc[idx] = (sub - sub.mean()) / sd if sd and sd > 0 else 0.0
+    # universe fallback for everything not scored within its industry
+    miss = out.isna() & v.notna()
+    if miss.any():
+        sd = v.std(ddof=0)
+        out.loc[miss] = ((v - v.mean()) / sd).loc[miss] if sd and sd > 0 else 0.0
+    return out
+
+
+def _mean_z(parts: list[pd.Series], min_parts: int = 2) -> tuple[pd.Series, pd.Series]:
+    """Average the available z-scores; return (score, n_components).
+
+    Averaging over what EXISTS rather than filling gaps with zero is deliberate:
+    a zero fill is a claim that the missing metric was exactly average, which is
+    the same fiction as median imputation and is what E-028 punished. Rows below
+    min_parts are left NaN — unranked, not mid-ranked.
+    """
+    stack = pd.concat(parts, axis=1)
+    n = stack.notna().sum(axis=1)
+    score = stack.mean(axis=1, skipna=True)
+    return score.where(n >= min_parts), n
+
+
 def scan_piotroski(df: pd.DataFrame) -> list[dict]:
     if df.empty:
         return []
@@ -372,6 +432,7 @@ def scan_piotroski(df: pd.DataFrame) -> list[dict]:
     roe    = _col(d, 'roe')
     opm    = _col(d, 'opm')
     pb     = _col(d, 'pb')
+    pe     = _col(d, 'pe')          # for the composite value score, below
     de     = _col(d, 'debt_to_equity')
     cr     = _col(d, 'current_ratio')
     rg     = _col(d, 'revenue_growth')
@@ -443,10 +504,135 @@ def scan_piotroski(df: pd.DataFrame) -> list[dict]:
         v_fx5.astype(int) + v_fx6.astype(int) + v_fx7.astype(int)
     ).clip(lower=1)
 
-    buy_thresh   = (max_score * 0.65).apply(math.ceil)
-    watch_thresh = (max_score * 0.40).apply(math.ceil)
-    signal = np.where(score >= buy_thresh, 'BUY',
-             np.where(score >= watch_thresh, 'WATCH', 'AVOID'))
+    # ── Composite RANKING, replacing the pass/fail cut ────────────────────────
+    #
+    # 🔴 WHY THE OLD THRESHOLDS HAD TO GO. Scored 2026-08-17 against NSE's own
+    # NIFTY200 Quality 30, the pass/fail version flagged 85.5% of the India
+    # universe and 196 of the 200 Nifty 200 names. It matched 30 of 30 index
+    # members — but chance alone predicts 29.4 of 30 when you admit almost
+    # everything, so p=0.52: a null result wearing a perfect score. A filter that
+    # admits 85% of its universe transmits almost no information.
+    #
+    # Piotroski (2000) was never meant to be used this way. The F-score is a
+    # 9-point RANKING applied WITHIN a value universe to sort it, not a standalone
+    # universal pass/fail. Asness/Frazzini/Pedersen (Quality Minus Junk) and
+    # Bender et al. (MSCI, "Foundations of Factor Investing") likewise build
+    # continuous scores and take the top slice. So does NSE: its factor indices
+    # rank on a normalised score and cut at 30 or 50 names.
+    #
+    # 🔴 PROVENANCE GATES THE RANKING, and here it matters far more than it did
+    # for a filter. India measured 2026-08-17: 39.8% median_imputed, 38.8%
+    # derived_roe_only, only 21.3% derived_price_join. A median-imputed pe IS the
+    # market median, so ranking on it does not merely add noise — it plants ~40%
+    # of the universe at dead centre and pushes genuinely measured names out to
+    # the tails, inverting the very ordering the rank exists to produce. Gated
+    # exactly as scan_darvas gates (E-028).
+    _src_p = _strs(d, 'fundamentals_source')
+    _src_p = pd.Series(_src_p, index=d.index) if _src_p else pd.Series('', index=d.index)
+    pe_ok = ~_src_p.isin(('median_imputed', 'derived_roe_only'))   # pe/pb untouched on both
+    fu_ok = _src_p.ne('median_imputed')                            # roe real on derived_roe_only
+    ind_g = pd.Series(industries, index=d.index)
+
+    # VALUE — earnings yield + book yield, the E/P and B/P of NSE's Value 50
+    # (its third leg, S/P, needs a sales figure this frame does not carry; the
+    # score averages over what exists rather than inventing it).
+    #
+    # 1/pe is used unguarded ON PURPOSE: a loss-maker's negative P/E inverts to a
+    # negative earnings yield and therefore sorts BELOW every profitable name,
+    # which is the correct ordering. Special-casing it to NaN would quietly
+    # exclude loss-makers from the value screen instead of ranking them last.
+    # 🔴 AN IMPLAUSIBLE RATIO IS A BROKEN NUMBER, NOT A CHEAP STOCK, and a rank
+    # is far more exposed to that than a filter was. Measured for India
+    # 2026-08-17: P/B is well-behaved in the bulk (median 2.93, RELIANCE 3.13,
+    # HDFCBANK 1.99, TCS 10.09) but 12 of the 508 value-eligible names carry
+    # P/B < 0.10, bottoming at 0.002 — a claim that the market prices the company
+    # at a fifth of a percent of its book value. Those 12 took the entire top of
+    # the first value ranking built here.
+    #
+    # Winsorising did NOT save it: the bad tail is ~2.4% of the sample while the
+    # clip is at the 1st percentile, so the junk survived and then set the scale.
+    # Percentile clipping defends against a heavy tail, not against wrong data.
+    #
+    # So bound on plausibility and treat anything outside as UNMEASURED rather
+    # than clipping it to the edge — clipping would keep a fabricated value at
+    # the extreme of the ranking, which is the opposite of what is wanted. The
+    # bounds are deliberately loose: a genuine deep-value name at 0.3x book still
+    # scores, and only physically implausible values drop out.
+    # 🔴 AND A SECOND, WORSE ONE: CORRUPT EPS, WHICH A VALUE RANK ACTIVELY SEEKS
+    # OUT. pe itself is computed correctly (verified: pe == cmp/eps exactly for
+    # every name checked), but `eps` is wrong for a subset — measured 2026-08-17,
+    # DOMS carries eps=2377.87 on a price of 2215.9, ARKADE eps=242.90 on 133.3.
+    # An EPS above the share price means earnings were never divided by the share
+    # count. RELIANCE (32.40 -> pe 40.4) and TCS (135.70 -> pe 17.4) are correct,
+    # so this is a subset defect, not a units problem across the board.
+    #
+    # This is worse than a merely noisy field because the error is DIRECTIONAL: a
+    # too-large EPS produces a too-small P/E, which a cheapness rank reads as
+    # maximally attractive. The screen would surface broken records first, every
+    # time, and they would look like its best ideas. 37 of the 457 priced names
+    # sit under P/E 5 and 21 under P/E 2.
+    #
+    # A floor of 3 is a data-integrity guard, not a view on valuation, and it has
+    # a real cost: a genuine sub-3 P/E would be discarded with the corrupt ones.
+    # That trade is worth taking while the source defect is open (E-038) —
+    # discarding a rare true positive is recoverable, publishing corrupted data
+    # as a top pick is not.
+    pb_ok = pb.between(0.10, 100)
+    pe_ok_val = pe.between(3.0, 1000)
+    ep = (1.0 / pe.where(pe_ok_val)).where(pe_ok)
+    bp = (1.0 / pb.where(pb_ok)).where(pe_ok)
+    # min_parts=2 — BOTH legs required. With min_parts=1 a name whose P/B was
+    # rejected as implausible still scored on E/P alone and could reach BUY while
+    # DISPLAYING the broken P/B, which is how a 0.03 survived the bound above.
+    # "Composite value" has to mean both ratios actually measured, or the column
+    # name is a promise the data does not keep.
+    value_z, value_n = _mean_z([_z_within(ep, ind_g), _z_within(bp, ind_g)], min_parts=2)
+
+    # QUALITY — profitability, safety, growth: the QMJ triple, and close to
+    # NSE Quality 30's ROE / debt-equity / earnings-variability. True 5-year EPS
+    # VARIABILITY needs a history this snapshot does not hold, so revenue growth
+    # stands in for the growth leg and the gap is stated rather than papered over.
+    quality_z, quality_n = _mean_z([
+        _z_within(roe.where(fu_ok), ind_g),          # profitability
+        _z_within(opm.where(fu_ok), ind_g),          # profitability
+        _z_within(-de.where(fu_ok), ind_g),          # safety (less debt is better)
+        _z_within(cr.where(fu_ok), ind_g),           # safety
+        _z_within(rg.where(fu_ok), ind_g),           # growth (proxy)
+    ], min_parts=2)
+
+    # Percentile ranks, 0-100. pct=True keeps them comparable across markets of
+    # different sizes; unranked rows stay NaN and are reported as such.
+    value_rank   = (value_z.rank(pct=True) * 100).round(1)
+    quality_rank = (quality_z.rank(pct=True) * 100).round(1)
+    combined_z, combined_n = _mean_z([value_z, quality_z], min_parts=1)
+    combined_rank = (combined_z.rank(pct=True) * 100).round(1)
+
+    # 🔴 THE TWO SCORES COVER DIFFERENT POPULATIONS, so averaging them without
+    # saying so would quietly change what the number means row by row. Measured
+    # for India 2026-08-17: pe/pb survive the provenance gate for 508 names
+    # (21.5%) but roe/opm/de/cr/growth for 1,426 (60.2%). Averaging "whatever
+    # exists" lets a quality-only name compete against a value+quality name as
+    # though the two were the same measurement. rank_basis makes that visible
+    # instead of leaving it implicit in a single column.
+    has_v, has_q = value_z.notna(), quality_z.notna()
+    rank_basis = np.where(has_v & has_q, 'value+quality',
+                 np.where(has_q, 'quality_only',
+                 np.where(has_v, 'value_only', 'none')))
+
+    # Signal derives from the RANK now, not from a share of criteria met — and
+    # BUY additionally REQUIRES BOTH LEGS. That is Piotroski (2000) read
+    # properly: the F-score sorts on quality WITHIN a value universe, so "cheap
+    # and financially sound, both actually measured" is the only claim the design
+    # supports. A name cheap on an unmeasured book value, or sound on an
+    # unmeasured price, has not met that bar and can rise no higher than WATCH.
+    #
+    # Rows too thin to rank are UNRANKED, not AVOID: an honest third state that
+    # keeps them out of the buy list without asserting they were examined and
+    # found wanting.
+    both = has_v & has_q
+    signal = np.where(combined_rank.isna(), 'UNRANKED',
+             np.where(both & (combined_rank >= 90), 'BUY',
+             np.where(combined_rank >= 67, 'WATCH', 'AVOID')))
 
     n_avail = (v_f1.astype(int) + v_f5.astype(int) + v_f8.astype(int) + v_f9.astype(int) +
                v_fx1.astype(int) + v_fx2.astype(int) + v_fx3.astype(int) + v_fx4.astype(int) +
@@ -482,6 +668,7 @@ def scan_piotroski(df: pd.DataFrame) -> list[dict]:
             'current_ratio':  _r(cr.iat[i]),
             'revenue_growth': _r(rg.iat[i]),
             'pb':             _r(pb.iat[i]),
+            'pe':             _r(pe.iat[i]),
             'market_cap':     _r(mcap.iat[i]),
             'volume':         int(vi) if vi is not None and not (isinstance(vi, float) and math.isnan(vi)) else None,
             'beta':           _r(beta.iat[i]),
@@ -498,6 +685,23 @@ def scan_piotroski(df: pd.DataFrame) -> list[dict]:
             'score':          int(score.iat[i]),
             'max_score':      int(max_score.iat[i]),
             'signal':         str(signal[i]),
+            # Composite ranks (0-100 percentile of within-industry z-scores).
+            # `score`/`max_score` above are KEPT so the old view stays available
+            # and the two can be compared during the cut-over — but `signal` is
+            # now derived from combined_rank, not from a share of criteria met.
+            'value_rank':     _r(value_rank.iat[i]),
+            'quality_rank':   _r(quality_rank.iat[i]),
+            'combined_rank':  _r(combined_rank.iat[i]),
+            'value_z':        _r(value_z.iat[i]),
+            'quality_z':      _r(quality_z.iat[i]),
+            # How many components each score actually averaged. A rank built on
+            # two metrics is not the same claim as one built on five, and hiding
+            # that behind a single number is how thin data starts looking solid.
+            'value_n':        int(value_n.iat[i]),
+            'quality_n':      int(quality_n.iat[i]),
+            # Which legs the rank actually rests on. A BUY always reads
+            # 'value+quality'; anything else is explicitly a partial view.
+            'rank_basis':     str(rank_basis[i]),
             'completeness':   int(completeness.iat[i]),
             'criteria': {
                 'F1_roe_positive':   _b(c_f1.iat[i]),
