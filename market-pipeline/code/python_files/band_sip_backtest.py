@@ -38,6 +38,7 @@ from __future__ import annotations
 import argparse
 import glob
 import os
+import subprocess
 import sys
 
 import numpy as np
@@ -52,14 +53,31 @@ EDGES = [0, 50, 250, 500, 1000, np.inf]
 LABELS = ["Rs 0-50", "Rs 50-250", "Rs 250-500", "Rs 500-1000", "Rs 1000+"]
 
 
-def load(path: str) -> pd.DataFrame:
+def load(path: str, with_volume: bool = False) -> pd.DataFrame:
+    """Month-end observation per symbol, plus that month's median traded value.
+
+    🔴 MEDIAN, NOT MEAN, AND VALUE, NOT SHARES. A single block deal lifts a mean
+    turnover far above what the stock trades on a normal day, which is exactly
+    the illusion of liquidity a small-cap filter has to survive; the median is
+    what an investor meets on an ordinary morning. And rupees rather than share
+    count, because 100k shares of a Rs 10 stock is Rs 1m while the same of a
+    Rs 1,000 stock is Rs 100m — filtering on share count would systematically
+    admit the cheapest, thinnest names, which is the opposite of the intent.
+    """
+    cols = ["Date", "Symbol", "Close"] + (["Volume"] if with_volume else [])
     fs = sorted(glob.glob(f"{path}/*.parquet"))
-    d = pd.concat((pd.read_parquet(f, columns=["Date", "Symbol", "Close"]) for f in fs),
-                  ignore_index=True)
+    d = pd.concat((pd.read_parquet(f, columns=cols) for f in fs), ignore_index=True)
     d["Date"] = pd.to_datetime(d["Date"])
     d["Symbol"] = d["Symbol"].astype(str).str.upper()
     d["ym"] = d["Date"].values.astype("datetime64[M]")
-    return d.sort_values("Date").groupby(["Symbol", "ym"], as_index=False).last()
+    d = d.sort_values("Date")
+    last = d.groupby(["Symbol", "ym"], as_index=False).last()
+    if with_volume:
+        d["turnover"] = d["Close"] * d["Volume"].fillna(0)
+        med = (d.groupby(["Symbol", "ym"], as_index=False)["turnover"].median()
+                 .rename(columns={"turnover": "turnover_med"}))
+        last = last.merge(med, on=["Symbol", "ym"], how="left")
+    return last
 
 
 def xirr(years: np.ndarray, amt: np.ndarray, lo=-0.999, hi=10.0) -> float:
@@ -131,9 +149,16 @@ def main() -> int:
     p.add_argument("--monthly", type=float, default=5000)
     p.add_argument("--start", default="2016-01")
     p.add_argument("--horizon", type=int, default=12)
+    p.add_argument("--min-turnover", type=float, default=1_000_000,
+                   help="minimum MEDIAN daily traded value in rupees for a name to be "
+                        "bought that month (default Rs 10 lakh/day). 0 disables. A "
+                        "Rs 5,000 monthly instalment split across a band is tiny per "
+                        "name, so this is not about market impact — it is about "
+                        "whether the stock trades at all on an ordinary day.")
     a = p.parse_args()
 
-    raw = load(RAW).rename(columns={"Close": "raw"})[["Symbol", "ym", "raw"]]
+    raw = load(RAW, with_volume=True).rename(columns={"Close": "raw"})[
+        ["Symbol", "ym", "raw", "turnover_med"]]
     adj = load(ADJ).rename(columns={"Close": "adj"})[["Symbol", "ym", "adj"]]
     m = raw.merge(adj, on=["Symbol", "ym"]).query("raw >= 1 and adj > 0")
     m = m[m.ym >= pd.Timestamp(a.start)]
@@ -141,6 +166,23 @@ def main() -> int:
 
     print(f"# SIP into a price band — Rs {a.monthly:,.0f}/month, "
           f"{m.ym.min():%Y-%m} to {m.ym.max():%Y-%m}\n")
+
+    # 🔴 THE FILTER APPLIES AT PURCHASE TIME ONLY, using that month's own traded
+    # value. Screening on turnover measured later — or over the whole sample —
+    # would be lookahead: it silently drops the names that went on to become
+    # untradeable, which is precisely the risk the filter exists to price.
+    if a.min_turnover > 0:
+        before = len(m)
+        by_band_before = m.groupby("band", observed=True).size()
+        m = m[m.turnover_med.fillna(0) >= a.min_turnover]
+        by_band_after = m.groupby("band", observed=True).size()
+        print(f"## Liquidity filter: median daily turnover >= Rs {a.min_turnover:,.0f}\n")
+        print(f"{'band':<14}{'before':>10}{'after':>10}{'kept %':>9}")
+        for b in LABELS:
+            bb = int(by_band_before.get(b, 0)); aa = int(by_band_after.get(b, 0))
+            if bb:
+                print(f"{b:<14}{bb:>10,}{aa:>10,}{aa/bb*100:>9.1f}")
+        print(f"{'TOTAL':<14}{before:>10,}{len(m):>10,}{len(m)/before*100:>9.1f}\n")
     print("## 1. SIP outcome by band — both survivorship bounds\n")
     print(f"{'band':<14}{'names/mo':>9}{'XIRR opt':>10}{'XIRR real':>11}"
           f"{'mult opt':>10}{'mult real':>10}{'delist drag':>13}")
@@ -199,13 +241,60 @@ def main() -> int:
     print(f"{'band':<14}{'XIRR real':>11}{'IQR':>8}{'ratio':>9}")
     for b, xr, iq, ratio in scored:
         print(f"{b:<14}{xr:>11.2f}{iq:>8.1f}{ratio:>9.3f}")
-    best = scored[0]
-    print(f"\n🔴 {best[0]} carries the best return-per-dispersion ({best[3]:.3f}).")
-    print("   It gives up return against the cheapest band but sheds far more risk:")
-    print("   a much narrower middle-half of outcomes and roughly half the delisting")
-    print("   drag. That is what 'monetisable with predictability' looks like — the")
-    print("   cheap band's higher headline XIRR is bought with a 31.9% chance the")
-    print("   holding simply ceases to exist.")
+    best, worst = scored[0], scored[-1]
+    gone_pct = {b: (1 - j[j.band == b].adj_f.notna().mean()) * 100 for b in LABELS
+                if len(j[j.band == b])}
+    print(f"\n🔴 {best[0]} carries the best return-per-dispersion ({best[3]:.3f}), "
+          f"{worst[0]} the worst ({worst[3]:.3f}).")
+    print(f"   {best[0]}: {gone_pct.get(best[0], float('nan')):.1f}% of holdings vanish "
+          f"within {a.horizon}M, against {gone_pct.get(worst[0], float('nan')):.1f}% "
+          f"for {worst[0]}.")
+    if a.min_turnover > 0:
+        print(f"\n   Filtered at Rs {a.min_turnover:,.0f}/day median turnover. Compare")
+        print("   against --min-turnover 0: a band whose ranking collapses once its")
+        print("   names must actually trade was never harvesting a return, it was")
+        print("   harvesting the absence of a price.")
+
+    # ── lot size / segment: what could NOT be verified ───────────────────────
+    #
+    # 🔴 LOT SIZE IS 1 ON THE MAIN BOARD, BUT THAT IS NOT THE WHOLE UNIVERSE.
+    # NSE cash equity trades in single shares — of 2,775 EQ symbols in the
+    # bhavcopy only ONE ever carried NewBrdLotQty > 1 — so whole-share rounding
+    # (fund_implementability.py) is the binding constraint there, not lots.
+    #
+    # The SME segment is different: NSE Emerge and BSE SME trade in LOTS, often
+    # Rs 1 lakh or more per lot, which makes a Rs 5,000 monthly instalment
+    # impossible regardless of price. And this panel cannot tell us which names
+    # those are: it holds 6,703 symbols against the bhavcopy's 2,775 EQ names, so
+    # the series of the remainder is simply unknown from data on hand.
+    #
+    # That gap is not evenly spread, and it falls exactly where it hurts: only
+    # ~32% of Rs 0-50 names could be confirmed as main-board EQ, against ~41%
+    # of the panel overall. So the cheap band's result rests disproportionately
+    # on names that may be SME-listed, BSE-only, or since suspended — i.e. on
+    # names a retail SIP might not be able to buy in the first place.
+    try:
+        eq = set(subprocess.run(
+            ["psql", "-d", "market_data", "-tAq", "-c",
+             'select distinct "TckrSymb" from bhavcopy.nse_raw'],
+            capture_output=True, text=True, timeout=120).stdout.split())
+        if eq:
+            print("\n## 4. Segment verification — can these even be bought in "
+                  "single shares?\n")
+            print(f"{'band':<14}{'symbols':>9}{'confirmed EQ':>14}{'unverified':>12}")
+            for b in LABELS:
+                syms = set(m[m.band == b].Symbol.unique())
+                if not syms:
+                    continue
+                ok = len(syms & eq)
+                print(f"{b:<14}{len(syms):>9,}{ok:>14,}{len(syms)-ok:>12,}")
+            print("\n   'Unverified' is NOT 'bad' — most are BSE-only listings that")
+            print("   trade in single shares too. But SME lots (Rs 1 lakh+) live in")
+            print("   this group, and a Rs 5,000 instalment cannot buy one. The cheap")
+            print("   band carries the largest unverified share, so its result is the")
+            print("   least safe to act on.")
+    except Exception as exc:                                       # noqa: BLE001
+        print(f"\n   (segment check skipped: {type(exc).__name__})")
     return 0
 
 
