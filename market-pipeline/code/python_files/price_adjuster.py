@@ -50,10 +50,20 @@ try:
 except Exception:
     CA = Path("cache_seed/exchange_extras/corp_actions_history.parquet")
 
-WH = Path("/Users/umashankar/repos/global-market-data/warehouse")
-SRC = WH / "ohlcv" / "IN"
-DST = WH / "ohlcv_adj" / "IN"
-FACTORS_PQ = WH / "adjustment_factors.parquet"
+# 🔴 RESOLVED, NOT HARDCODED — see the same note in warehouse_update.py. These
+# were absolute repo paths until 2026-08-17; the 2026-08-14 migration moved the
+# warehouse to the cloud store and this file was one of the two consumers left
+# pointing at the old location. It failed with a bare FileNotFoundError on the
+# SRC read, three steps after the factor table had already been written — so the
+# run looked half-successful and the adjusted panel silently stayed at its
+# previous build.
+sys.path.insert(0, str(Path.home() / "scripts"))
+from market_paths import resolve as _resolve  # noqa: E402
+
+SRC = _resolve("ohlcv_in")
+DST = _resolve("ohlcv_adj_in")
+# The factor table sits at the warehouse root, one level above ohlcv/IN.
+FACTORS_PQ = SRC.parent.parent / "adjustment_factors.parquet"
 
 SPLIT_RE = re.compile(
     r"From\s+R[se]\.?\s*([\d.]+)/?-?\s*(?:Per Share)?\s*To\s+R[se]\.?\s*([\d.]+)", re.I)

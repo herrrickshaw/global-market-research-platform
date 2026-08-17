@@ -58,7 +58,22 @@ HERE = Path(__file__).resolve().parent
 # instead of a 68-184MB monolith, so each push uploads one small LFS object
 # rather than re-uploading append-only history in full. Measured before the
 # change: partitioning costs +7% on disk and cuts daily LFS growth ~10x.
-WAREHOUSE = Path("/Users/umashankar/repos/global-market-data/warehouse/ohlcv")
+# 🔴 RESOLVED, NOT HARDCODED — this line was an absolute path until 2026-08-17.
+# The repo-local warehouse was migrated to the cloud store on 2026-08-14
+# (~/scripts/market_paths.py). This file and price_adjuster.py were the two
+# consumers missed in that sweep, so steps [7] and [7b] failed three days later
+# against a directory that no longer existed. resolve() materialises from
+# Dropbox when the local copy is cold, and raises with the exact fixing command
+# instead of returning an empty directory — an empty glob is precisely how this
+# presented ("no warehouse partitions at ..."), and it said nothing about why.
+#
+# Deliberately NO fallback to the old repo path. A fallback would silently pick
+# up whatever stale copy happened to be lying there and let the panels diverge
+# from the canonical store, which is a far worse failure than stopping.
+sys.path.insert(0, str(Path.home() / "scripts"))
+from market_paths import resolve as _resolve  # noqa: E402
+
+WAREHOUSE = _resolve("ohlcv")
 PANELS = {
     "IN": WAREHOUSE / "IN",
     "US": WAREHOUSE / "US",
