@@ -9,6 +9,7 @@ from __future__ import annotations
 import sys, glob, time, warnings
 from pathlib import Path
 import pandas as pd, numpy as np, yfinance as yf
+import warehouse_paths as _wh
 warnings.filterwarnings("ignore")
 
 # anti-throttle: impersonate a real Chrome via curl_cffi so Yahoo doesn't rate-limit us.
@@ -22,7 +23,7 @@ except Exception:
 def ticker(tk):
     return yf.Ticker(tk, session=SESS) if SESS is not None else yf.Ticker(tk)
 
-WH = "/Users/umashankar/repos/global-market-data/warehouse/ohlcv/JP"
+WH = str(_wh.market("JP"))
 OUT = Path("/Users/umashankar/repos/global-stock-screener/cache_seed/fundamentals_history/JP_yf_breadth.parquet")
 LIMIT = int(sys.argv[1]) if len(sys.argv) > 1 else 3200
 

@@ -21,10 +21,11 @@ from __future__ import annotations
 import glob, datetime
 from pathlib import Path
 import numpy as np, pandas as pd
+import warehouse_paths as _wh
 
 HERE = Path(__file__).resolve().parent
 REP = HERE / "reports"
-WH = "/Users/umashankar/repos/global-market-data/warehouse/ohlcv"
+WH = str(_wh.ohlcv())
 NORM = {"india": "IN", "us": "US", "korea": "KR", "japan": "JP", "europe": "EU", "china": "CN"}
 TODAY = datetime.date.today().isoformat()
 TOPN = 12

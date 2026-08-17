@@ -17,11 +17,12 @@ import glob
 from pathlib import Path
 import numpy as np, pandas as pd
 from obs import get_logger
+import warehouse_paths as _wh
 
 HERE = Path(__file__).resolve().parent
 LOG = get_logger("build_all_ratios")
 FH = "/Users/umashankar/repos/global-stock-screener/cache_seed/fundamentals_history"
-WH = "/Users/umashankar/repos/global-market-data/warehouse/ohlcv"
+WH = str(_wh.ohlcv())
 # market: (fundamentals file, warehouse dir, local currency)
 MK = {"IN": ("IN", "IN", "INR"), "US": ("US", "US", "USD"), "KR": ("KR_deep", "KR", "KRW"),
       "JP": ("JP", "JP", "JPY"), "EU": ("EU", "EU", "EUR"), "CN": ("CN", "CN", "CNY")}

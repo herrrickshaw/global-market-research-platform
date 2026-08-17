@@ -28,8 +28,9 @@ from pathlib import Path
 import duckdb
 import pandas as pd
 import yfinance as yf
+import warehouse_paths as _wh
 
-WH = Path("/Users/umashankar/repos/global-market-data/warehouse")
+WH = _wh.root()
 BATCH = 50
 COLS = ["Date", "Symbol", "Open", "High", "Low", "Close", "Volume"]
 

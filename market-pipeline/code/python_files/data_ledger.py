@@ -14,10 +14,11 @@ from __future__ import annotations
 import glob, datetime
 from pathlib import Path
 import pandas as pd
+import warehouse_paths as _wh
 
 HERE = Path(__file__).resolve().parent
 FH = "/Users/umashankar/repos/global-stock-screener/cache_seed/fundamentals_history"
-WH = "/Users/umashankar/repos/global-market-data/warehouse/ohlcv"
+WH = str(_wh.ohlcv())
 
 # static registry: (asset, market, dtype, path/glob, source, fetch_cmd, off-peak window, rate note)
 REG = [

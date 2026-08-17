@@ -51,9 +51,10 @@ import sys
 from pathlib import Path
 
 import pandas as pd
+import warehouse_paths as _wh
 
 HERE = Path(__file__).resolve().parent
-WH = Path("/Users/umashankar/repos/global-market-data/warehouse/ohlcv")
+WH = _wh.ohlcv()
 OUT = HERE / "cache_seed" / "warehouse_insights.parquet"
 MARKETS = ["IN", "US", "JP", "KR", "EU", "CN"]
 

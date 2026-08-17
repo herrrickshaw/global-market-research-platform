@@ -47,6 +47,7 @@ from typing import Optional
 
 import numpy as np
 import pandas as pd
+import warehouse_paths as _wh
 
 HERE = Path(__file__).resolve().parent
 LEDGER = HERE / "cache_seed" / "signal_ledger.parquet"
@@ -58,8 +59,8 @@ LEDGER = HERE / "cache_seed" / "signal_ledger.parquet"
 # loaded as a second copy of that year and every bar in it silently doubles.
 # That is exactly what happened to 2026 (fixed in warehouse_update.py 2026-07-31).
 PANELS = {
-    "IN": Path("/Users/umashankar/repos/global-market-data/warehouse/ohlcv/IN"),
-    "US": Path("/Users/umashankar/repos/global-market-data/warehouse/ohlcv/US"),
+    "IN": _wh.market("IN"),
+    "US": _wh.market("US"),
 }
 
 

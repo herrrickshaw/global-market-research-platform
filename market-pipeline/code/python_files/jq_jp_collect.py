@@ -16,10 +16,11 @@ import sys, glob, time
 from pathlib import Path
 import pandas as pd, numpy as np, requests
 from obs import get_logger
+import warehouse_paths as _wh
 
 LOG = get_logger("jq_jp")
 BASE = "https://api.jquants.com/v2"
-WH = "/Users/umashankar/repos/global-market-data/warehouse/ohlcv/JP"
+WH = str(_wh.market("JP"))
 OUT = Path("/Users/umashankar/repos/global-stock-screener/cache_seed/fundamentals_history/JP_jquants.parquet")
 LIMIT = int(sys.argv[1]) if len(sys.argv) > 1 else 1500
 

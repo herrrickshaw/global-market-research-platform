@@ -9,10 +9,11 @@ Resumable per shard; per-ticker try/except so one bad code never kills the worke
 import sys, glob, time
 from pathlib import Path
 import pandas as pd, numpy as np, akshare as ak
+import warehouse_paths as _wh
 
 NSH = int(sys.argv[1]); SID = int(sys.argv[2])
 LIMIT = int(sys.argv[3]) if len(sys.argv) > 3 else 600
-WH = "/Users/umashankar/repos/global-market-data/warehouse/ohlcv/CN"
+WH = str(_wh.market("CN"))
 FHDIR = Path("/Users/umashankar/repos/global-stock-screener/cache_seed/fundamentals_history")
 OUT = FHDIR / f"CN_deep_shard_{SID}.parquet"
 

@@ -48,6 +48,7 @@ import sys
 from pathlib import Path
 
 import pandas as pd
+import warehouse_paths as _wh
 
 # Canonical source per market — the folklore, written down ONCE.
 # 🔴 US: global-market-data's copy is the interrupted alphabetical collection
@@ -65,7 +66,7 @@ CANONICAL = {
     "EU": GSS / "EU.parquet",
 }
 
-WAREHOUSE = Path("/Users/umashankar/repos/global-market-data/warehouse")
+WAREHOUSE = _wh.root()
 COLS = ["Date", "Symbol", "Open", "High", "Low", "Close", "Volume"]
 
 

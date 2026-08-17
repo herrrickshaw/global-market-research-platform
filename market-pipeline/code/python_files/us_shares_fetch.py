@@ -7,9 +7,10 @@ import glob, time
 from pathlib import Path
 import pandas as pd, numpy as np, yfinance as yf
 from obs import get_logger
+import warehouse_paths as _wh
 LOG = get_logger("us_shares_fetch")
 FH = "/Users/umashankar/repos/global-stock-screener/cache_seed/fundamentals_history"
-WH = "/Users/umashankar/repos/global-market-data/warehouse/ohlcv/US"
+WH = str(_wh.market("US"))
 OUT = Path(f"{FH}/US_shares_supplement.parquet")
 us = pd.read_parquet(f"{FH}/US.parquet").sort_values("fy_end").groupby("ticker",as_index=False).last()
 need = us[us.net_income.notna() & us.shares.isna()].ticker.astype(str)

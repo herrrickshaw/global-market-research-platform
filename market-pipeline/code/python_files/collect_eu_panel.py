@@ -29,8 +29,9 @@ from pathlib import Path
 import duckdb
 import pandas as pd
 import yfinance as yf
+import warehouse_paths as _wh
 
-WH = Path("/Users/umashankar/repos/global-market-data/warehouse")
+WH = _wh.root()
 UNIVERSE_DB = os.path.expanduser("~/data/market_data.duckdb")
 BASE = Path(__file__).resolve().parent
 START = "2016-06-27"

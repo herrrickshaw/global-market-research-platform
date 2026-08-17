@@ -67,6 +67,7 @@ import pandas as pd
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import data_registry as R  # noqa: E402
 import env_loader as _env  # noqa: E402
+import warehouse_paths as _wh
 
 # Classification thresholds. ⚪ is a genuine band, not a rounding artifact: a
 # ±0.75% day on most equities is noise, and colouring it green or red invents a
@@ -82,7 +83,7 @@ FLAT_BAND_PCT = 0.75
 # (global-market-data/warehouse/ohlcv/<MKT>/year=*.parquet, fresh through
 # today). Fall back to it, loading each market ONCE per run — a filtered
 # per-symbol read costs ~0.4s and 190 of them would take minutes.
-WAREHOUSE = Path("/Users/umashankar/repos/global-market-data/warehouse/ohlcv")
+WAREHOUSE = _wh.ohlcv()
 _WH_FRAMES: dict = {}
 
 

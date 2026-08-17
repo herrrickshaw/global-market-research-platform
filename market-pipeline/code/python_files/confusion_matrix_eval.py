@@ -24,11 +24,12 @@ from pathlib import Path
 import numpy as np, pandas as pd
 import matplotlib; matplotlib.use("Agg")
 import matplotlib.pyplot as plt
+import warehouse_paths as _wh
 
 HERE = Path(__file__).resolve().parent
 REP = HERE / "reports"
 FH = "/Users/umashankar/repos/global-stock-screener/cache_seed/fundamentals_history"
-WH = "/Users/umashankar/repos/global-market-data/warehouse/ohlcv"
+WH = str(_wh.ohlcv())
 # per-market round-trip cost (bps): brokerage + bid-ask spread + slippage/impact (retail scale)
 COST_BPS = {"IN": 40, "US": 15, "KR": 30, "JP": 25, "EU": 30, "CN": 35}
 CFG = {"US": ("US", "2017-01-01"), "KR": ("KR_deep", "2020-06-01"),

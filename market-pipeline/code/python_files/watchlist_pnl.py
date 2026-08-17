@@ -40,6 +40,7 @@ from typing import Optional
 
 import numpy as np
 import pandas as pd
+import warehouse_paths as _wh
 
 HERE = Path(__file__).resolve().parent
 WATCHLIST = HERE / "watchlist.csv"
@@ -50,8 +51,8 @@ FA_SHEET = Path("/Users/umashankar/Downloads/Sheet for tax filing US stocks.xlsx
 # which repo held the good copy (the other US.parquet is the broken
 # alphabetical collection).
 PANELS = {
-    "IN": Path("/Users/umashankar/repos/global-market-data/warehouse/ohlcv/IN"),
-    "US": Path("/Users/umashankar/repos/global-market-data/warehouse/ohlcv/US"),
+    "IN": _wh.market("IN"),
+    "US": _wh.market("US"),
 }
 BENCH = {"IN": "NIFTYBEES", "US": "SPY"}
 DATE_RE = re.compile(r"(\d{4}-\d{2}-\d{2})")

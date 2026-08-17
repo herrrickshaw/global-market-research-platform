@@ -18,9 +18,10 @@ from pathlib import Path
 import numpy as np, pandas as pd
 import dart_fundamentals as DF
 from obs import get_logger, timed
+import warehouse_paths as _wh
 
 LOG = get_logger("dart_history")
-WH_KR = "/Users/umashankar/repos/global-market-data/warehouse/ohlcv/KR"
+WH_KR = str(_wh.market("KR"))
 OUT = Path("/Users/umashankar/repos/global-stock-screener/cache_seed/fundamentals_history/KR_dart_history.parquet")
 YEARS = ["2015", "2016", "2017", "2018", "2019", "2020", "2021"]
 NI_TAG = ("ifrs-full_ProfitLoss",)

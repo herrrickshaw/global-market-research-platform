@@ -40,8 +40,9 @@ from pathlib import Path
 import duckdb
 import numpy as np
 import pandas as pd
+import warehouse_paths as _wh
 
-WH = Path("/Users/umashankar/repos/global-market-data/warehouse")
+WH = _wh.root()
 MARKETS = ["JP", "KR", "CN", "EU", "US"]
 FACTORS_PQ = WH / "adjustment_factors_heuristic.parquet"
 

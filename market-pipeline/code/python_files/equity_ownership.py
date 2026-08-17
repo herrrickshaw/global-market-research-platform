@@ -70,6 +70,7 @@ from pathlib import Path
 
 import pandas as pd
 import requests
+import warehouse_paths as _wh
 
 HERE = Path(__file__).resolve().parent
 CACHE = HERE / "cache_seed"
@@ -440,7 +441,7 @@ def run_india_ownership(limit: int = 60, sleep: float = 1.0) -> None:
 # produced quarterly "market returns" of -24.7% and +15.9% for a large-cap
 # panel, which is a corporate-action artifact, not the market. ohlcv_adj/IN is
 # the split/bonus-adjusted build (price_adjuster.py).
-WAREHOUSE_IN = Path("/Users/umashankar/repos/global-market-data/warehouse/ohlcv_adj/IN")
+WAREHOUSE_IN = _wh.ohlcv_adj_in()
 
 
 def run_flow_proxy() -> None:

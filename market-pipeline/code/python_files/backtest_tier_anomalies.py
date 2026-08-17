@@ -36,8 +36,9 @@ sys.path.insert(0, str(HERE))
 from prediction_filter import RSI_BANDS, rsi_zone
 from price_prediction.kalman_trend import KalmanTrendModel
 from price_prediction.markov_regime import label_states
+import warehouse_paths as _wh
 
-WH = Path("/Users/umashankar/repos/global-market-data/warehouse/ohlcv")
+WH = _wh.ohlcv()
 MARKETS = ["US", "JP", "KR", "IN"]
 TOP_N = 200                 # most-liquid names per market
 EVAL_FREQ = "ME"            # monthly evaluation dates

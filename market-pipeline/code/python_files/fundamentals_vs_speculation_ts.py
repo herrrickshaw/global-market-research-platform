@@ -17,11 +17,12 @@ from pathlib import Path
 import numpy as np, pandas as pd
 import matplotlib; matplotlib.use("Agg")
 import matplotlib.pyplot as plt
+import warehouse_paths as _wh
 
 HERE = Path(__file__).resolve().parent
 REP = HERE / "reports"
 FH = "/Users/umashankar/repos/global-stock-screener/cache_seed/fundamentals_history"
-WH = "/Users/umashankar/repos/global-market-data/warehouse/ohlcv"
+WH = str(_wh.ohlcv())
 MKT = sys.argv[1] if len(sys.argv) > 1 else "US"
 FUND = {"US": "US", "KR": "KR_deep", "IN": "IN_screener_only_backup"}.get(MKT, MKT)
 MIN_N = 15

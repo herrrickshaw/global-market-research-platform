@@ -47,9 +47,10 @@ from pathlib import Path
 
 import numpy as np
 import pandas as pd
+import warehouse_paths as _wh
 
 HERE = Path(__file__).resolve().parent
-WH = os.environ.get("MARKET_WH", "/Users/umashankar/repos/global-market-data/warehouse/ohlcv")
+WH = os.environ.get("MARKET_WH", str(_wh.ohlcv()))
 OUT_MD = HERE / "reports" / "zone_rules_by_market.md"
 OUT_JSON = HERE / "cache_seed" / "zone_rules.json"
 

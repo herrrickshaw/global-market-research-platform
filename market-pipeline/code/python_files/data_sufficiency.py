@@ -20,11 +20,12 @@ import glob, datetime
 from pathlib import Path
 import pandas as pd, numpy as np
 from obs import get_logger
+import warehouse_paths as _wh
 
 HERE = Path(__file__).resolve().parent
 LOG = get_logger("data_sufficiency")
 FH = "/Users/umashankar/repos/global-stock-screener/cache_seed/fundamentals_history"
-WH = "/Users/umashankar/repos/global-market-data/warehouse/ohlcv"
+WH = str(_wh.ohlcv())
 FUND = {"IN": "IN", "US": "US", "KR": "KR_deep", "JP": "JP_edinet", "EU": "EU", "CN": "CN_full"}
 # minimum non-overlapping obs for a credible de-overlapped t-stat
 MIN_NONOVERLAP = 15

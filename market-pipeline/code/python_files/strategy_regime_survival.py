@@ -38,12 +38,13 @@ import glob, json, os, sys
 from pathlib import Path
 import numpy as np, pandas as pd
 from obs import get_logger, timed, DecisionLog
+import warehouse_paths as _wh
 
 HERE = Path(__file__).resolve().parent
 LOG = get_logger("regime_survival")
 # warehouse path is env-configurable so this runs unchanged on AWS (set MARKET_WH
 # to wherever the panels were pulled from Dropbox/S3); defaults to the local tree.
-WH = os.environ.get("MARKET_WH", "/Users/umashankar/repos/global-market-data/warehouse/ohlcv")
+WH = os.environ.get("MARKET_WH", str(_wh.ohlcv()))
 MARKETS = ("IN", "US", "JP", "KR", "EU")
 FWD = 10                 # forward horizon (trading days) -> //5 on weekly grid
 START = "2016-07-01"     # ~2y warmup consumed by 40wk MA / 126d lookbacks

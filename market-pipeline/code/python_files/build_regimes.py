@@ -30,8 +30,9 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 import yfinance as yf
+import warehouse_paths as _wh
 
-WH = Path("/Users/umashankar/repos/global-market-data/warehouse")
+WH = _wh.root()
 OUT = WH / "regimes.parquet"
 WINDOW = 756
 MIN_WINDOW = 252

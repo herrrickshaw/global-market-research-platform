@@ -15,8 +15,9 @@ from __future__ import annotations
 import sys, glob
 from pathlib import Path
 import pandas as pd, numpy as np, baostock as bs
+import warehouse_paths as _wh
 
-WH = "/Users/umashankar/repos/global-market-data/warehouse/ohlcv/CN"
+WH = str(_wh.market("CN"))
 OUT = Path("/Users/umashankar/repos/global-stock-screener/cache_seed/fundamentals_history/CN_baostock.parquet")
 LIMIT = int(sys.argv[1]) if len(sys.argv) > 1 else 2000
 YEARS = list(range(2015, 2025))

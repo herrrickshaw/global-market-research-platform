@@ -37,6 +37,7 @@ from pathlib import Path
 
 import numpy as np
 import pandas as pd
+import warehouse_paths as _wh
 
 HERE = Path(__file__).resolve().parent
 CACHE = HERE / "cache_seed"
@@ -45,7 +46,7 @@ PANEL = CACHE / "india_ownership_wide.parquet"          # screener.in: has FII/D
 NSE_PANEL = CACHE / "india_shareholding_nse.parquet"    # NSE: promoter/public only
 REPORT = REPORTS / "ownership_behaviour_india.md"
 REPORT_NSE = REPORTS / "ownership_behaviour_india_full.md"
-WAREHOUSE = Path("/Users/umashankar/repos/global-market-data/warehouse/ohlcv_adj/IN")
+WAREHOUSE = _wh.ohlcv_adj_in()
 
 # Default floor. --floor widens it: $5M -> 335 names, $1M -> 794, i.e. essentially
 # the whole genuinely tradeable India equity universe. Below ~$1M/day the bhavcopy

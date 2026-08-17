@@ -23,11 +23,12 @@ import glob, sys
 from pathlib import Path
 import numpy as np, pandas as pd
 from obs import get_logger
+import warehouse_paths as _wh
 
 HERE = Path(__file__).resolve().parent
 LOG = get_logger("valuation_reversion")
 FH = "/Users/umashankar/repos/global-stock-screener/cache_seed/fundamentals_history"
-WH = "/Users/umashankar/repos/global-market-data/warehouse/ohlcv"
+WH = str(_wh.ohlcv())
 # per-market: (fundamentals file, price dir, formation start). US/KR/JP warehouse
 # prices are split-adjusted (price_adjuster_global.py); fundamentals histories:
 # US 2017→, KR/JP 2021→ (shorter window → fewer non-overlap obs → weaker t).

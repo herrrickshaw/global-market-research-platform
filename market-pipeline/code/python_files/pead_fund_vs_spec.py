@@ -23,10 +23,11 @@ from pathlib import Path
 import numpy as np, pandas as pd
 import matplotlib; matplotlib.use("Agg")
 import matplotlib.pyplot as plt
+import warehouse_paths as _wh
 
 HERE = Path(__file__).resolve().parent
 REP = HERE / "reports"
-WH = "/Users/umashankar/repos/global-market-data/warehouse/ohlcv/US"
+WH = str(_wh.market("US"))
 ENTRY, EXIT = 2, 44                       # trading days after announcement
 
 # sector → regime (from our PB~ROE R² + Damodaran % money-losing findings)
