@@ -27,10 +27,12 @@ from __future__ import annotations
 
 import datetime as _dt
 import json
+import os
 import re
 import sqlite3
 import time
 from pathlib import Path
+from urllib.parse import urlencode
 
 import requests
 
@@ -141,6 +143,83 @@ def _stooq(sym: str, asof: _dt.date) -> dict:
         return {"error": f"stooq: {str(e)[:60]}"}
 
 
+_CREDS = Path.home() / ".config" / "market-secrets" / "credentials.env"
+
+
+def _key(name: str) -> str | None:
+    """Read one key from the canonical credential store.
+
+    Parsed here rather than sourced: the file has a value containing shell
+    metacharacters and `. credentials.env` dies on it under zsh with a parse
+    error, which would take the gate down for a reason that has nothing to do
+    with prices. Env var wins so a run can override without touching the file.
+    """
+    v = os.environ.get(name)
+    if v:
+        return v
+    try:
+        for ln in _CREDS.read_text().splitlines():
+            m = re.match(rf"\s*{re.escape(name)}=(.*)$", ln)
+            if m:
+                v = m.group(1).strip().strip('"').strip("'")
+                return v or None
+    except OSError:
+        return None
+    return None
+
+
+def _alphavantage(sym: str, asof: _dt.date) -> dict:
+    """Alpha Vantage daily bars. The third path to this market, after Yahoo and screener.in.
+
+    🔴 QUOTES BSE, NOT NSE — and that is deliberate, not a defect. The `.NSE`
+    suffix returns an empty series (measured 2026-08-18); only `.BSE` resolves.
+    So this witness reaches the market through a DIFFERENT EXCHANGE than the scan,
+    which is exactly the independence the gate wants — but it means a small basis
+    against our NSE close is normal and must not read as a mismatch. Measured the
+    same day across the gate's own sample, all on the correct 2026-08-17 date:
+
+        BHARTIARTL 0.010% · HDFCBANK 0.137% · INFY 0.167%
+        RELIANCE   0.183% · ICICIBANK 0.183% · SBIN 0.263%
+
+    Worst 0.263% against a 2.0% tolerance — 7x headroom. Picks are liquidity-gated
+    so they trade actively on both exchanges; if that gate is ever loosened, this
+    basis widens and this comment is where to start looking.
+
+    🔴 FREE TIER IS 25 REQUESTS/DAY. The gate samples ~6 names, so one run costs 6.
+    That leaves room for a retry but NOT for a second daily caller — anything else
+    reaching for this key will silently starve the send gate. Alpha Vantage answers
+    a quota refusal with HTTP 200 and a prose "Note"/"Information" body rather than
+    an error status, so the absent-series branch below reports it as an error and
+    the source drops out of the quorum instead of being read as "no data".
+    """
+    k = _key("ALPHAVANTAGE_KEY")
+    if not k:
+        return {"error": "no ALPHAVANTAGE_KEY"}
+    try:
+        r = _get("https://www.alphavantage.co/query?" + urlencode({
+            "function": "TIME_SERIES_DAILY", "symbol": f"{sym}.BSE",
+            "apikey": k, "outputsize": "compact"}))
+        if r.status_code != 200:
+            return {"error": f"http {r.status_code}"}
+        j = r.json()
+        ts = j.get("Time Series (Daily)")
+        if not ts:
+            # Quota/throttle notes and unknown tickers both land here. Keep the
+            # first words of whichever key came back so the ledger distinguishes
+            # "we ran out of quota" from "this name is not covered".
+            note = (j.get("Note") or j.get("Information")
+                    or j.get("Error Message") or "no series")
+            return {"error": f"av: {str(note)[:70]}"}
+        days = [d for d in ts if d <= asof.isoformat()]
+        if not days:
+            return {"error": "no rows on/before asof"}
+        d = max(days)
+        return {"price": float(ts[d]["4. close"]),
+                "date": _dt.date.fromisoformat(d)}
+    except Exception as e:                                     # noqa: BLE001
+        return {"error": f"av: {str(e)[:60]}"}
+
+
 def _screener(sym: str, asof: _dt.date) -> dict:
     """screener.in's header. Kept as one voice among several, no longer the only one.
 
@@ -187,11 +266,46 @@ def _screener(sym: str, asof: _dt.date) -> dict:
 # the very track record the ledger exists to measure. Kept as a function so the
 # next person can re-test it cheaply rather than rediscover the finding.
 #
-# That leaves two witnesses, which is enough for the agreed rule (pass on one,
-# suppress on zero) — and crucially yfinance is date-anchored, so unlike
-# screener.in it can testify DURING market hours. That alone closes the gap that
-# suppressed the 2026-08-11 brief.
-SOURCES = {"yfinance": _yfinance, "screener": _screener}
+# 🔴 screener IS NO LONGER REGISTERED (2026-08-18, by request: witness this market
+# some other way). _screener() is kept above, working, so restoring it is adding
+# one dict entry — same treatment _stooq gets, and for the same reason: the
+# finding should be cheap to revisit.
+#
+# THE SEARCH THAT PRODUCED THIS LINE. Everything below was tested against the
+# gate's own sample on 2026-08-18, all six names, known-good 2026-08-17 NSE closes:
+#
+#   alphavantage  WORKS via .BSE — registered. Worst basis 0.263% vs 2.0% tol.
+#   EODHD         404 Ticker Not Found on .NSE and .BSE. Key is a FREE plan
+#                 (20 req/day) and India is not in it. Revisit only if upgraded.
+#   stooq         re-tested per the note above: still HTML, not CSV, on .in/.ns/
+#                 .bo/bare. The 2026-08-12 finding holds — it does not serve NSE.
+#   nsepython     equity_history raises KeyError('data') standalone; it needs
+#                 browser cookies, which is not something an unattended 06:30 job
+#                 should depend on. (Installed, so cheap to re-check.)
+#   moneycontrol  priceapi techCharts endpoint no longer returns JSON.
+#   Hugging Face  no live feed exists. Of 100 'stock' datasets, 3 are India-related
+#                 and all are static bulk dumps (newest touched 2026-08-13, one
+#                 abandoned in 2023). A gate needs YESTERDAY's close; a snapshot
+#                 hub structurally cannot serve that. Dead end, not a near miss.
+#   PyPI survey   jugaad-data is maintained but reads NSE bhavcopy — CIRCULAR, it
+#                 is the scan's own source. yahooquery is Yahoo again, so it would
+#                 add a column to the ledger without adding a witness. bsedata is
+#                 live-quote only (fails the date-anchored rule) and last released
+#                 2024. investpy has been dead since Investing.com blocked it in
+#                 2022. twelvedata is alive and covers India but needs an account
+#                 that does not exist yet — the one worth signing up for.
+#
+# Two witnesses, same count as before, but a better pair: both are date-anchored,
+# so unlike screener.in they can testify DURING market hours — the defect that
+# suppressed the 2026-08-11 brief. The pair is also exchange-diverse (Yahoo→NSE,
+# Alpha Vantage→BSE), so a single-exchange feed problem no longer convinces
+# everyone at once.
+#
+# 🔴 A TIE IS A MISMATCH (validate_brief's majority rule), so with exactly two
+# witnesses one odd vote suppresses the send. That was equally true of the old
+# pair, but it is the reason to add a third rather than settle here: Twelve Data
+# is the cheapest route to breaking ties.
+SOURCES = {"yfinance": _yfinance, "alphavantage": _alphavantage}
 
 
 # ─── ledger ───────────────────────────────────────────────────────────────────
@@ -226,7 +340,44 @@ def record(rows: list[dict]) -> None:
 def report(days: int = 30) -> list[dict]:
     """Per-source track record over the last `days`. This is the point of the
     ledger: after a few weeks it says which witnesses are worth listening to,
-    measured rather than assumed."""
+    measured rather than assumed.
+
+    🔴 READ echo_rate BEFORE agree_rate. It is the share of answered checks where
+    the source returned our number EXACTLY — and a high value means the source is
+    not a witness at all, it is our own figure coming back by a different pipe.
+    Such a source scores a perfect response_rate and a perfect agree_rate while
+    carrying zero information, so the two rates that look like a track record are
+    exactly the ones an echo aces.
+
+    This is not hypothetical. Measured 2026-08-18 over the ledger to date:
+
+        yfinance      63 checks   89% exact     <- NSE close, re-served
+        screener      52 checks   48% exact     <- NSE close, 4-sig-fig rounded
+        alphavantage   6 checks    0% exact     <- BSE order book
+
+    yfinance returned 1969.300048828125 against our 1969.3 — precisely
+    float32(1969.3), i.e. our own value round-tripped through someone's 32-bit
+    float, not a price anybody observed twice. screener's non-zero half is its
+    documented rounding, not a second opinion. So the gate spent months with two
+    witnesses giving one testimony, and would have agreed with itself whatever NSE
+    published.
+
+    WHY NO AMOUNT OF SHOPPING FIXES THIS. An Indian equity's close is defined by
+    the exchange's matching engine; it is an administrative fact NSE publishes, not
+    a measurement that can be taken independently twice. Every aggregator
+    redistributes that same fact. The only genuine second observation is ANOTHER
+    EXCHANGE — BSE runs a separate order book on the same companies, arbitraged to
+    ~0.1-0.3%, and that basis IS the evidence of independence. So a new source is
+    worth adding only if it quotes a different exchange; point it at NSE and it is
+    a third echo.
+
+    WHAT EACH WITNESS IS FOR (do not "simplify" the gate down to the agreeable one):
+      yfinance      liveness + mapping. Date-anchored and answers during market
+                    hours, so it proves our number matches NSE's published number
+                    and that neither feed is frozen. NOT a price check — it is
+                    structurally incapable of disagreeing about the NSE close.
+      alphavantage  the actual price check, because it is a different exchange.
+    """
     since = (_dt.date.today() - _dt.timedelta(days=days)).isoformat()
     try:
         with _db() as c:
@@ -237,14 +388,18 @@ def report(days: int = 30) -> list[dict]:
                        SUM(verdict='agree')                            AS agree,
                        SUM(verdict='disagree')                         AS disagree,
                        ROUND(AVG(CASE WHEN verdict IN ('agree','disagree')
-                                      THEN ABS(diff_pct) END), 3)      AS avg_abs_diff
+                                      THEN ABS(diff_pct) END), 3)      AS avg_abs_diff,
+                       -- diff_pct is stored rounded to 3dp, so =0 means the two
+                       -- agreed to within 0.0005% — an echo, not a coincidence.
+                       SUM(CASE WHEN verdict IN ('agree','disagree')
+                                 AND diff_pct = 0 THEN 1 ELSE 0 END)   AS exact
                   FROM source_check WHERE asof >= ? GROUP BY source ORDER BY source""",
                 (since,)).fetchall()
     except Exception as e:                                     # noqa: BLE001
         print(f"  (source ledger unreadable: {e})")
         return []
     out = []
-    for src, n, errs, agree, dis, avg in rows:
+    for src, n, errs, agree, dis, avg, exact in rows:
         answered = n - (errs or 0)
         out.append({
             "source": src, "checks": n,
@@ -252,6 +407,9 @@ def report(days: int = 30) -> list[dict]:
             "agree_rate": round((agree or 0) / answered * 100, 1) if answered else 0.0,
             "disagreements": dis or 0,
             "avg_abs_diff_pct": avg,
+            # Share of ANSWERED checks that came back identical to our own figure.
+            # High = echo, not witness. See the docstring.
+            "echo_rate": round((exact or 0) / answered * 100, 1) if answered else 0.0,
         })
     return out
 

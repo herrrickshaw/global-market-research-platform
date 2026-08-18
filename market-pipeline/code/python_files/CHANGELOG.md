@@ -2,6 +2,75 @@
 
 Decisions and material changes to the pipeline, newest first.
 
+## 2026-08-18 — the send gate had two witnesses giving one testimony
+
+The brief's price gate cross-checked the India scan against `yfinance` and
+`screener.in`. Measured over the ledger's 115 checks to date, both are the NSE
+close arriving by different pipes:
+
+    yfinance      63 checks   89% returned our number EXACTLY
+    screener      52 checks   48% returned our number EXACTLY
+    alphavantage   6 checks    0% (added this day)
+
+The proof is in the float artifacts. yfinance answered `1969.300048828125`
+against our `1969.3` — precisely `float32(1969.3)`, our own value round-tripped
+through someone's 32-bit float, not a price observed a second time. screener's
+non-zero half is its documented 4-significant-figure rounding (`1415.3 → 1415`),
+also not a second opinion. So the gate would have agreed with itself whatever NSE
+published, while `response_rate` and `agree_rate` both read 100% — the two
+metrics that look like a track record are exactly the ones an echo aces.
+
+- **DECISION: judge a source by `echo_rate`, not by agreement.** New column in
+  `report()`, printed first and flagged `⚠ ECHO` at ≥80%. Agreement was never
+  evidence of independence and should stop being read as though it were.
+- **DECISION: retire screener.in, register Alpha Vantage (`.BSE`).** Requested
+  independently, but the measurement justifies it: `.NSE` returns an empty series
+  on Alpha Vantage and only `.BSE` resolves, so the replacement reaches the market
+  through a *different exchange*. Measured basis against our NSE close over the
+  gate's own six names: worst 0.263% against a 2.0% tolerance. `_screener()` is
+  kept working and unregistered, same treatment `_stooq` gets.
+- **REJECTED: adding more aggregators to widen the quorum.** An Indian equity's
+  close is defined by the exchange's matching engine — an administrative fact NSE
+  publishes, not a measurement anyone can take twice. Every aggregator
+  redistributes that fact, so a third NSE-quoting source adds a column to the
+  ledger and no information. Tested and rejected the same day: EODHD (free plan,
+  no India, 404), stooq (still HTML not CSV — the 08-12 finding holds), nsepython
+  (`equity_history` needs browser cookies), MoneyControl (endpoint dead), Hugging
+  Face (3 India datasets of 100 scanned, all static bulk dumps — a snapshot hub
+  structurally cannot serve yesterday's close), `jugaad-data` (maintained, but
+  reads NSE bhavcopy, i.e. the scan's own source — circular), `yahooquery` (Yahoo
+  again), `bsedata` (live-quote only, fails the date-anchored rule), `investpy`
+  (dead since 2022). Twelve Data covers India and is the one worth an account —
+  **and only if pointed at a non-NSE exchange.**
+- **Known limit, deliberately accepted:** two witnesses means a tie counts as a
+  mismatch, so one odd vote suppresses the send. That was equally true of the old
+  pair. Alpha Vantage's free tier is 25 requests/day and one run costs ~6, so any
+  second consumer of that key silently starves the gate; a quota refusal arrives
+  as HTTP 200 with a prose note, which is now mapped to an error so the source
+  drops out of the quorum instead of reading as "no data".
+
+## 2026-08-18 — the India fundamental screeners returned the same picks for weeks
+
+`FRESH_DAYS = 30` in `fundamentals_offhours.py` against `build_mailer.py`'s 10-day
+STALE banner: two numbers disagreeing about what fresh means. 6,437 of the store's
+6,595 rows were collected in one bulk run on 2026-07-22, so under a 30-day window
+every one of them counted fresh until 08-21 — nightly runs refetched ~10 names
+while 1,325 sat frozen, and Piotroski / Coffee Can / Magic Formula / Bull Cartel
+screened 27-day-old financials daily. Measured: `fresh 1333 | to collect 56`, of
+which 54 had never been collected at all. Two real refreshes per run.
+
+- **DECISION: `FRESH_DAYS` 30 → 7, below the banner's threshold**, turning one
+  bulk-then-freeze sawtooth into a rolling ~190 names/day.
+- **DECISION: order the queue stalest-first**, tie-broken by the existing hash
+  order — `sorted` is stable and the bulk cohort is one large tie, so the
+  alphabet-spread guarantee survives (25 distinct first letters in the first 400).
+- **REJECTED: leading with never-collected names.** Tried first, and wrong: a name
+  with no rows is overwhelmingly one yfinance cannot serve, an empty fetch writes
+  no row, so all 54 would have parked permanently at the head of every run — and
+  the loop treats 60 consecutive empties as throttling and aborts. Let that cohort
+  pass 60 and every run would stop at name 60 having collected nothing, reporting
+  a throttle that never happened. They sort last.
+
 ## 2026-08-08 — data_index reported six datasets STALE forever; they were never stale
 
 `data_index.py` flagged `scan.india/us/europe/japan/korea` and `report.combined`
