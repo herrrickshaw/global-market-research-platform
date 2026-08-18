@@ -151,3 +151,8 @@ market-pipeline/code/python_files/cache_seed/factorial_screener_signals_us.parqu
 market-pipeline/code/python_files/cache_seed/factorial_screener_signals_CN_technical.parquet
 market-pipeline/code/python_files/cache_seed/factorial_screener_signals_us.parquet
 market-pipeline/code/python_files/cache_seed/factorial_screener_signals_CN_technical.parquet
+
+# Runtime ledgers and state. source_accuracy.db records raw provider error
+# strings, and Alpha Vantage quotes your API key back inside its rate-limit
+# message (seen 2026-08-18) — this origin is PUBLIC, so the whole dir stays out.
+market-pipeline/code/python_files/state/
