@@ -11,9 +11,17 @@ export BHAV_CACHE="/Users/umashankar/market-pipeline/data/bhavcopy_cache"
 PY="$HERE/.venv/bin/python"
 [ -x "$PY" ] || PY="python3"
 echo "=== fundamentals off-hours $(date '+%Y-%m-%d %H:%M:%S %Z') ==="
-# rate 1.0s is polite; the run skips names collected in the last 30 days, so a
-# daily invocation only fetches what is stale and completes in minutes.
-"$PY" fundamentals_offhours.py --rate 1.0 "$@"
+# rate 1.0s is polite; the run skips names collected in the last FRESH_DAYS (7)
+# days, so a daily invocation only fetches what is stale and completes in minutes.
+#
+# --limit 400 caps a session at ~7 min. It matters exactly once: FRESH_DAYS dropped
+# 30 -> 7 on 2026-08-18 to stop the store freezing between bulk collections, and the
+# first run after that change sees the whole 1,325-name 2026-07-22 cohort expire at
+# once. With the queue now sorted stalest-first, capping it converges the backlog
+# over ~4 sessions instead of one 22-minute run, then settles at the ~190 names/day
+# a 7-day window actually turns over — well under the cap. Same trickle pattern as
+# the NSE XBRL / EDGAR / intl-PIT limits below.
+"$PY" fundamentals_offhours.py --rate 1.0 --limit 400 "$@"
 RC=$?
 # NSE XBRL point-in-time trickle: ~110k filings total; ~2,000 files per session
 # (~30 min) means the full 10-year history lands in ~8 weeks of off-hours runs,

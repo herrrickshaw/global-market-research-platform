@@ -42,8 +42,10 @@ SOURCES, AND WHAT EACH CAN ACTUALLY GIVE
              filing DATES on top of yfinance figures later; scaffolded, not wired.
 
     fundamentals_offhours.py                 # yfinance, full liquid universe
-    fundamentals_offhours.py --limit 300     # a bounded slice (testing)
-    fundamentals_offhours.py --max-age-days 7 # re-collect only names >7d stale
+    fundamentals_offhours.py --limit 400     # cap a session (the queue is
+                                             # stalest-first, so this is the
+                                             # oldest 400, not an arbitrary slice)
+    fundamentals_offhours.py --max-age-days 3 # tighter than the FRESH_DAYS default
     fundamentals_offhours.py --self-test      # offline; verify the logic
 """
 
@@ -78,7 +80,25 @@ UNIVERSE_PARQUET = Path(
 
 RATE = 1.0            # seconds between yfinance tickers — polite, off-hours
 CHECKPOINT_EVERY = 100
-FRESH_DAYS = 30       # a name collected within this many days is skipped
+
+# 🔴 THIS MUST STAY BELOW build_mailer.py's 10-DAY STALE THRESHOLD.
+# It was 30, and the brief calls the store stale at 10, so the store spent two
+# weeks of every three flagged ⚠ STALE while this script reported "nothing to
+# collect — store is current". Both were right; the two numbers just disagreed
+# about what fresh means.
+#
+# The visible damage was worse than the banner. 6,437 of the store's 6,595 rows
+# were collected in one bulk run on 2026-07-22; under a 30-day window every one of
+# them counted as fresh until 2026-08-21, so the nightly runs refetched ~10 names
+# and the other 1,325 sat frozen. The four India fundamental screeners (Piotroski ·
+# Coffee Can · Magic Formula · Bull Cartel) read that store, so they returned
+# near-identical picks day after day — the reported symptom — while the price-derived
+# half of the brief moved normally. Then on day 30 the whole universe would expire
+# at once and one run would try to refetch all 1,335 names.
+#
+# 7 days holds the store inside the banner's tolerance and turns that sawtooth into
+# a rolling refresh: ~190 names/day over a 1,335-name universe, ~3 min at RATE=1.0.
+FRESH_DAYS = 7        # a name collected within this many days is skipped
 
 # yfinance row-label -> our field. First matching label wins; labels vary across
 # yfinance versions, so several aliases are listed.
@@ -319,6 +339,15 @@ def _fresh_set(store: "pd.DataFrame", max_age_days: int) -> set:
     return set(fresh)
 
 
+def _last_collected(store: "pd.DataFrame") -> dict:
+    """ticker -> most recent collected_at, for ordering the queue stalest-first."""
+    if store.empty or "collected_at" not in store.columns:
+        return {}
+    ca = pd.to_datetime(store["collected_at"], errors="coerce", utc=True)
+    s = pd.DataFrame({"t": store["ticker"].astype(str).str.upper(), "ca": ca})
+    return s.dropna(subset=["ca"]).groupby("t")["ca"].max().to_dict()
+
+
 def write_store(store: "pd.DataFrame", new_rows: list, collected_at: str) -> "pd.DataFrame":
     """Merge new rows in, atomically. Replaces a ticker's rows wholesale.
 
@@ -439,6 +468,29 @@ def main() -> int:
     else:
         fresh = set()
     todo = [s for s in uni if s not in fresh]
+    # STALEST FIRST. `uni` is hash-ordered so that a truncated run still leaves a
+    # sample spread across the alphabet (see _hash_order). Age-sorting on top of it
+    # keeps that: sorted() is stable, and the names collected in a single bulk run
+    # share one timestamp, so a whole cohort is one tie broken by the original hash
+    # order. What it adds is convergence — with --limit, each run takes the oldest
+    # slice instead of re-walking the same hash prefix, so the store's median age
+    # falls monotonically instead of the queue head starving the tail.
+    #
+    # 🔴 NEVER-COLLECTED NAMES SORT LAST, NOT FIRST. Tempting to lead with them —
+    # they have no fundamentals at all — but a name with no rows is overwhelmingly
+    # a name yfinance cannot serve (an instrument that survived _clean_equities, a
+    # delisted ticker, a listing with no filings yet). An empty fetch writes no
+    # row, so such a name stays "never-collected" forever and would sit at the head
+    # of EVERY run permanently. There are 54 of them today against a 400-name cap.
+    # Worse, the loop below treats 60 consecutive empties as throttling and aborts:
+    # let that cohort grow past 60 and every run would stop at name 60 having
+    # collected nothing, reporting a throttle that never happened. Ordering them
+    # last costs nothing — steady state turns over ~190 names against a 400 cap, so
+    # the tail is still reached — and it keeps the abort guard measuring what it
+    # was written to measure.
+    seen = _last_collected(store)
+    never = pd.Timestamp.max.tz_localize("UTC")
+    todo.sort(key=lambda s: seen.get(s, never))
     if a.limit:
         todo = todo[: a.limit]
 
