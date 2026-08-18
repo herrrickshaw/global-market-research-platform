@@ -18,6 +18,14 @@
 # close at on or before <date>?" — which has a stable answer at any hour. Sources
 # below therefore return (price, date) and the caller compares BOTH.
 #
+# 🔴 AND RETURNING A DATE IS NOT THE SAME AS BEING DATE-ANCHORED. Measured
+# 2026-08-18 mid-session: yfinance answered with a row stamped TODAY carrying the
+# live intraday price, so it passed every date check while comparing our close
+# against a moving tick — the identical defect, wearing a valid-looking date.
+# A source here must return the last COMPLETED session, and each one is
+# responsible for refusing an in-progress session itself; the caller cannot tell
+# a settled close from a live tick by looking at the pair.
+#
 # 🔴 INDEPENDENCE IS THE WHOLE POINT. The India scan is built from NSE/BSE
 # bhavcopy, so bhavcopy must never appear here: validating a file against the
 # file it was made from is circular and proves nothing. Every source here reaches
@@ -95,7 +103,36 @@ _LEDGER = Path(__file__).resolve().parent / "state" / "source_accuracy.db"
 # price mismatch.
 
 def _yfinance(sym: str, asof: _dt.date) -> dict:
-    """Latest close on or before `asof`. Date-anchored, so market hours are irrelevant."""
+    """Latest COMPLETED close on or before `asof`.
+
+    🔴 A ROW DATED TODAY IS NOT A CLOSE WHILE THE SESSION IS OPEN. This used to
+    claim it was "date-anchored, so market hours are irrelevant", and that was
+    wrong in the one way that mattered: once NSE opens, Yahoo emits a row stamped
+    with TODAY's date carrying the live intraday price. Nothing errors — a date is
+    present, so the gate's date check passes — and the comparison silently becomes
+    our close against a moving tick. Caught 2026-08-18 09:20 IST, mid-session:
+
+        HDFCBANK   ours 729.0   yfinance 726.35 @08-18   alphavantage 730.00 @08-17
+        INFY       ours 1139.9  yfinance 1121.60 @08-18  alphavantage 1138.00 @08-17
+
+    Those 0.36% and 1.63% gaps are the market moving, not corroboration. This is
+    the SAME defect screener.in was retired for; screener merely announced it by
+    serving an undated quote, while yfinance hid it behind a plausible date.
+
+    Why it is dangerous rather than merely noisy: validate_brief counts a tie as a
+    mismatch, and the quorum is two. One sampled name moving >2% intraday would
+    make this source "disagree", tie the vote and SUPPRESS the send — a lost brief
+    caused by a normal day's trading. INFY reached 1.63% on the run that found it.
+
+    So rows dated today are dropped outright. Yahoo flags nothing to distinguish a
+    settled close from a live tick, and after the session ends today's row is a
+    real close but still the WRONG one: the India scan is built at 03:00, before
+    the open, so it always holds the previous session. The witness must answer the
+    question the scan actually asks.
+
+    This is a no-op for historical queries — `end=asof+1` already excludes today
+    whenever `asof` is in the past — so it bites only in the live case it is for.
+    """
     try:
         import yfinance as yf
         # Reach back far enough to survive a long holiday run, then take the last
@@ -116,6 +153,11 @@ def _yfinance(sym: str, asof: _dt.date) -> dict:
         h = h[h["Close"].notna()]
         if not len(h):
             return {"error": "no close yet"}
+        # Drop the in-progress session. See the docstring — this is the whole
+        # point of the function, not a tidy-up.
+        h = h[h.index.date < _dt.date.today()]
+        if not len(h):
+            return {"error": "no completed session on/before asof"}
         return {"price": float(h["Close"].iloc[-1]), "date": h.index[-1].date()}
     except Exception as e:                                     # noqa: BLE001
         return {"error": f"yf: {str(e)[:60]}"}
@@ -207,9 +249,21 @@ def _alphavantage(sym: str, asof: _dt.date) -> dict:
             # Quota/throttle notes and unknown tickers both land here. Keep the
             # first words of whichever key came back so the ledger distinguishes
             # "we ran out of quota" from "this name is not covered".
-            note = (j.get("Note") or j.get("Information")
-                    or j.get("Error Message") or "no series")
-            return {"error": f"av: {str(note)[:70]}"}
+            #
+            # 🔴 REDACT BEFORE THIS STRING IS STORED. Alpha Vantage's rate-limit
+            # message QUOTES YOUR API KEY BACK AT YOU ("We have detected your API
+            # key as <key>..."), and this string is written verbatim into
+            # state/source_accuracy.db by price_sources.record(). Caught 2026-08-18
+            # the first time the quota was actually hit: the key landed in the
+            # ledger, and that ledger sits in a repo whose origin is PUBLIC. The
+            # key we sent is redacted by value, plus any key-shaped token as a
+            # backstop, because the next provider to do this will word it
+            # differently.
+            note = str(j.get("Note") or j.get("Information")
+                       or j.get("Error Message") or "no series")[:200]
+            note = note.replace(k, "<redacted>")
+            note = re.sub(r"[A-Za-z0-9_\-]{16,}", "<redacted>", note)
+            return {"error": f"av: {note[:70]}"}
         days = [d for d in ts if d <= asof.isoformat()]
         if not days:
             return {"error": "no rows on/before asof"}
@@ -295,9 +349,11 @@ def _screener(sym: str, asof: _dt.date) -> dict:
 #                 2022. twelvedata is alive and covers India but needs an account
 #                 that does not exist yet — the one worth signing up for.
 #
-# Two witnesses, same count as before, but a better pair: both are date-anchored,
-# so unlike screener.in they can testify DURING market hours — the defect that
-# suppressed the 2026-08-11 brief. The pair is also exchange-diverse (Yahoo→NSE,
+# Two witnesses, same count as before, but a better pair: both now answer with the
+# last COMPLETED session, so unlike screener.in they can testify DURING market
+# hours — the defect that suppressed the 2026-08-11 brief. That took a second fix:
+# yfinance appeared to have this property and did not (it served today's live tick
+# under today's date until 2026-08-18). The pair is also exchange-diverse (Yahoo→NSE,
 # Alpha Vantage→BSE), so a single-exchange feed problem no longer convinces
 # everyone at once.
 #
@@ -372,10 +428,14 @@ def report(days: int = 30) -> list[dict]:
     a third echo.
 
     WHAT EACH WITNESS IS FOR (do not "simplify" the gate down to the agreeable one):
-      yfinance      liveness + mapping. Date-anchored and answers during market
-                    hours, so it proves our number matches NSE's published number
-                    and that neither feed is frozen. NOT a price check — it is
-                    structurally incapable of disagreeing about the NSE close.
+      yfinance      liveness + mapping. Proves our number matches NSE's published
+                    number and that neither feed is frozen. NOT a price check — it
+                    is structurally incapable of disagreeing about the NSE close.
+                    Its echo_rate is therefore SUPPOSED to sit near 100%; a fall
+                    means it started answering with something that is not the
+                    close, which is exactly how the intraday-tick bug showed up
+                    (88.9% -> 81.2% on 2026-08-18) — read a DROP here as a defect
+                    in the source, not as it becoming a better witness.
       alphavantage  the actual price check, because it is a different exchange.
     """
     since = (_dt.date.today() - _dt.timedelta(days=days)).isoformat()

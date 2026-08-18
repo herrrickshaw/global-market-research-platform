@@ -191,10 +191,16 @@ def validate(sample: int, tol: float) -> dict:
     # screener.in serves an undated live quote once NSE opens, so the date check
     # silently parsed nothing and prices were compared against intraday ticks
     # (2026-07-15 09:15 IST: 5 of 6 dates None). That is now handled at the source:
-    # _screener() returns an error rather than an undated price, so an undated tick
-    # can never reach this function, and yfinance is date-anchored and answers at
-    # any hour. Unverifiable still means unverifiable — it just no longer means
-    # "the market happens to be open".
+    # every source in the registry must refuse an in-progress session itself, so an
+    # intraday tick can never reach this function. Unverifiable still means
+    # unverifiable — it just no longer means "the market happens to be open".
+    #
+    # 🔴 DO NOT REINSTATE THE GUARD HERE IF THIS BREAKS AGAIN. A tick that arrives
+    # under a plausible date is invisible at this level: measured 2026-08-18 09:20
+    # IST, yfinance returned today's live price stamped with today's date and every
+    # check in this function passed it. Only the source knows whether the session it
+    # is quoting has settled, so the refusal belongs there — a guard here would be
+    # re-solving the 2026-07-15 problem in the one place that cannot see it.
     ok = (verified >= MIN_VERIFIED) and not bad and not off and not stale_feed
     reason = ""
     if verified < MIN_VERIFIED:
