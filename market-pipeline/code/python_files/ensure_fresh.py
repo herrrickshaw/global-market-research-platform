@@ -101,7 +101,19 @@ def plan(state: dict, markets: list[str] | None, require: list[str] | None
         s["markets"].add(r["market"])
         if require and r["market"] in require:
             s["blocking"] = True
-    out = sorted(steps.values(), key=lambda s: (s["depth"], s["cmd"]))
+    # Order: dependency depth first (a scan after its store), then BLOCKING
+    # before optional, then the command for a stable tie-break.
+    #
+    # 🔴 2026-08-20: blocking-before-optional was missing, and the sort fell
+    # through to alphabetical. The 06:30 plan that morning put
+    # `refresh_panels.py --markets US` — the only step the brief actually needs —
+    # LAST in its depth group, behind a full Korea scan and two panels for
+    # markets the brief does not quote. `--max-minutes` is a hard budget, so the
+    # one required step was the one most likely to be dropped. Ordering by need
+    # costs nothing and makes the budget cut optional work first, which is the
+    # only sensible thing for it to cut.
+    out = sorted(steps.values(),
+                 key=lambda s: (s["depth"], not s["blocking"], s["cmd"]))
     for s in out:
         s["markets"] = sorted(s["markets"])
     return out
