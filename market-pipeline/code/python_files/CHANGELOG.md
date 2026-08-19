@@ -2,6 +2,40 @@
 
 Decisions and material changes to the pipeline, newest first.
 
+## 2026-08-19 — ensure_fresh wired into the send phase, and the report gap it found
+
+`ensure_fresh.py` existed but nothing called it: the "a brief requested at any
+hour collects up to that hour" guarantee held only when someone ran it by hand.
+Wiring it revealed a second inconsistency of exactly the kind it was built for.
+
+- **DECISION: the planner must rebuild the REPORTS, not just the scans.** The
+  brief reads two things — `<market>_scan/*.xlsx` for prices and
+  `combined_report_results/combined_<MKT>_*.json` for mood, street talk and the
+  fundamentals picks. Refreshing a scan alone ships a brief whose price sections
+  and narrative sections describe different days. Measured live: after the
+  08:46 US scan refresh reached 18 Aug, `combined_US_20260819_0459.json` still
+  carried **17 Aug prices under a 19 Aug filename**, and would have gone out.
+  `report.IN`/`report.US` are now catalog datasets depending on their scans, so
+  the dependency walk rebuilds them.
+- **DECISION: date a report by its own picks' prices, not its `generated`
+  stamp.** Same rule as scans, same reason — that stamp was correct and the
+  content was two days old.
+- **Placed BEFORE the self-heal, never replacing it.** ensure_fresh is surgical
+  (refresh only what is behind); the self-heal is the blunt fallback (run the
+  whole data phase). Whatever ensure_fresh cannot fix falls through to it, so
+  the change cannot make the send *less* likely to happen.
+- **Fail-safe by construction, verified across five cases:** runs in the send
+  phase; skips under `--data`; skips under `--data --send` because the data
+  phase already covers it; a non-zero exit is logged and execution continues; a
+  hang is killed by `cap` and falls through. `CAP_ENSURE_FRESH=2400` sits
+  outside ensure_fresh's own `--max-minutes 35` so the internal, self-reporting
+  bound is the one that normally fires.
+- **Orphans no longer fail the run.** Your 08:37 production run reported
+  `cache.ohlcv.US_legacy` as "STILL behind" and exited 1 after five successful
+  refreshes — but nothing can refresh a panel with no writer. A clean run
+  looking failed is how an exit code stops being read; orphans are now listed
+  separately and do not affect the exit status.
+
 ## 2026-08-19 — the US fundamentals gap was four bugs, not a coverage limit
 
 40.5% of the scanned US universe (2,359 of 5,829) had no fundamentals. That read

@@ -203,6 +203,11 @@ cap() {
 # directory (n shown), NOT guessed — a ceiling that clips a merely slow day would
 # be worse than no ceiling, because it would fail runs that were going to succeed.
 # Each is a wide multiple of its observed max, so only a genuine wedge trips it.
+# Outer guard on [ENSURE-FRESH]. ensure_fresh has its own --max-minutes 35 budget and
+# reports anything it did not attempt; this cap exists only for the case where
+# a child hangs and the internal budget never gets to tick. 40min > 35min so the
+# internal, self-reporting bound is the one that normally fires.
+CAP_ENSURE_FRESH=2400
 CAP_DEPS=120        # obs max     3s  (n=14)
 CAP_PREFLIGHT=300   # obs max    21s  (n=18)
 CAP_BHAVCOPY=2400   # obs max   956s  (n=11)  full EOD rebuild
@@ -239,6 +244,38 @@ FAILURES=()
   step "[2/13] pre-flight: scan input gates"
   cap $CAP_PREFLIGHT "[2/13] pre-flight gates" \
     $PY preflight_scan_inputs.py || FAILURES+=("STARTUP: pre-flight input gate(s) failed")
+
+  # ── 1a. bring the data up to NOW before building anything ──────────────────
+  # The pipeline was built around a fixed clock: collect at 03:00, send at 06:30,
+  # nothing downstream re-asks. So the brief was only ever as good as one
+  # unrepeatable moment — and on 2026-08-19 that moment ran on battery, slept
+  # seven times, and left 77% of the US scan on the previous session. The send
+  # phase then had no move left except to suppress.
+  #
+  # ensure_fresh re-asks. It compares every dataset against the session that has
+  # actually closed AND published as of now, and refreshes the minimum set that
+  # is behind, in dependency order — so a brief requested at 06:30, 11:00 or on
+  # a Saturday collects up to that hour rather than inheriting 03:00's luck.
+  #
+  # 🔴 IT MUST REBUILD THE REPORTS, NOT JUST THE SCANS. The brief reads BOTH
+  # `<market>_scan/*.xlsx` (prices) and `combined_report_results/*.json` (mood,
+  # street talk, fundamentals picks). Refreshing a scan alone ships a brief whose
+  # price sections and narrative sections describe different days — measured
+  # live on 19 Aug, where scan.US reached 18 Aug while combined_US_20260819_0459
+  # still carried 17 Aug prices under a 19 Aug filename. report.IN/report.US are
+  # registered in data_catalog as dependents of their scans precisely so the
+  # planner rebuilds them here.
+  #
+  # FAIL-SAFE BY CONSTRUCTION. This never blocks the send: whatever it cannot
+  # fix falls through to the self-heal below, which runs the full data phase.
+  # A non-zero exit is logged, not fatal — the gates at [13/13] remain the thing
+  # that decides whether a brief is fit to send.
+  if [ "$RUN_SEND" = "1" ] && [ "$RUN_DATA" = "0" ]; then
+    step "[ENSURE-FRESH] bring data up to the latest published session before building"
+    cap $CAP_ENSURE_FRESH "[ENSURE-FRESH] refresh to current session" \
+      $PY ensure_fresh.py --require IN US --max-minutes 35 \
+      || echo "  ensure_fresh could not close every gap — self-heal below is the fallback"
+  fi
 
   # ── 1b. self-heal a missed OR STALE data phase ─────────────────────────────
   # 2026-08-01: the Mac slept through mailer-data's 03:00 slot, so --send at

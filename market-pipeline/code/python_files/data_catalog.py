@@ -299,6 +299,53 @@ def _probe_pg_snapshots(market: str, expected: dt.date | None) -> Probe:
     return Probe(eff, 0, 1 if expected and eff >= expected else 0, detail=note)
 
 
+def _probe_report(market: str, expected: dt.date | None) -> Probe:
+    """A combined report's session, recovered from the PRICES in its picks.
+
+    The brief reads `combined_report_results/combined_<MKT>_*.json` for mood,
+    street talk and the fundamentals picks — so a refreshed scan with an
+    unrefreshed report ships a brief whose price sections and narrative sections
+    describe different days. That is the same silent inconsistency as every
+    other incident here, one layer further down.
+
+    Dated from `picks[].LTP` rather than the payload's `generated` stamp, for
+    the reason that stamp cannot be trusted: on 19 Aug `combined_US_20260819_0459`
+    carried a 19 Aug timestamp over 17 Aug prices, because it was built from the
+    stale scan.
+    """
+    import json as _json
+
+    files = sorted(glob.glob(str(PIPE / "combined_report_results"
+                                 / f"combined_{market}_*.json")))
+    if not files:
+        return Probe(None, error=f"no combined report for {market}")
+    latest = files[-1]
+    try:
+        payload = _json.loads(Path(latest).read_text())
+    except Exception as e:
+        return Probe(None, error=f"unreadable {Path(latest).name}: {e}")
+    picks = payload.get("picks") or []
+    px = {str(p.get("Symbol")): float(p["LTP"]) for p in picks
+          if p.get("Symbol") and p.get("LTP") not in (None, "")}
+    if not px:
+        return Probe(None, detail=f"{Path(latest).name}: no priced picks",
+                     error="report carries no prices to date it by")
+    store = PRICE_STORE_FOR[market]
+    con = _duck()
+    dates = []
+    for t, v in list(px.items())[:20]:          # a sample is enough to date it
+        d = _match_session(con, store, market, t, v)
+        if d:
+            dates.append(d)
+    if not dates:
+        return Probe(None, detail=f"{Path(latest).name}: prices unmatched",
+                     error="cannot date report against price store")
+    med = _median(dates)
+    at_exp = sum(1 for d in dates if expected and d >= expected)
+    return Probe(med, len(dates), at_exp,
+                 detail=f"{Path(latest).name}: {len(dates)}/{min(len(px),20)} price-matched")
+
+
 FUND_MAX_AGE_DAYS = 30
 
 
@@ -435,6 +482,21 @@ def _mk(expected: dict[str, dt.date]) -> list[Dataset]:
             refresh=SCAN_REFRESH[mkt], depends_on=(dep,), authority="derived",
             note="Session recovered from the workbook's PRICES, not its filename."))
 
+    # ── TIER 2b · combined reports (depend on their scan) ─────────────────────
+    # Registered 2026-08-19 so `ensure_fresh` rebuilds a report whenever it
+    # refreshes the scan beneath it. Without this the planner would fix the
+    # prices and leave the narrative a session behind — the brief reads BOTH.
+    for mkt in ("IN", "US"):
+        ds.append(Dataset(
+            f"report.{mkt}", "report", mkt,
+            f"combined_report_results/combined_{mkt}_*.json",
+            ms.MARKETS[mkt].source,
+            (lambda m=mkt: _probe_report(m, E(m))),
+            refresh=f"daily_combined_report.py --market {mkt} --html",
+            depends_on=(f"scan.{mkt}",), authority="derived",
+            note="Mood, street talk and fundamentals picks the brief renders. "
+                 "Dated from its own picks' prices, not its `generated` stamp."))
+
     # ── TIER 3 · derived ──────────────────────────────────────────────────────
     for mkt in ("IN", "US", "JP", "KR", "EU"):
         ds.append(Dataset(
@@ -468,7 +530,8 @@ def _mk(expected: dict[str, dt.date]) -> list[Dataset]:
     ds.append(Dataset(
         "brief", "brief", "*", "brief_today.html", "derived from scans",
         _probe_brief, refresh="./daily_mailer.sh --send",
-        depends_on=tuple(f"scan.{m}" for m in ("IN", "US")), authority="derived",
+        depends_on=("scan.IN", "scan.US", "report.IN", "report.US"),
+        authority="derived",
         note="The deliverable. Its caveat must name each market's session."))
     return ds
 
