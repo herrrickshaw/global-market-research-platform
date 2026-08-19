@@ -424,3 +424,122 @@ technology, medicine and finance — **not** corrected, because no
 migrant-specific series for them was reachable. So the advanced-economy savings
 figures are understated, and every Gulf-versus-AE comparison in these modules is
 now the conservative one.
+
+
+---
+
+# Expanded destination panel — `immigration_destination_panel.py`
+
+```bash
+python3 research/diaspora/immigration_destination_panel.py
+```
+
+Widens coverage from 16 destinations to **32**, and adds the dimension the
+savings modules cannot see: how long it takes to become permanent, and whether
+nationality changes the answer.
+
+## Where the country list comes from — and what that's worth
+
+The candidate list is drawn from the "best countries to migrate from India"
+genre (Global Citizen Solutions, CanApprove, Visa Library, Immigrant Invest,
+Shiksha, UniAcco). **Those pages are published by firms that sell the visas they
+recommend**, so their rankings are advertising and their numbers are unusable.
+
+They are used for exactly one thing: scoping the choice set. *Which destinations
+do Indians actually consider?* — that they answer honestly, because it reflects
+their own demand. Every number attached comes from elsewhere: OECD for wages,
+Eurostat and MoSPI for inflation, published policy for pathways.
+
+**The pages define the rows. They do not fill the cells.**
+
+## The binding constraint moved
+
+Adding 14 OECD average wages (Luxembourg $90,384 · Denmark $88,971 · Belgium
+$86,545 · Ireland $86,235 · Austria $83,716 · Norway $82,016 · South Korea
+$60,909 · Sweden $60,415 · Finland $59,597 · Spain $54,564 · Italy $51,019 ·
+Poland $44,211 · Portugal $40,002 · Czechia $38,489) moved **zero** countries
+into the ranked set — because a wage without a matching tax schedule produces no
+savings figure.
+
+| Blocked by | Count |
+|---|---|
+| no tax schedule | 15 |
+| no wage | 2 |
+| both | 1 |
+
+**It is tax data, not wage data, that is now the gap.** OECD *Taxing Wages*
+carries exactly the needed series — net personal average tax rate, single, no
+children, at 100% of average wage — and `oecd.org` is blocked here at 403. That
+one table would move most of the 14 into the ranking at a stroke. There's a test
+pinning this claim so it can't go stale silently.
+
+## Time to permanence
+
+| Years | Countries |
+|---|---|
+| 1 | **Canada** (Express Entry), **Australia** (GSM 189/190) |
+| 2 | Japan (HSP), Ireland, New Zealand |
+| 3 | Germany (Blue Card / Opportunity Card), Norway |
+| 4 | Sweden, Finland |
+| 5 | Netherlands, UK, Austria, Belgium, Luxembourg, Portugal, Spain, Italy, Poland, Czechia, South Korea, France |
+| 8 | Denmark |
+| 10 | Switzerland |
+| none | US, Singapore, all six Gulf states, Malaysia |
+
+Points-based routes reach permanence measurably faster than sponsored ones —
+also pinned by a test.
+
+## The fact that dominates this decision for Indian nationals
+
+**EB-2 / EB-3 employment-based green card, India-born: 12–15+ years** on current
+Visa Bulletin movement. As of the **August 2026** bulletin the EB-2 India filing
+cut-off is *unavailable* — the annual cap is reached; State announced India hit
+its yearly EB-2 cap on 21 May 2026. Cause: the **7% per-country cap applies
+regardless of population**.
+
+Every other module here ranks the US on money, and the real-savings ranking puts
+it **first**. This is the column money cannot see. The same job in Canada or
+Australia converts to permanent residence in about a year; in the US an Indian
+national may wait over a decade for the same status — a wait attaching to
+*nationality*, not to skills or salary. A colleague born elsewhere, in the
+identical role, does not face it.
+
+That doesn't make the savings ranking wrong. It makes it one axis of two, and
+for many people the slower axis decides.
+
+## Inflation context
+
+Sweden 1.0% · Czechia 1.1% · Denmark 1.8% (Eurostat HICP, Jun-2026) · euro area
+2.9% (flash, Jul-2026), against **India CPI 4.45% and WPI 8.30%**. Every host
+rate sits below India's — which is why, for savings that are a claim on Indian
+goods, the destination's own inflation matters far less than the one at home.
+
+---
+
+# Correction: the tax rate was being applied at the wrong income
+
+The first version of `real_savings_ranking.py` computed
+`net_wage = wage_ppp × (1 − tax_burden_120k_pct)`. But `wage_ppp` is the
+*average* wage — $40k–$93k across the panel — so a progressive schedule was
+being charged at a rate belonging to an income nobody in the sample earns.
+Germany was worst: **42.2% applied to a $69,433 wage.**
+
+Now interpolated between the two known points on each schedule ($30k and $120k),
+clamped outside them. It is an approximation — real schedules have more kinks —
+but one anchored at both ends beats using one end for everything.
+
+**This changes the published ranking:**
+
+| | Old rank | New rank | Effective tax (was) |
+|---|---|---|---|
+| United States | 1 | 1 | 23.2% (29.4%) |
+| **Netherlands** | **4** | **2** | **21.2% (37.9%)** |
+| Australia | 2 | 3 | 17.0% (27.8%) |
+| Canada | 3 | 4 | 24.2% (31.8%) |
+| United Kingdom | 5 | 5 | 18.8% (30.1%) |
+| Germany | 6 | 6 | 33.8% (42.2%) |
+| Japan | 7 | 7 | 24.5% (34.7%) |
+
+The Netherlands was the big casualty of the bug — its $30k rate is 4.3%, so
+charging it 37.9% at a $75,370 wage buried it three places below where it
+belongs.

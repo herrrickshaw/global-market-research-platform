@@ -145,12 +145,33 @@ GULF = {"UAE", "Saudi Arabia", "Qatar", "Kuwait", "Oman", "Bahrain"}
 GULF_PER_REMITTER_USD = 8659.0   # central, from the remittance estimator
 
 
+def effective_tax_rate(wage: pd.Series, r30: pd.Series, r120: pd.Series) -> pd.Series:
+    """Tax rate at the wage actually being taxed.
+
+    The source table carries two points on each country's schedule: the burden
+    at US$30k and at US$120k. The first version of this module applied the
+    $120k rate to the average wage — but the average wage is US$40-93k, so a
+    progressive schedule was being charged at a rate belonging to an income
+    nobody in the sample earns. Germany was the worst case: 42.2% applied to a
+    US$69,433 wage.
+
+    Linear interpolation between the two known points, clamped outside them. A
+    real schedule is piecewise-linear with more kinks than this, so it is an
+    approximation — but an approximation anchored at both ends beats using one
+    end for everything.
+    """
+    span = (wage - 30000) / (120000 - 30000)
+    return (r30 + (r120 - r30) * span.clip(0, 1)).round(2)
+
+
 def build_frame(basket: float) -> pd.DataFrame:
     df = build(COUNTRIES, 0.5)
     d = df[df.country.isin(WAGE_PPP_USD_2024)].copy()
     d["wage_ppp_usd"] = d.country.map(WAGE_PPP_USD_2024)
     d["wage_grade"] = d.country.map(WAGE_GRADE)
-    d["net_wage_ppp_usd"] = (d.wage_ppp_usd * (1 - d.tax_burden_120k_pct / 100)).round(0)
+    d["effective_tax_pct"] = effective_tax_rate(
+        d.wage_ppp_usd, d.tax_burden_30k_pct, d.tax_burden_120k_pct)
+    d["net_wage_ppp_usd"] = (d.wage_ppp_usd * (1 - d.effective_tax_pct / 100)).round(0)
     # Gulf rows are carried for their wage only. They get no basket and no
     # savings figure, because none can be computed without double-counting —
     # see the diagnostic in main().
@@ -192,8 +213,9 @@ def main() -> int:
     print("\n--- Like-for-like: OECD PPP wages only (grade A) ---")
     t = like.copy()
     t.insert(0, "rank", range(1, len(t) + 1))
-    print(t[["rank", "country", "wage_ppp_usd", "tax_burden_120k_pct", "net_wage_ppp_usd",
-             "savings_ppp_usd", "savings_rate_pct", "savings_landed_india_usd"]].to_string(index=False))
+    print(t[["rank", "country", "wage_ppp_usd", "tax_burden_30k_pct", "tax_burden_120k_pct",
+             "effective_tax_pct", "net_wage_ppp_usd", "savings_ppp_usd", "savings_rate_pct",
+             "savings_landed_india_usd"]].to_string(index=False))
 
     if len(dropped):
         print(f"  Excluded for want of a tax datum, not ranked: "
@@ -251,7 +273,7 @@ def main() -> int:
     print(f"  burden is lighter still and it lands {us.savings_landed_india_usd / m.loc[m.country == 'Australia', 'savings_landed_india_usd'].iat[0]:.1f}x less. The earlier ranking named")
     print("  this as its blind spot; this is that blind spot measured rather than asserted.")
     print(f"  Germany runs the other way — {int(de.retention_rank)} on retention, {int(de.savings_rank)} on savings — because a")
-    print(f"  {de.tax_burden_120k_pct:.1f}% burden on a wage no higher than Canada's leaves little behind.")
+    print(f"  {de.effective_tax_pct:.1f}% effective burden on a wage no higher than Canada's leaves little behind.")
     print("  The Gulf cannot be placed on this table at all: its wage data is grade C, so")
     print("  the zero-tax-versus-high-wage question stays open at this evidence standard.")
 
