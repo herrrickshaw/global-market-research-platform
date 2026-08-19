@@ -2,6 +2,159 @@
 
 Decisions and material changes to the pipeline, newest first.
 
+## 2026-08-19 — the US fundamentals gap was four bugs, not a coverage limit
+
+40.5% of the scanned US universe (2,359 of 5,829) had no fundamentals. That read
+like a coverage ceiling — small caps, ETFs, the usual tail. It was not. The
+missing list led with **Visa, Exxon, UnitedHealth, Walmart, TSMC and Shell**, and
+every one of them files with the SEC.
+
+- **DECISION: merge tags PER FISCAL YEAR, not first-tag-wins.** `parse_companyfacts`
+  stopped at the first mapped tag holding *any* data. Visa reports revenue under
+  `Revenues` for FY2018-2020 and `RevenueFromContractWithCustomerExcludingAssessedTax`
+  for FY2023-2025 — the ASC 606 transition, which nearly every US filer went
+  through. The loop matched the dead tag, broke, and never looked at the live
+  one; the store keeps 5 fiscal years, so Visa's revenue was NaN in all of them.
+  Per-year merging keeps the exact-tag discipline (first tag in priority order
+  still wins *that year*, unmapped still yields NaN) while spanning a change in
+  how the filing is written rather than in what the company earned. Fixed Visa's
+  revenue and UnitedHealth's equity in one change.
+- **DECISION: read `ifrs-full`, not just `us-gaap`.** `_annual_series` already
+  accepted 20-F and 40-F forms, but only the us-gaap namespace was ever searched,
+  so every IFRS filer parsed to zero rows and vanished: TSM, SHEL, BP, AZN, NVO,
+  SPOT, NU, CP, CCJ and ~200 more ADRs. Verified live against TSM (334 ifrs tags)
+  and SHEL (333). Whichever namespace yields more fields wins **outright** rather
+  than the two being merged — a filer's statements reconcile within one framework,
+  and taking Revenue from IFRS while taking Assets from a stray us-gaap tag
+  produces a row that reconciles to nothing.
+  - New `framework` and `currency` columns, recorded rather than inferred: **NVO
+    files in DKK and SPOT in EUR**. Without the unit on the row, a ratio layer
+    divides a USD price by a DKK earnings figure and returns a confident number.
+- **DECISION: a present-but-empty companyfacts doc is a RESOLUTION FAILURE, not
+  an absence.** `company_tickers.json` maps XOM to CIK 2115436 — an entity also
+  named "Exxon Mobil Corporation", 78 KB, zero parseable rows. Exxon's actual
+  history (3.1 MB, revenue $332bn, equity $259bn) is under the legacy CIK 34088.
+  When a company re-registers, SEC's ticker map follows the new registrant and
+  the filings stay behind. Empty docs are now retried against SEC's name→CIK
+  index (`cik-lookup-data.txt`, 1,046,195 names, cached 30d).
+  - Gated on the doc carrying `us-gaap` or `ifrs-full`. A re-registered filer
+    keeps its accounting namespace; an ETF or trust has `dei` alone and never
+    will. Without that discriminator the fallback fired on every fund in a
+    7,699-name universe, spending four extra requests each to confirm a real
+    absence — measured at 0.6 tickers/s against the 4/s the rate limit allows.
+- **DECISION: EPS is defined on weighted-average diluted shares.** Share counts
+  came only from the dei cover-page tag, attached to whichever fiscal year end
+  was NEAREST with no bound on how near. Visa has two such entries in total, none
+  after 2024, so FY2025 matched a years-old ~469M against a real ~1.9bn and the
+  store reported **EPS 42.74 where Visa's is ~10** — pricing a mega-cap at a
+  quarter of its multiple. Alphabet publishes no such tag at all and came out
+  None. `WeightedAverageNumberOfDilutedSharesOutstanding` is a us-gaap annual
+  duration filed with the income statement, same period, same filing, and is
+  populated where the cover-page tag is not. Preferred per fiscal year; the
+  cover-page count survives only as a fallback bounded to 400 days. Measured
+  after: XOM 6.70 (actual 6.70), UNH 13.23 (~13), AAPL 7.46 (~7.6), GOOGL 10.81
+  (was None), **V now None** — honest, and strictly better than confidently wrong.
+- **Universe drawn from a dead file.** The collector enumerated tickers from
+  `ohlcv_US.parquet`, the orphan panel no scheduled job refreshes (14 Aug while
+  the scan's own store held 17 Aug), so every newly-listed ticker was invisible
+  to it indefinitely. Now the live per-ticker OHLC tree the scan writes: 7,699
+  symbols vs 7,241, and the dead parquet only as a fallback that says so.
+- **`financial_ratios.py` priced US ratios off the same dead panel** — every US
+  PE and PB was a four-day-old close over current fundamentals. Repointed to the
+  live tree (7,689 symbols, 7,357 at the 18 Aug session).
+- **`data_quality.py` audited the wrong store.** Its own "US shares/equity 53-59%
+  null" note measured `fundamentals_history/US.parquet` — 4,597 tickers, no
+  mega-caps, max fy_end 2029 from debt-maturity rows minted as fiscal years —
+  while `financial_ratios.py` was already reading the live EDGAR store. Repointed,
+  with an explicit column rename rather than hoping the two schemas coincide.
+  Measured after: 5,862 tickers, equity 97.1% non-null, eps 80.1%.
+- **Registered `fundamentals.US` in `data_catalog`**, graded on COLLECTION AGE
+  rather than trading session — a 10-K arrives once a year, and grading it
+  against yesterday's close renders the row permanently red, which is how a real
+  signal gets trained out of the operator.
+
+Note the US **price** gap that prompted this closed itself at 08:46 via the
+`quarter-hourly-refresh` job, which re-ran the US scan; all three US price stores
+reached the 18 Aug session. The orphan `ohlcv_US.parquet` stays stale by design —
+retire it or give it a writer.
+
+## 2026-08-19 — freshness is a property of the session, not of the write time
+
+The 03:00 data phase ran on battery. `caffeinate -i -m` does not hold off
+*maintenance* sleep on battery, so the Mac slept 7 times mid-run (0 on 08-17 and
+08-18, when it was plugged in); the phase took 112 min against a 21.9-min
+baseline, 3,872 US tickers failed their incremental refresh on a yfinance SQLite
+cache error, and **77.1% of the US scan's prices were the 17 Aug close**. The
+reconcile gate caught it and suppressed the send — correctly, and as the last
+line of defence, by which point the collection window had closed.
+
+Everything upstream of that gate reported success, and each did so honestly by
+its own metric: the workbook was named `..._20260819_0459.xlsx`, its mtime was
+that morning, `market_ingest.py --status` read `us … 2026-08-19, 0d, ok [fresh]`,
+and the self-heal test — "does today's workbook exist?" — passed. Rows had
+arrived on time. They described the wrong session.
+
+- **DECISION: grade data by the SESSION it contains, not the time it was
+  written.** New `market_sessions.py` holds each venue's close *and* a
+  publication lag, so `expected_session(mkt, at)` is the newest session that has
+  both closed and been published. Before the lag elapses the answer is the prior
+  session — asking for a bar the source has not finished publishing is how you
+  get a partial bar, which is the same failure in a different costume.
+  *Rejected:* deriving the expected date from the data itself. The clock must not
+  be derivable from what it judges, or a stale store defines its own correctness.
+- **DECISION: probe the MEDIAN unit, not the max.** A max-like reading is what
+  let 66% staleness report as fresh — a handful of symbols refreshed and the
+  maximum moved. The median only moves when the bulk of the store moves, which
+  is the property actually being asserted. `n_at_expected` is reported alongside
+  so a partial refresh reads as partial.
+- **DECISION: recover a scan's session from its PRICES.** `data_state.py` matches
+  workbook LTPs back against dated bars in the price store. Filename and mtime
+  both agreed with each other on 08-19 and both were wrong; a price cannot lie
+  about which bar it equals. *Rejected:* trusting the `_YYYYMMDD_` filename tag.
+- **DECISION: collection becomes a precondition, not a schedule.** `ensure_fresh.py`
+  plans the minimum dependency-ordered set of refreshes that closes the gap
+  between what the stores hold and what has published as of *now*, so a brief
+  requested at any hour collects up to that hour. The 03:00 job becomes an
+  optimisation rather than a single point of failure. Bounded by `--max-minutes`,
+  and anything not attempted is *reported* as not attempted — silent truncation
+  would recreate the failure it exists to prevent.
+- **DECISION: the self-heal test is now session identity, not file existence.**
+  `data_state.py --require-current scan.IN scan.US` fails on a one-session gap
+  (stricter than `--strict`, which ignores CHECK): one session behind is fine for
+  a research panel and unacceptable for prices a brief quotes this morning.
+  Verified against 08-19's real state — exit 1, root cause `cache.ohlc.US`.
+  Note the shell form is `VAR="$(cmd)"; rc=$?`, never `cmd | tail`, whose status
+  is the pipeline's last command and would always look like a pass.
+- **DECISION: the reader is told which session, not when we looked.** `_as_of_html()`
+  reported the scan file's mtime — "🇺🇸 US · last close at scan time · scanned
+  19 Aug 04:59" — above 17 Aug prices. Both halves true, together misleading. It
+  now names the session, venue, close time in the venue's own zone, source, and
+  distance behind, and leads with the staleness rather than burying it.
+- **New `price_quality.py`** (distinct from `data_quality.py`, which validates the
+  *fundamentals* warehouse): flatline, coverage, range, dupes, nulls, gaps, schema
+  over the price stores. FLATLINE is the carry-forward detector — the NVDA 225.01
+  case, where the snapshots table held correct dates, correct row counts and a
+  frozen price.
+  - Two metrics were **corrected before being trusted**. Coverage counted every
+    symbol a panel had ever held, so a decade of delisted scrips made India read
+    42% behind on a day it was current; it now measures only symbols that traded
+    in the *prior* session. The duplicate key ignored India's `_exch` column,
+    reporting 552,797 "duplicates" that were all legitimate NSE/BSE dual
+    listings. Both cut the audit from 11 failures to 5. A check that fires on
+    healthy data is one the operator learns to skip past.
+
+Found while building, all previously invisible: three US price stores at three
+different vintages with nothing comparing them (`ohlcv_US.parquet` is an orphan
+no job refreshes); `warehouse.ohlcv.EU` two sessions behind; `ohlcv_JAPAN.parquet`
+holding a bar for a session still trading; `market_daily.snapshots` stamping rows
+for unclosed sessions; and ~1% structurally invalid rows in the EU warehouse panel
+(2,064 non-positive closes, 2,015 bars with high < low, 33,687 closes outside
+their own range), concentrated in a few illiquid Nordic/London names since 2016.
+
+**Still open: the battery gap itself.** `caffeinate -i -m` is not sufficient on
+battery and this recurs every night the Mac is unplugged. Needs an on-battery
+pre-flight gate or an assertion that actually holds.
+
 ## 2026-08-18 — the send gate had two witnesses giving one testimony
 
 The brief's price gate cross-checked the India scan against `yfinance` and

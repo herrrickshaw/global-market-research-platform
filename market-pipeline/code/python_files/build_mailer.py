@@ -520,72 +520,90 @@ def _corr_section(top_n: int = 3) -> str:
     return "".join(blocks)
 
 
-def _as_of_html() -> str:
-    """State the data vintage explicitly: what closed when, and when we looked.
+_FLAG = {"IN": "🇮🇳", "US": "🇺🇸", "JP": "🇯🇵", "KR": "🇰🇷", "EU": "🇪🇺"}
 
-    Every price here is a LAST OFFICIAL CLOSE, not a live quote — but the brief is
-    read hours later, often with the market already open. Measured 2026-07-15 at
-    09:15 IST, live quotes had already drifted from the closes in that morning's
-    brief: HDFCBANK 809.4 -> 812.0, ICICIBANK 1407.7 -> 1417.0, INFY 1092.9 ->
-    1077.0 (1.5%). "Data as of last close" doesn't convey that. This does.
+# Markets this email actually quotes. A vintage row for a market the brief does
+# not cover reads as a coverage claim for content that is not there (the reason
+# EU/JP/KR were dropped from this block on 2026-08-12).
+_QUOTED = ["IN", "US"]
+
+
+def _as_of_html() -> str:
+    """State the data vintage explicitly: WHICH session, from where, how old.
+
+    Every price here is a LAST OFFICIAL CLOSE, not a live quote, and the brief is
+    read hours later — often with the market already open. Measured 2026-07-15 at
+    09:15 IST, live quotes had already drifted from that morning's closes:
+    HDFCBANK 809.4 -> 812.0, ICICIBANK 1407.7 -> 1417.0, INFY 1092.9 -> 1077.0
+    (1.5%). "Data as of last close" does not convey that. This does.
+
+    🔴 REWRITTEN 2026-08-19. The previous version reported the scan FILE'S MTIME
+    ("🇺🇸 US · last close at scan time · scanned 19 Aug 04:59") over prices that
+    were the 17 Aug close. Both halves were true; together they were misleading,
+    because mtime says when we looked and never what we are looking at. That
+    morning a reader had no way to tell a two-day-old price from a fresh one.
+
+    The session is now recovered from the PRICES THEMSELVES (data_state, which
+    matches scan LTPs back against dated bars) and stated outright, alongside the
+    venue, the close time in the venue's own zone, and the source. When the
+    quoted data is behind the session that has actually closed and published, the
+    block says so FIRST, in the header, rather than leaving it to be inferred
+    from two dates in a table.
     """
     import datetime as _d
 
-    gen = _d.datetime.now()
-    rows = []
-
-    # India: authoritative — the bhavcopy cache's own max trade date
     try:
-        import os as _os
-        import duckdb as _dd
+        import data_state as _ds
 
-        p = (
-            Path(
-                _os.environ.get("BHAV_CACHE", Path.home() / "market-pipeline" / "data" / "bhavcopy_cache")
-            )
-            / "cleaned_long.parquet"
-        )
-        if p.exists():
-            d = _dd.connect().execute(f"SELECT max(Date) FROM read_parquet('{p}')").fetchone()[0]
-            rows.append(("🇮🇳 India (NSE/BSE)", f"{d:%d %b %Y} close", "official bhavcopy"))
+        rows = _ds.provenance(_QUOTED)
     except Exception:
-        pass
-
-    # Other markets: report when their scan ran; the prices in it are that run's
-    # last available close.
-    #
-    # 2026-08-12: EU/JP/KR removed alongside their sections. A vintage row for a
-    # market the brief no longer quotes is worse than no row — it reads as a
-    # coverage claim ("we looked at Korea at 11:07") for content that isn't
-    # there. The scans still run and the files still exist; they are simply not
-    # this email's subject any more.
-    for label, pat in (
-        ("🇺🇸 US", "us_full_scan/us_full_scan_*.xlsx"),
-    ):
-        try:
-            fs = sorted(glob.glob(pat))
-            if fs:
-                m = _dt.datetime.fromtimestamp(os.path.getmtime(fs[-1]))
-                rows.append((label, "last close at scan time", f"scanned {m:%d %b %H:%M}"))
-        except Exception:
-            continue
-
+        rows = []
     if not rows:
         return ""
-    body = "".join(
-        f"<tr><td style='padding:2px 10px 2px 0'>{a}</td>"
-        f"<td style='padding:2px 10px 2px 0'><b>{b}</b></td>"
-        f"<td style='padding:2px 0;color:#777'>{c}</td></tr>"
-        for a, b, c in rows
-    )
+
+    gen = _d.datetime.now()
+    behind = [r for r in rows if r["stale"]]
+    ahead = [r for r in rows if r["ahead"]]
+
+    body = ""
+    for r in rows:
+        flag = _FLAG.get(r["market"], "")
+        sess = f"{r['session']:%d %b %Y} close" if r["session"] else "unknown"
+        when = (f"{r['closed_local']:%H:%M %Z}" if r["closed_local"] else "")
+        age = ("" if not r["behind"] or r["behind"] < 0 else
+               f" · <b style='color:#c62828'>{r['behind']} session"
+               f"{'s' if r['behind'] > 1 else ''} behind</b>")
+        body += (
+            f"<tr><td style='padding:2px 10px 2px 0'>{flag} {r['label']}</td>"
+            f"<td style='padding:2px 10px 2px 0'><b>{sess}</b>{age}</td>"
+            f"<td style='padding:2px 0;color:#777'>{r['venue']} {when} · {r['source']}</td></tr>"
+        )
+
+    if behind:
+        names = ", ".join(f"{r['label']} ({r['session']:%d %b})" for r in behind)
+        head = (f"<b style='color:#c62828'>⚠️ Stale data: {names} — the latest "
+                f"published close is newer than what is quoted below.</b> Treat "
+                f"those figures as historical, not current. ")
+        bg, bar = "#fdecea", "#c62828"
+    elif ahead:
+        head = ("<b style='color:#e65100'>⚠️ Provisional: at least one market "
+                "below is quoted from a session that has not finished trading, "
+                "so those prices are intraday, not closes.</b> ")
+        bg, bar = "#fff3e0", "#e65100"
+    else:
+        head = "<b>⏱ Prices are last official closes — not live.</b> "
+        bg, bar = "#fffbe6", "#f9a825"
+
     return (
-        "<div class='note' style='background:#fffbe6;border-left:3px solid #f9a825;padding:8px 11px;"
-        "margin:0 0 14px;font-size:11.5px;color:#444'>"
-        f"<b>⏱ Prices are last official closes — not live.</b> This brief was generated "
-        f"<b>{gen:%d %b %Y, %H:%M}</b> and the figures below were accurate as of that moment. "
-        f"Markets move: once trading reopens, live quotes will differ from every price here "
-        f"(on 15 Jul, quotes had already moved up to ~1.5% from the morning's closes by 09:15). "
-        f"Nothing here reflects intraday activity after the close shown."
+        f"<div class='note' style='background:{bg};border-left:3px solid {bar};"
+        f"padding:8px 11px;margin:0 0 14px;font-size:11.5px;color:#444'>"
+        f"{head}"
+        f"This brief was generated <b>{gen:%d %b %Y, %H:%M}</b>. Each market below "
+        f"shows the exact session its prices come from — not when the file was "
+        f"written. Markets move: once trading reopens, live quotes will differ "
+        f"from every price here (on 15 Jul, quotes had moved up to ~1.5% from the "
+        f"morning's closes by 09:15). Nothing here reflects activity after the "
+        f"close shown."
         f"<table style='margin-top:6px;font-size:11px;border-collapse:collapse'>{body}</table>"
         "</div>"
     )

@@ -240,19 +240,41 @@ FAILURES=()
   cap $CAP_PREFLIGHT "[2/13] pre-flight gates" \
     $PY preflight_scan_inputs.py || FAILURES+=("STARTUP: pre-flight input gate(s) failed")
 
-  # ── 1b. self-heal a missed data phase ──────────────────────────────────────
-  # 2026-08-01: the Mac slept through mailer-data's 03:00 slot (the pmset wake
-  # only covers weekdays), so --send at 06:30 gated Thursday's scan against
-  # Friday's closes and correctly refused to send. The gate held; the brief
-  # still never arrived. If today's scan workbooks are absent at send time, the
-  # data phase never ran — run it inline (~12 min) instead of walking into a
-  # guaranteed reconcile failure and an alert email.
+  # ── 1b. self-heal a missed OR STALE data phase ─────────────────────────────
+  # 2026-08-01: the Mac slept through mailer-data's 03:00 slot, so --send at
+  # 06:30 gated Thursday's scan against Friday's closes and correctly refused to
+  # send. The gate held; the brief still never arrived. So if the data phase did
+  # not deliver, run it inline (~12 min) rather than walking into a guaranteed
+  # reconcile failure and an alert email.
+  #
+  # 🔴 2026-08-19: THE FILE-EXISTENCE TEST WAS NOT ENOUGH. The 03:00 phase DID
+  # run and DID write `us_full_scan_20260819_0459.xlsx`, so this check passed —
+  # but the Mac slept seven times mid-run, 3,872 tickers failed their refresh,
+  # and 77% of that workbook's prices were the 17 Aug close. A file existing
+  # under today's date says the job ran, never that it collected today's data.
+  # That is the same mtime-for-content substitution that has caused every
+  # staleness incident in this pipeline.
+  #
+  # The test is now the SESSION the scans actually hold, recovered from their
+  # prices (data_state.py). `--require-current` fails on a one-session gap too,
+  # which is precisely the case that shipped: every US row graded one behind.
   if [ "$RUN_SEND" = "1" ] && [ "$RUN_DATA" = "0" ]; then
     TODAY_TAG="$(date +%Y%m%d)"
     if ! ls indian_full_scan/indian_full_scan_"${TODAY_TAG}"_*.xlsx >/dev/null 2>&1 \
        || ! ls us_full_scan/us_full_scan_"${TODAY_TAG}"_*.xlsx >/dev/null 2>&1; then
       step "[SELF-HEAL] today's scan workbooks missing — running the data phase inline"
       RUN_DATA=1
+    else
+      # NOT `cmd | tail` — a pipeline's status is the LAST command's, so piping
+      # into tail would discard the gate's verdict and always look like a pass.
+      SESSION_CHECK="$($PY data_state.py --markets IN US \
+                          --require-current scan.IN scan.US 2>&1)"
+      SESSION_RC=$?
+      echo "$SESSION_CHECK" | tail -20
+      if [ "$SESSION_RC" -ne 0 ]; then
+        step "[SELF-HEAL] scans hold a stale SESSION (files exist but prices are old) — rerunning data phase inline"
+        RUN_DATA=1
+      fi
     fi
   fi
 
