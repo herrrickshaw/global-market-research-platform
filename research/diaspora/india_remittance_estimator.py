@@ -98,6 +98,28 @@ SOURCES = {
     "digital_share": "RBI Sixth Round: digital channels = 73.5% of remittance transactions, FY2023-24",
     "survey_panel": "RBI Sixth Round covered 30 Authorised Dealer banks, 2 major MTOs, 2 fintechs",
     "send_cost": "World Bank Remittance Prices Worldwide, Q3-2025, ~US$200 corridor, total average cost",
+    "ssa_in_force": "India has SSAs in force with 18 countries: Australia, Austria, Belgium, Canada, "
+                    "Czechia, Denmark, Finland, France, Germany, Hungary, Japan, Luxembourg, Netherlands, "
+                    "Norway, Portugal, Sweden, Switzerland, South Korea. The US is in the pipeline with "
+                    "nothing in force. India-UK SSA was SIGNED 10 Feb 2026 and is not yet in force.",
+}
+
+# Three states, because the binary flag hid the case that matters most for
+# anyone choosing a destination right now. A signed-but-not-ratified agreement
+# protects nobody yet: contributions made today are still at risk.
+SSA_STATUS = {
+    "United Kingdom": "signed 2026-02-10, NOT yet in force",
+}
+
+# Assumptions inside the tax burden column, surfaced because they move the
+# ranking more than most of the parameters we sweep:
+#   - US 29.4% at $120k is federal + FICA + a mid-range state. State choice
+#     swings this by roughly 10pp (TX/FL 0%, CA ~9%) and is not modelled.
+#   - Singapore 8.4% is income tax only. Correct for this population: CPF does
+#     not apply to Employment Pass holders. A citizen/PR would face ~20%+.
+TAX_BASIS_NOTES = {
+    "United States": "federal + FICA + mid-range state; state choice swings ~10pp, unmodelled",
+    "Singapore": "income tax only — CPF does not apply to Employment Pass holders",
 }
 
 TOTAL_REMIT_FY24_USDBN = 118.7      # survey basis — the basis the shares belong to
@@ -116,7 +138,7 @@ COUNTRIES = [
     ("United States",  27.7, 1918415, 3775194, 14.4, 29.4, False,
      "1% excise on cash-funded only (IRC 4475, from 1 Jan 2026)", None, 15.0, 10.0, False),
     ("UAE",            19.2, 3890953,    6614,  0.0,  0.0, False, "none", 3.72, 10.0,  5.0, True),
-    ("United Kingdom", 10.8,  369000,  970969, 12.1, 30.1, True,  "none", 1.91, 10.0, 10.0, False),
+    ("United Kingdom", 10.8,  369000,  970969, 12.1, 30.1, False, "none", 1.91, 10.0, 10.0, False),
     ("Saudi Arabia",    6.7, 2747551,       0,  0.0,  0.0, False, "none", 5.59,  5.0, 10.0, True),
     ("Singapore",       6.6,  350000,  107180,  1.2,  8.4, False, "none", 2.92, 10.0, 10.0, True),
     ("Qatar",           4.1,  830491,       0,  0.0,  0.0, False, "none", None,  5.0, 10.0, True),
@@ -381,6 +403,9 @@ def build(rows, h_hub: float) -> pd.DataFrame:
     ]
 
     df["fdi_fy26_usd_mn"] = df.country.map(FDI_FY26_USDMN)
+    df["ssa_status"] = [SSA_STATUS.get(c, "in force" if f else "none")
+                        for c, f in zip(df.country, df.ssa_with_india)]
+    df["tax_basis_note"] = df.country.map(TAX_BASIS_NOTES)
     return df
 
 
