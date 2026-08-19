@@ -302,13 +302,9 @@ the hurdle is set in India and has nothing to do with the host country's tax cod
 - **Grade A** (like-for-like table): OECD average annual wages 2024, USD PPP —
   US, Switzerland, Netherlands, Germany, Canada, Australia, UK, Japan.
 - **Grade B**: Singapore — OECD Asia/Pacific report, different vintage.
-- **Grade C**: UAE, Qatar, Saudi Arabia — recruitment-survey *national*
-  averages, not a statistical office, not PPP-adjusted, and **not
-  migrant-specific**. Gulf pay is strongly bimodal and the Indian population
-  sits mostly in the lower mode, so these overstate the typical Indian migrant
-  materially. **Excluded from the like-for-like table**, which means the
-  zero-tax-versus-high-wage question — the most interesting one — stays open at
-  this evidence standard.
+- **Grade B**: UAE, Qatar, Saudi Arabia, Kuwait, Oman, Bahrain — the
+  ILO-anchored segment model, which replaced the recruitment-survey national
+  averages. See the next section.
 - Switzerland has a wage but no tax datum, so it is reported and not ranked.
 
 Per-country nominal wage growth is not sourced, which is why the inflation test
@@ -322,3 +318,109 @@ blocks `mea.gov.in`. Nothing from it is used. India CPI/WPI here come from
 MoSPI directly, which is the primary source a blog on the subject would itself
 be citing — so the substance is covered, but if the blog carries analysis you
 want reflected, paste the relevant figures and they can be wired in.
+
+
+---
+
+# Closing the Gulf wage gap — `gulf_wage_model.py`
+
+```bash
+python3 research/diaspora/gulf_wage_model.py
+```
+
+The Gulf previously carried recruitment-survey *national* averages — UAE
+$73,500, Qatar $81,600, Saudi $64,800 — describing a workforce that includes
+Emirati nationals, Western expatriate executives and Gulf managers. Indian
+migrants are not that population. This replaces them with a two-segment model
+of the Indian migrant wage, anchored on ILO-linked statutory floors.
+
+## What the floors actually are
+
+| Country | Binds on migrants? | Basic | Package |
+|---|---|---|---|
+| **Qatar** | **yes** | $275/mo | **$495/mo** |
+| **Kuwait** | **yes** | $244/mo | $244/mo |
+| UAE | **no** | — | — |
+| Saudi Arabia | **no** | — | — |
+| Oman / Bahrain | **no** | — | — |
+
+Qatar's is the region's only universal, non-discriminatory minimum wage —
+QAR 1,000 basic + QAR 500 accommodation + QAR 300 food, all nationalities and
+sectors including domestic workers, developed with the ILO, in force 20 March
+2021. **In the UAE and Saudi Arabia — between them the destination of most
+Indian migrants — expatriate pay has no statutory floor at all.**
+
+## The correction, and its size
+
+Stock-weighted at 70% blue-collar / 30% professional:
+
+| Scenario | Blue-collar | Professional | **Blended Indian migrant** |
+|---|---|---|---|
+| low | $3,297 | $22,873 | **$9,170** |
+| central | $4,800 | $39,210 | **$15,123** |
+| high | $5,934 | $65,000 | **$23,654** |
+
+**The national averages overstated the Indian migrant wage by 4.3–5.4x.**
+
+Composition uses the **stock**, not the arrival flow. MEA emigration-clearance
+tags show the flow shifting from 38% skilled (2014) to 61% (2025), but the stock
+still reflects decades of blue-collar arrivals. Using the flow mix would roughly
+double the modelled wage — the classic error, and there's a test pinning it.
+
+Independent check: the KNOMAD/ILO returnee survey (2,000+ GCC returnees, 2015)
+puts Filipino median pay in Qatar at $435/mo and Ethiopian at $265/mo. The
+Filipino median sits inside the modelled band. The Ethiopian median sits *below*
+Qatar's later statutory floor — corroboration rather than contradiction, since
+the ILO recorded that floor lifting 400,000 workers, 20% of the private sector,
+precisely because such wages were common before it.
+
+## The cross-module finding
+
+The remittance estimator puts Gulf flow at **$8,659 per remitting migrant/yr**.
+The Gulf levies no income tax, so that must come out of the wage above:
+
+| Wage scenario | Blended wage | Implied remit rate | Verdict |
+|---|---|---|---|
+| low | $9,170 | 94.4% | **above band** |
+| central | $15,123 | 57.3% | **above band** |
+| high | $23,654 | 36.6% | fits |
+
+It fits **only** at the high scenario — which requires assuming the top of every
+band at once. The segment decomposition agrees: at low and central, the
+professional 30% would have to remit 58–108% of income, which nobody does.
+
+**So the Gulf's "grade A, two methods agree" result needs qualifying.** The two
+methods still agree on the *flow*, and the ILO data doesn't overturn that. What
+it overturns is the *interpretation*: Gulf remittances cannot be predominantly
+wage remittances sent by labour migrants out of salary. Business and trade
+income from the Gulf's Indian merchant community, NRI deposit flows, and gold
+and trade settlement routed through Dubai must carry much of the value.
+
+That is the same conclusion the advanced-economy analysis reached from the
+opposite direction. **In both blocs, the remittance series is measuring
+considerably more than migrant workers sending wages home.**
+
+## What is now the binding gap
+
+The wage gap is closed; the **basket** gap is not. Applying the
+advanced-economy basket ($28,000) to a $15,123 Gulf wage returns *negative*
+savings, which the observed remittance flow falsifies outright — Gulf migrants
+plainly do save. Inferring the living cost instead gives
+$15,123 − $8,659 = **$6,464/yr, about $539/month**, which Qatar's minimum-wage
+*structure* independently corroborates: basic pay plus accommodation plus food
+in kind leaves exactly that small an out-of-pocket basket.
+
+But that figure is derived *from* the remittance number, so using it would make
+Gulf savings equal Gulf remittances by construction. The Gulf therefore stays
+out of the ranked savings tables — what changed is the reason. It is no longer
+the wage that is unknown.
+
+## The remaining asymmetry runs against the advanced economies
+
+Gulf wages are now migrant-specific; OECD wages are still national averages.
+Indian migrants in the Gulf earn far *below* their host average — corrected
+here. Indian migrants in the US and UK earn *above* theirs, concentrated in
+technology, medicine and finance — **not** corrected, because no
+migrant-specific series for them was reachable. So the advanced-economy savings
+figures are understated, and every Gulf-versus-AE comparison in these modules is
+now the conservative one.

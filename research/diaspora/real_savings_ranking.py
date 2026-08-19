@@ -59,6 +59,7 @@ import pandas as pd
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
+from gulf_wage_model import blended_wage as gulf_blended_wage  # noqa: E402
 from india_remittance_estimator import COUNTRIES, build  # noqa: E402
 
 # ===========================================================================
@@ -111,10 +112,19 @@ WAGE_PPP_USD_2024 = {
     "United States": 82933, "Switzerland": 83000, "Netherlands": 75370,
     "Germany": 69433, "Canada": 69417, "Australia": 67000,
     "United Kingdom": 63691, "Japan": 49446, "Singapore": 93643,
-    "Qatar": 81600, "UAE": 73500, "Saudi Arabia": 64800,
 }
-WAGE_GRADE = {c: ("C - recruitment survey, national avg, not migrant-specific, not PPP"
-                  if c in {"Qatar", "UAE", "Saudi Arabia"}
+
+# Gulf wages now come from the ILO-anchored segment model rather than
+# recruitment-survey national averages, which overstated the Indian migrant
+# wage by 4.3-5.4x. See gulf_wage_model.py. Grade B rather than A: it is a
+# model over statutory floors and published skill references, not a wage
+# series — but it is migrant-specific, which the OECD figures are not.
+GULF_MODELLED = gulf_blended_wage().set_index("scenario").blended_indian_migrant_usd_yr
+for _c in ("Qatar", "UAE", "Saudi Arabia", "Kuwait", "Oman", "Bahrain"):
+    WAGE_PPP_USD_2024[_c] = int(GULF_MODELLED["central"])
+
+WAGE_GRADE = {c: ("B - ILO-anchored segment model, Indian-migrant-specific, nominal not PPP"
+                  if c in {"Qatar", "UAE", "Saudi Arabia", "Kuwait", "Oman", "Bahrain"}
                   else ("B - OECD Asia/Pacific report, different vintage" if c == "Singapore"
                         else "A - OECD average annual wages 2024, USD PPP"))
               for c in WAGE_PPP_USD_2024}
@@ -124,14 +134,29 @@ WAGE_GRADE = {c: ("C - recruitment survey, national avg, not migrant-specific, n
 DEFAULT_BASKET_USD = 28000
 
 
+# The single-basket logic holds only where wages are PPP-adjusted AND the
+# migrant consumes something like a national-standard basket. Neither is true in
+# the Gulf: the wages here are nominal, and a Gulf labour migrant's housing and
+# food are largely provided in kind by the employer — Qatar's minimum wage is
+# literally structured as basic + accommodation + food for that reason. Applying
+# the advanced-economy basket to a US$15,123 Gulf wage returns negative savings,
+# which the observed remittance flow falsifies outright.
+GULF = {"UAE", "Saudi Arabia", "Qatar", "Kuwait", "Oman", "Bahrain"}
+GULF_PER_REMITTER_USD = 8659.0   # central, from the remittance estimator
+
+
 def build_frame(basket: float) -> pd.DataFrame:
     df = build(COUNTRIES, 0.5)
     d = df[df.country.isin(WAGE_PPP_USD_2024)].copy()
     d["wage_ppp_usd"] = d.country.map(WAGE_PPP_USD_2024)
     d["wage_grade"] = d.country.map(WAGE_GRADE)
     d["net_wage_ppp_usd"] = (d.wage_ppp_usd * (1 - d.tax_burden_120k_pct / 100)).round(0)
+    # Gulf rows are carried for their wage only. They get no basket and no
+    # savings figure, because none can be computed without double-counting —
+    # see the diagnostic in main().
     d["real_basket_usd"] = basket
-    d["savings_ppp_usd"] = (d.net_wage_ppp_usd - basket).round(0)
+    d.loc[d.country.isin(GULF), "real_basket_usd"] = float("nan")
+    d["savings_ppp_usd"] = (d.net_wage_ppp_usd - d.real_basket_usd).round(0)
     d["savings_rate_pct"] = (d.savings_ppp_usd / d.net_wage_ppp_usd * 100).round(1)
     # Transfer cost bites the remitted surplus, not the gross wage.
     cost = d.send_cost_pct_q3_25.fillna(d.send_cost_pct_q3_25.mean())
@@ -177,6 +202,28 @@ def main() -> int:
     print("\n--- All countries with any wage datum, grade shown. Not like-for-like. ---")
     print(d[["country", "bloc", "wage_ppp_usd", "net_wage_ppp_usd", "savings_ppp_usd",
              "savings_rate_pct", "savings_landed_india_usd", "wage_grade"]].to_string(index=False))
+
+    print("\n=== THE GULF: wage gap closed, basket gap not ===")
+    gw = d.loc[d.country == "UAE", "wage_ppp_usd"].iat[0]
+    implied = gw - GULF_PER_REMITTER_USD
+    print(f"  The ILO-anchored model puts the blended Indian migrant wage at "
+          f"US${gw:,.0f}/yr,")
+    print(f"  replacing recruitment-survey national averages that overstated it 4.3-5.4x.")
+    print(f"  That closes the wage gap. The basket gap is now what blocks a like-for-like")
+    print(f"  comparison, and it is not a detail: applying the advanced-economy basket")
+    print(f"  (US${args.basket:,.0f}) to this wage returns negative savings, which the observed")
+    print(f"  remittance flow falsifies outright. Gulf migrants plainly do save.")
+    print(f"\n  What the living cost must be, inferred rather than sourced:")
+    print(f"    wage US${gw:,.0f} - remittance US${GULF_PER_REMITTER_USD:,.0f} = "
+          f"US${implied:,.0f}/yr, about US${implied / 12:,.0f}/month.")
+    print(f"  That is corroborated from an unexpected direction: Qatar's ILO-developed")
+    print(f"  minimum wage is structured as basic pay PLUS accommodation PLUS food, both")
+    print(f"  provided in kind. A migrant whose housing and meals are employer-supplied")
+    print(f"  has exactly the small out-of-pocket basket this implies.")
+    print(f"\n  But it is derived FROM the remittance figure, so using it would make Gulf")
+    print(f"  savings equal Gulf remittances by construction — circular, and worth no")
+    print(f"  ranking place. The Gulf therefore stays out of the ranked tables. What has")
+    print(f"  changed is the reason: it is no longer the wage that is unknown.")
 
     print("\n=== THE RECONCILIATION: retention efficiency vs absolute savings ===")
     from savings_destination_ranking import score  # noqa: PLC0415
@@ -254,11 +301,14 @@ def main() -> int:
     print(f"\nCSV written: {path}")
 
     print("\n=== WHAT IS STILL MISSING ===")
-    print("  - Gulf wages are grade C: recruitment-survey national averages, not")
-    print("    migrant-specific. Gulf pay is bimodal and the Indian population sits")
-    print("    mostly in the lower mode, so these overstate the typical Indian migrant")
-    print("    materially. The Gulf is excluded from the like-for-like table for that")
-    print("    reason, not because it does not matter — it is the largest bloc.")
+    print("  - The remaining asymmetry now runs AGAINST the advanced economies. Gulf")
+    print("    wages are migrant-specific (ILO-anchored segment model); OECD wages are")
+    print("    national averages. Indian migrants in the Gulf earn far below their host")
+    print("    average, which is now corrected — but Indian migrants in the US and UK")
+    print("    earn ABOVE theirs, concentrated in technology, medicine and finance, and")
+    print("    that is not corrected because no migrant-specific series for them was")
+    print("    reachable. So the advanced-economy savings figures here are understated,")
+    print("    and the Gulf comparison below is the conservative one.")
     print("  - Per-country nominal wage growth is not sourced, which is why the test is")
     print("    framed as a breakeven rather than a realised real return.")
     print("  - masaladeutsch.blogspot.com was requested as a source and is blocked by")
