@@ -198,11 +198,9 @@ country's flag in the table checks out.
 
 ## What the ranking cannot see
 
-Cost of living is not modelled — this ranks how much of a salary survives tax
-and transfer, not what is left after rent and school fees. Neither are wage
-levels: the same-gross premise flatters low-tax, low-wage markets and penalises
-high-tax, high-wage ones. Nor currency, asset returns, healthcare, schooling,
-visa risk, or whether you would want to live there.
+Cost of living and wage levels are **now modelled** — see the next section,
+which inverts this ranking. Still absent: currency, asset returns, healthcare,
+schooling, visa risk, or whether you would want to live there.
 
 Weights are judgement and are swept at runtime (`retention only`, `retention
 halved`, `ssa doubled`). The Gulf's ACCUMULATE lead survives every reweighting;
@@ -212,3 +210,115 @@ One structural caveat the score reports but cannot weigh: several top-ranked
 destinations are missing a component (no World Bank send-cost datum for Qatar,
 Kuwait, Oman or Bahrain), so they are scored on ~85–97% of the weight and
 normalised up. `data_completeness_pct` flags this on every row.
+
+
+---
+
+# Real savings and the inflation test — `real_savings_ranking.py`
+
+```bash
+python3 research/diaspora/real_savings_ranking.py            # writes reports/real_savings_ranking.csv
+python3 research/diaspora/real_savings_ranking.py --basket 32000
+```
+
+Closes the retention ranking's stated blind spot by adding what you earn and
+what you spend, then asks whether the resulting savings stream beats inflation
+**in India**, where the money lands.
+
+## The PPP trap
+
+The obvious construction — nominal wage minus a cost-of-living index — double
+counts, because the OECD wage series is already PPP-adjusted, i.e. already
+deflated by the host price level. So this works in PPP-USD throughout. In PPP
+terms a fixed real basket costs the same everywhere by construction, so cost of
+living collapses into one constant:
+
+```
+savings_ppp = wage_ppp × (1 − tax) − real_basket
+```
+
+The basket is the single free parameter and is swept ($20k–$36k). Converting
+the surplus into Indian purchasing power multiplies by a constant identical
+across host countries, so it moves the level, never the order.
+
+## The headline result: the two rankings invert
+
+Rank correlation between retention efficiency and absolute savings is **−0.51**.
+
+| Country | Retention rank | Savings rank | Lands in India / yr |
+|---|---|---|---|
+| United States | 19 | **1** | $29,300 |
+| Australia | 16 | 2 | $19,121 |
+| Canada | 15 | 3 | $18,514 |
+| Netherlands | 11 | 4 | $18,035 |
+| United Kingdom | 12 | 5 | $16,204 |
+| Germany | 17 | 6 | $11,635 |
+| Japan | 13 | 7 | $4,112 |
+
+The US ranks 19th on retention and 1st on absolute savings. It has the largest
+wage and the 2nd-lightest burden of the seven — and it is the *wage* that
+separates it: Australia's burden is lighter still and it lands 1.5x less. The
+earlier ranking named this as its blind spot; this measures it.
+
+Order is stable across every basket size tested.
+
+## The inflation test
+
+Savings earned abroad are a claim on Indian goods, so the hurdle is Indian
+inflation — and which one depends on what the money is for. All figures from
+**MoSPI, live via MCP** (CPI base 2024, All India Combined, July 2026;
+WPI base 2011-12, April 2026 vs April 2025).
+
+| Money is for | Priced by | India inflation | Breakeven host wage growth |
+|---|---|---|---|
+| Gold / personal effects | CPI personal care & effects | **14.77%** | 14.77% |
+| Property / construction | **WPI headline** | **8.30%** | 8.30% |
+| Restaurants / accommodation | CPI restaurants | 7.72% | 7.72% |
+| Family consumption | CPI food & beverages | 5.24% | 5.24% |
+| *(general / mixed)* | *CPI headline* | *4.45%* | *4.45%* |
+| Education fees | CPI education services | 3.64% | 3.64% |
+| Rent / utilities at home | CPI housing & fuels | 2.16% | 2.16% |
+| Medical support | CPI health | 1.34% | 1.34% |
+
+**India WPI is running at 8.30% against CPI's 4.45% — nearly double.** That gap
+is the most consequential number here, because remittances disproportionately
+fund exactly the things WPI prices: property, construction, and (via the
+14.77% personal-effects division) gold.
+
+The implication is uncomfortable. Advanced-economy nominal wage growth runs in
+the low single digits. So:
+
+- Medical support (1.34%) and home rent/utilities (2.16%) clear comfortably.
+- Education (3.64%) and headline (4.45%) are roughly a coin toss.
+- **Property (8.30%) and gold (14.77%) are not cleared by any advanced-economy
+  wage.** A remitter saving abroad to buy Indian property is losing ground every
+  year the transfer is deferred.
+
+A destination can top the retention table and still lose real ground, because
+the hurdle is set in India and has nothing to do with the host country's tax code.
+
+## Data grades — read before quoting
+
+- **Grade A** (like-for-like table): OECD average annual wages 2024, USD PPP —
+  US, Switzerland, Netherlands, Germany, Canada, Australia, UK, Japan.
+- **Grade B**: Singapore — OECD Asia/Pacific report, different vintage.
+- **Grade C**: UAE, Qatar, Saudi Arabia — recruitment-survey *national*
+  averages, not a statistical office, not PPP-adjusted, and **not
+  migrant-specific**. Gulf pay is strongly bimodal and the Indian population
+  sits mostly in the lower mode, so these overstate the typical Indian migrant
+  materially. **Excluded from the like-for-like table**, which means the
+  zero-tax-versus-high-wage question — the most interesting one — stays open at
+  this evidence standard.
+- Switzerland has a wage but no tax datum, so it is reported and not ranked.
+
+Per-country nominal wage growth is not sourced, which is why the inflation test
+is framed as a breakeven rather than a realised real return.
+
+## On the requested source
+
+`masaladeutsch.blogspot.com` was named as a source. It is **blocked by this
+environment's egress policy (403)**, the same organization-level denial that
+blocks `mea.gov.in`. Nothing from it is used. India CPI/WPI here come from
+MoSPI directly, which is the primary source a blog on the subject would itself
+be citing — so the substance is covered, but if the blog carries analysis you
+want reflected, paste the relevant figures and they can be wired in.

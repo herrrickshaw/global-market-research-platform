@@ -156,3 +156,85 @@ def test_the_implausible_first_cut_readings_are_flagged_not_repeated(df):
 
 def test_full_check_suite_passes(df, capsys):
     assert checks(df, full=True)
+
+
+# ===========================================================================
+# Real-savings / inflation module
+# ===========================================================================
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "research", "diaspora"))
+
+from real_savings_ranking import (  # noqa: E402
+    INDIA_CPI,
+    INDIA_WPI_INDEX,
+    INDIA_WPI_YOY,
+    USE_OF_FUNDS,
+    WAGE_GRADE,
+    WAGE_PPP_USD_2024,
+    build_frame,
+)
+
+
+def test_wpi_yoy_is_derived_from_the_two_index_levels_not_asserted():
+    expected = round((INDIA_WPI_INDEX["2026-04"] / INDIA_WPI_INDEX["2025-04"] - 1) * 100, 2)
+    assert INDIA_WPI_YOY == expected
+
+
+def test_wholesale_inflation_outruns_consumer_inflation():
+    # The whole point of reporting both: an asset-directed remittance faces a
+    # materially higher hurdle than a consumption-directed one.
+    assert INDIA_WPI_YOY > INDIA_CPI["CPI (General)"]
+
+
+def test_every_use_of_funds_maps_to_a_real_cpi_division():
+    for use, idx in USE_OF_FUNDS.items():
+        assert idx in INDIA_CPI, f"{use} points at a division not in the CPI table"
+
+
+def test_every_wage_has_a_grade():
+    assert set(WAGE_GRADE) == set(WAGE_PPP_USD_2024)
+    assert all(g[0] in "ABC" for g in WAGE_GRADE.values())
+
+
+def test_gulf_wages_are_not_graded_a():
+    # They are recruitment-survey national averages, not migrant-specific, and
+    # must never enter the like-for-like table.
+    for c in ("UAE", "Qatar", "Saudi Arabia"):
+        assert WAGE_GRADE[c].startswith("C")
+
+
+def test_savings_falls_as_the_basket_rises():
+    lo = build_frame(20000).set_index("country").savings_ppp_usd
+    hi = build_frame(36000).set_index("country").savings_ppp_usd
+    common = lo.dropna().index.intersection(hi.dropna().index)
+    assert len(common) > 5
+    assert (hi[common] < lo[common]).all()
+
+
+def test_transfer_cost_never_increases_what_lands_in_india():
+    d = build_frame(28000).dropna(subset=["savings_ppp_usd"])
+    assert (d.savings_landed_india_usd <= d.savings_ppp_usd).all()
+
+
+def test_savings_rate_is_a_share_of_net_wage():
+    d = build_frame(28000).dropna(subset=["savings_ppp_usd", "net_wage_ppp_usd"])
+    recomputed = (d.savings_ppp_usd / d.net_wage_ppp_usd * 100).round(1)
+    assert (recomputed - d.savings_rate_pct).abs().max() < 0.05
+
+
+def test_the_two_rankings_genuinely_disagree():
+    """If retention efficiency predicted absolute savings, the module would be
+    redundant. It does not — that inversion is the finding."""
+    from savings_destination_ranking import score
+
+    d = build_frame(28000)
+    like = d[d.wage_grade.str.startswith("A") & d.net_wage_ppp_usd.notna()].copy()
+    like["savings_rank"] = range(1, len(like) + 1)
+    ret = score(build(COUNTRIES, 0.5), "ACCUMULATE", "professional")
+    ret = ret.dropna(subset=["score"]).reset_index(drop=True)
+    ret["retention_rank"] = ret.index + 1
+    m = like.merge(ret[["country", "retention_rank"]], on="country")
+    assert m.retention_rank.corr(m.savings_rank) < 0.3
+    # The US specifically: poor on retention, best on absolute savings.
+    us = m.loc[m.country == "United States"].iloc[0]
+    assert us.savings_rank == 1
+    assert us.retention_rank > len(m)
