@@ -25,10 +25,30 @@ FH = "/Users/umashankar/repos/global-stock-screener/cache_seed/fundamentals_hist
 WH = str(_wh.ohlcv())
 FUND_FILE = {"india": "IN_screener_only_backup", "us": "US", "korea": "KR"}
 
+# 🔴 2026-08-19: US read `fundamentals_history/US.parquet` — 4,597 tickers, none
+# of the mega-caps, max fy_end 2029 (debt-maturity rows minted as fiscal years).
+# The live EDGAR store `market_cache/fundamentals/US_current.parquet` had 5,802
+# tickers, and `financial_ratios.py` was already reading THAT one. So this
+# module's own "US shares/equity 53-59% null" note was measuring an abandoned
+# file, not the store the ratios are actually built from.
+#
+# Column names differ between the two shapes (`stockholders_equity` here vs
+# `equity` there), so the override carries an explicit rename rather than
+# hoping the schemas coincide.
+try:
+    import data_registry as _R
+    _EDGAR_US = Path(_R.FUND_DIR) / "US_current.parquet"
+except Exception:
+    _EDGAR_US = Path("/Users/umashankar/market-pipeline/market_cache/fundamentals/US_current.parquet")
+
 
 def latest_fundamentals(mkt: str) -> pd.DataFrame:
     """Latest-FY net_income / shares / total-equity per ticker for a market."""
-    f = pd.read_parquet(f"{FH}/{FUND_FILE[mkt]}.parquet")
+    if mkt == "us" and _EDGAR_US.exists():
+        f = pd.read_parquet(_EDGAR_US).rename(
+            columns={"stockholders_equity": "equity"})
+    else:
+        f = pd.read_parquet(f"{FH}/{FUND_FILE[mkt]}.parquet")
     f = f.sort_values("fy_end").groupby("ticker", as_index=False).last()
     ni = pd.to_numeric(f.net_income, errors="coerce")
     sh = pd.to_numeric(f.shares, errors="coerce")

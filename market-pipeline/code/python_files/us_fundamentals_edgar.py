@@ -61,7 +61,20 @@ except Exception:
 
 STORE = FUND_DIR / "US_current.parquet"
 CIK_CACHE = FUND_DIR / "company_tickers.json"
-UNIVERSE_PARQUET = BHAV_CACHE / "ohlcv_US.parquet"
+
+# 🔴 2026-08-19: the universe used to come from `ohlcv_US.parquet` — an ORPHAN
+# panel no scheduled job refreshes, sitting at the 14 Aug session while the store
+# the US scan actually reads held 17 Aug. Drawing the fundamentals universe from
+# a dead file means every newly-listed ticker is invisible to this collector for
+# as long as that file stays dead, which is indefinitely.
+#
+# The live store is the per-ticker OHLC tree the scan itself writes. The dead
+# parquet is kept only as a last-resort fallback, and says so when it is used.
+try:
+    OHLC_DIR = _R.OHLC_DIR
+except Exception:
+    OHLC_DIR = Path("/Users/umashankar/market-pipeline/market_cache/ohlc")
+UNIVERSE_PARQUET = BHAV_CACHE / "ohlcv_US.parquet"     # fallback only
 
 # SEC asks for a descriptive UA with contact; anonymous UAs get 403'd.
 UA = {"User-Agent": "umashankar market-pipeline umashankartd1991@gmail.com"}
@@ -95,11 +108,47 @@ GAAP_MAP = {
     "cash":                ["CashAndCashEquivalentsAtCarryingValue",
                             "CashCashEquivalentsRestrictedCashAndRestrictedCashEquivalents"],
 }
+# FOREIGN PRIVATE ISSUERS FILE IFRS, NOT US-GAAP (added 2026-08-19).
+# `_annual_series` already accepted 20-F and 40-F forms, but `parse_companyfacts`
+# only ever looked in the `us-gaap` namespace — so every IFRS filer parsed to
+# zero rows and silently vanished from the store. Measured against the 19 Aug US
+# scan, that was TSM, SHEL, BP, AZN, NVO, SPOT, NU, CP, CCJ and ~200 more ADRs:
+# real companies, real SEC filings, no fundamentals.
+#
+# Same discipline as GAAP_MAP — exact tags in priority order, first present wins,
+# no fuzzy matching. Tag names verified live against TSM (334 ifrs tags) and SHEL
+# (333) on 2026-08-19; where one of them lacks a tag the field is simply absent
+# for that filer rather than being approximated from a near-neighbour.
+IFRS_MAP = {
+    "net_income":          ["ProfitLoss", "ProfitLossAttributableToOwnersOfParent"],
+    "revenue":             ["Revenue", "RevenueFromContractsWithCustomers"],
+    "cfo":                 ["CashFlowsFromUsedInOperatingActivities"],
+    "total_assets":        ["Assets"],
+    "long_term_debt":      ["LongtermBorrowings",
+                            "NoncurrentPortionOfNoncurrentLoansAndBorrowings"],
+    "current_assets":      ["CurrentAssets"],
+    "current_liabilities": ["CurrentLiabilities"],
+    "gross_profit":        ["GrossProfit"],
+    "stockholders_equity": ["EquityAttributableToOwnersOfParent", "Equity"],
+    "ebit":                ["ProfitLossFromOperatingActivities"],
+    "capex":               ["PurchaseOfPropertyPlantAndEquipmentClassifiedAsInvestingActivities"],
+    "total_debt":          ["LongtermBorrowings"],
+    "cash":                ["CashAndCashEquivalents"],
+}
+
 # balance-sheet tags are instants (end only); flows must span ~a fiscal year,
 # or the comparative quarterly rows inside a 10-K leak in as annual figures.
 INSTANT = {"total_assets", "long_term_debt", "current_assets",
            "current_liabilities", "stockholders_equity", "total_debt", "cash"}
 ANNUAL_DAYS = (330, 380)
+
+# IFRS reporters state amounts in their own presentation currency. USD is kept
+# alongside the reporting unit so a TWD or EUR filer is not dropped for having
+# no USD facts — but the unit is RECORDED on the row, because a ratio layer that
+# divides a USD price by a TWD earnings figure is worse than a missing value.
+_CURRENCY_UNITS = ("USD", "EUR", "GBP", "TWD", "JPY", "CHF", "SEK", "NOK",
+                   "DKK", "CAD", "AUD", "BRL", "INR", "KRW", "CNY", "HKD",
+                   "ILS", "MXN", "ZAR", "SGD")
 
 
 def _hash_order(syms):
@@ -126,14 +175,27 @@ def load_cik_map(refresh_days: int = 7) -> dict:
 
 
 # ── companyfacts parsing ──────────────────────────────────────────────────────
-def _annual_series(fact_units: dict, instant: bool) -> dict:
-    """{fy_end_date: value} from one tag's unit list, FY figures only,
+def _annual_series(fact_units: dict, instant: bool) -> tuple[dict, str | None]:
+    """({fy_end_date: value}, unit) from one tag's unit list, FY figures only,
     deduped by period end keeping the LATEST filing (10-Ks restate prior
-    years as comparatives; the most recent filing is the corrected one)."""
+    years as comparatives; the most recent filing is the corrected one).
+
+    Returns the unit alongside the series so an IFRS filer reporting in TWD or
+    EUR is kept AND labelled, rather than silently dropped for having no USD
+    facts or silently mixed into a USD store.
+    """
     rows = []
+    unit_seen = None
     for unit, entries in fact_units.items():
-        if unit not in ("USD", "shares"):
+        if unit not in _CURRENCY_UNITS and unit != "shares":
             continue
+        if unit != "shares":
+            # Prefer USD when a filer reports both; otherwise take what there is.
+            if unit_seen == "USD" and unit != "USD":
+                continue
+            if unit == "USD" and unit_seen not in (None, "USD"):
+                rows, unit_seen = [], None      # restart, USD wins
+            unit_seen = unit
         for e in entries:
             form = e.get("form", "")
             if not (form.startswith("10-K") or form.startswith("20-F")
@@ -153,22 +215,94 @@ def _annual_series(fact_units: dict, instant: bool) -> dict:
     out = {}
     for end, filed, val in sorted(rows, key=lambda r: (r[0], r[1])):
         out[end] = val          # later (higher `filed`) overwrites earlier
-    return out
+    return out, unit_seen
 
 
 def parse_companyfacts(doc: dict) -> list[dict]:
-    """companyfacts JSON -> list of per-FY rows in the India-store shape."""
-    gaap = doc.get("facts", {}).get("us-gaap", {})
-    dei = doc.get("facts", {}).get("dei", {})
-    per_field: dict[str, dict] = {}
-    for field, tags in GAAP_MAP.items():
-        for tag in tags:
-            if tag in gaap:
-                s = _annual_series(gaap[tag]["units"], field in INSTANT)
-                if s:
-                    per_field[field] = s
-                    break
-    # shares: dei instant, take the value nearest each fiscal year end
+    """companyfacts JSON -> list of per-FY rows in the India-store shape.
+
+    Tries us-gaap first, then ifrs-full. Whichever namespace yields more fields
+    wins outright rather than the two being merged: a filer's statements are
+    internally consistent within one framework, and cherry-picking Revenue from
+    IFRS while taking Assets from a stray us-gaap tag produces a row that
+    reconciles to nothing.
+    """
+    facts = doc.get("facts", {})
+    dei = facts.get("dei", {})
+
+    def harvest(ns: str, mapping: dict) -> tuple[dict, str | None]:
+        """Merge tags PER FISCAL YEAR, in priority order — not first-tag-wins.
+
+        🔴 2026-08-19. This loop used to stop at the first tag holding any data
+        at all. Visa reports revenue under `Revenues` for FY2018-2020 and under
+        `RevenueFromContractWithCustomerExcludingAssessedTax` for FY2023-2025 —
+        the ASC 606 transition, which nearly every US filer went through. The
+        old loop matched `Revenues`, found data (2018-2020), broke, and never
+        looked at the newer tag; the store keeps the last 5 fiscal years, so
+        Visa's revenue came out NaN in every one of them.
+
+        Merging per-year keeps the exact-tag discipline that makes this file
+        trustworthy — for a given year the first tag in priority order still
+        wins, and an unmapped tag still yields NaN rather than a guess — while
+        letting a field span a tag migration, which is a change in how the
+        filing is written, not in what the company earned.
+        """
+        space = facts.get(ns, {})
+        got: dict[str, dict] = {}
+        unit = None
+        for field, tags in mapping.items():
+            merged: dict[str, float] = {}
+            for tag in tags:
+                if tag not in space:
+                    continue
+                s, u = _annual_series(space[tag]["units"], field in INSTANT)
+                if not s:
+                    continue
+                unit = unit or u
+                for end, val in s.items():
+                    merged.setdefault(end, val)   # earlier tag wins that year
+            if merged:
+                got[field] = merged
+        return got, unit
+
+    gaap_fields, gaap_unit = harvest("us-gaap", GAAP_MAP)
+    ifrs_fields, ifrs_unit = harvest("ifrs-full", IFRS_MAP)
+    if len(ifrs_fields) > len(gaap_fields):
+        per_field, framework, unit = ifrs_fields, "ifrs", ifrs_unit
+    else:
+        per_field, framework, unit = gaap_fields, "us-gaap", gaap_unit
+    # ── share count ───────────────────────────────────────────────────────────
+    # 🔴 2026-08-19. This used to read ONLY the dei cover-page tag
+    # `EntityCommonStockSharesOutstanding` and attach the value NEAREST each
+    # fiscal year end, with no bound on how near. Two ways that goes wrong, both
+    # measured:
+    #   * Visa has two such entries in total, none after 2024. FY2025 therefore
+    #     matched a years-old count of ~469M against a real ~1.9bn, and the store
+    #     reported EPS 42.74 where Visa's is ~10. A wrong EPS is strictly worse
+    #     than a missing one — it prices a mega-cap at a quarter of its multiple.
+    #   * Alphabet does not publish the tag at all, so shares came out None.
+    #
+    # EPS is defined on WEIGHTED-AVERAGE DILUTED shares, and that is a us-gaap
+    # annual duration filed with the income statement — same period, same filing,
+    # populated where the cover-page tag is not (GOOGL 12.23bn, XOM 4.305bn). So
+    # prefer it, per fiscal year, and keep the cover-page count only as a bounded
+    # fallback. A year with neither gets None, which is the honest answer.
+    SHARE_TAGS = ["WeightedAverageNumberOfDilutedSharesOutstanding",
+                  "WeightedAverageNumberOfSharesOutstandingBasic",
+                  "CommonStockSharesOutstanding", "CommonStockSharesIssued"]
+    gaap_space = facts.get("us-gaap", {})
+    shares_by_fy: dict[str, float] = {}
+    for tag in SHARE_TAGS:
+        if tag not in gaap_space:
+            continue
+        instant = tag.startswith("CommonStock")
+        s, _ = _annual_series(gaap_space[tag]["units"], instant)
+        for end, val in s.items():
+            shares_by_fy.setdefault(end, val)
+
+    # dei cover-page count: a point-in-time figure filed WITH the 10-K, so it is
+    # only meaningful within about a year of the period it accompanies.
+    SHARES_MAX_GAP_DAYS = 400
     shares_series = {}
     for tag in ("EntityCommonStockSharesOutstanding",):
         if tag in dei:
@@ -184,8 +318,12 @@ def parse_companyfacts(doc: dict) -> list[dict]:
     ends = sorted({e for s in per_field.values() for e in s if e <= today})[-N_YEARS:]
     rows = []
     for end in ends:
-        row = {"fy_end": end, "source": "edgar"}
-        for field in GAAP_MAP:
+        # `framework` and `unit` are recorded, not inferred downstream. A row
+        # whose figures are TWD must be distinguishable from a USD row before
+        # anything divides a price by it.
+        row = {"fy_end": end, "source": "edgar",
+               "framework": framework, "currency": unit}
+        for field in GAAP_MAP:                # union key set — IFRS_MAP matches it
             row[field] = per_field.get(field, {}).get(end)
         # capex is reported as cash PAID (positive); store it negative to match
         # the yfinance convention the India store uses, and derive FCF the same
@@ -194,12 +332,15 @@ def parse_companyfacts(doc: dict) -> list[dict]:
             row["capex"] = -abs(row["capex"])
         cfo, capex = row.get("cfo"), row.get("capex")
         row["free_cash_flow"] = (cfo + capex) if (cfo is not None and capex is not None) else None
-        if shares_series:
+        # weighted-average diluted for this exact FY, else a cover-page count
+        # filed close enough to it to be about the same company.
+        shares = shares_by_fy.get(end)
+        if shares is None and shares_series:
             near = min(shares_series, key=lambda d: abs(
                 dt.date.fromisoformat(d) - dt.date.fromisoformat(end)))
-            row["shares"] = shares_series[near]
-        else:
-            row["shares"] = None
+            gap = abs((dt.date.fromisoformat(near) - dt.date.fromisoformat(end)).days)
+            shares = shares_series[near] if gap <= SHARES_MAX_GAP_DAYS else None
+        row["shares"] = shares
         rows.append(row)
     return rows
 
@@ -211,6 +352,95 @@ def fetch_companyfacts(cik: int, session: requests.Session) -> dict | None:
         return None
     r.raise_for_status()
     return r.json()
+
+
+# ── successor-CIK resolution ──────────────────────────────────────────────────
+# 🔴 2026-08-19. `company_tickers.json` maps XOM to CIK 2115436 — an entity also
+# named "Exxon Mobil Corporation", 78 KB of companyfacts, ZERO parseable annual
+# rows. Exxon's actual filing history (3.1 MB, revenue $332bn, equity $259bn) is
+# under the legacy CIK 34088. When a company re-registers, SEC's ticker map
+# follows the new registrant while the history stays behind, and the collector
+# fetched the empty one, parsed 0 rows, and dropped the ticker silently.
+#
+# So a mapped CIK that yields zero rows is treated as a RESOLUTION FAILURE, not
+# as an absence, and retried against the name→CIK index — which is keyed by
+# company name and therefore still points at the entity holding the filings.
+# Genuinely factless tickers (ETFs, trusts) resolve to nothing here too and are
+# reported as such, so the two cases stay distinguishable.
+CIK_LOOKUP_CACHE = FUND_DIR / "cik_lookup_by_name.json"
+_LOOKUP_URL = "https://www.sec.gov/Archives/edgar/cik-lookup-data.txt"
+
+
+def load_name_index(session: requests.Session, refresh_days: int = 30) -> dict:
+    """{UPPERCASE COMPANY NAME: [cik, ...]} from SEC's cik-lookup-data.txt."""
+    if CIK_LOOKUP_CACHE.exists():
+        age = (time.time() - CIK_LOOKUP_CACHE.stat().st_mtime) / 86400
+        if age < refresh_days:
+            try:
+                return json.loads(CIK_LOOKUP_CACHE.read_text())
+            except Exception:
+                pass
+    idx: dict[str, list] = {}
+    r = session.get(_LOOKUP_URL, headers=UA, timeout=180, stream=True)
+    r.raise_for_status()
+    for raw in r.iter_lines():
+        if not raw:
+            continue
+        s = raw.decode("latin-1", "replace").rstrip(":")
+        name, _, cik = s.rpartition(":")
+        if name and cik.isdigit():
+            idx.setdefault(name.strip().upper(), []).append(int(cik))
+    CIK_LOOKUP_CACHE.parent.mkdir(parents=True, exist_ok=True)
+    CIK_LOOKUP_CACHE.write_text(json.dumps(idx))
+    return idx
+
+
+def _name_variants(entity: str):
+    """SEC's name index uses abbreviated legal suffixes ('CORP' not
+    'Corporation'), so try the filed name and its common abbreviations."""
+    n = " ".join(entity.upper().replace(",", " ").replace(".", " ").split())
+    seen, out = set(), []
+    for v in (n,
+              n.replace(" CORPORATION", " CORP"),
+              n.replace(" INCORPORATED", " INC"),
+              n.replace(" COMPANY", " CO"),
+              n.replace(" LIMITED", " LTD"),
+              n.replace(" CORPORATION", " CORP").replace(" /DE/", ""),
+              n.rsplit(" ", 1)[0] if " " in n else n):
+        if v and v not in seen:
+            seen.add(v)
+            out.append(v)
+    return out
+
+
+def resolve_by_name(doc: dict, session: requests.Session,
+                    name_idx: dict, tried: int) -> tuple[dict | None, int | None]:
+    """Given an empty-but-present companyfacts doc, find the CIK that has the
+    filings. Returns (better_doc, better_cik) or (None, None)."""
+    entity = (doc or {}).get("entityName") or ""
+    if not entity:
+        return None, None
+    # Only OPERATING COMPANIES get the retry. A re-registered filer still carries
+    # its accounting namespace (XOM's empty successor doc has `us-gaap`); an ETF,
+    # trust or shell has `dei` alone and never will. Without this discriminator
+    # the fallback fires on every fund in a 7,699-name universe, spending four
+    # extra requests each to confirm a real absence — measured at ~0.6 tickers/s
+    # against the 4/s the rate limit allows.
+    ns = set((doc.get("facts") or {}).keys())
+    if not (ns & {"us-gaap", "ifrs-full"}):
+        return None, None
+    for variant in _name_variants(entity):
+        for cik in name_idx.get(variant, [])[:4]:
+            if cik == tried:
+                continue
+            time.sleep(RATE)
+            try:
+                alt = fetch_companyfacts(cik, session)
+            except Exception:
+                continue
+            if alt and parse_companyfacts(alt):
+                return alt, cik
+    return None, None
 
 
 # ── store I/O (same atomic pattern as the India collector) ────────────────────
@@ -237,11 +467,23 @@ def save_store(store: pd.DataFrame, new_rows: list, collected_at: str) -> pd.Dat
 
 
 def universe() -> list[str]:
+    """Live US symbol universe: the per-ticker OHLC tree the scan writes.
+
+    Filenames are the symbols, so this needs no parquet read at all — one
+    directory listing, and it tracks the scan exactly.
+    """
+    if OHLC_DIR.exists():
+        syms = sorted(p.stem for p in OHLC_DIR.glob("*.parquet") if p.stem)
+        if len(syms) > 1000:            # a plausible US universe, not a stub
+            return syms
+        print(f"  ! {OHLC_DIR} holds only {len(syms)} symbols — falling back")
     import duckdb  # only needed here; the venv runner may lack it — fall back
     try:
         con = duckdb.connect()
         syms = [r[0] for r in con.execute(
             f"SELECT DISTINCT Symbol FROM read_parquet('{UNIVERSE_PARQUET}')").fetchall()]
+        print(f"  ! universe from STALE fallback {UNIVERSE_PARQUET.name} "
+              f"({len(syms)} symbols) — no job refreshes this file")
         return [s for s in syms if s]
     except Exception:
         pass
@@ -314,6 +556,9 @@ def main() -> int:
     ap.add_argument("--rate", type=float, default=RATE)
     ap.add_argument("--max-age-days", type=int, default=FRESH_DAYS)
     ap.add_argument("--self-test", action="store_true")
+    ap.add_argument("--no-cik-fallback", action="store_true",
+                    help="skip successor-CIK resolution (faster, loses XOM-class names)")
+    ap.add_argument("--only", nargs="*", help="restrict to these tickers (testing)")
     a = ap.parse_args()
     if a.self_test:
         return self_test()
@@ -336,21 +581,45 @@ def main() -> int:
     todo = [s for s in _hash_order(syms)
             if s.upper() in cik_map and s.upper() not in fresh]
     no_cik = sum(1 for s in syms if s.upper() not in cik_map)
+    if a.only:
+        want = {s.upper() for s in a.only}
+        todo = [s for s in syms if s.upper() in want and s.upper() in cik_map]
+        fresh = set()
     if a.limit:
         todo = todo[: a.limit]
     print(f"universe {len(syms)} | no CIK {no_cik} | fresh-skip {len(fresh)} | fetching {len(todo)}")
 
     sess = requests.Session()
+    name_idx = {}
+    if not a.no_cik_fallback:
+        try:
+            name_idx = load_name_index(sess)
+            print(f"name index: {len(name_idx):,} names (successor-CIK fallback armed)")
+        except Exception as e:
+            print(f"  ! name index unavailable, fallback disabled: {str(e)[:70]}")
+
     collected_at = dt.datetime.now(dt.timezone.utc).isoformat()
     pending: list[dict] = []
     done = failed = 0
+    empty: list[str] = []          # doc present, zero rows, unresolved
+    recovered: list[str] = []      # rescued via successor-CIK fallback
     for i, sym in enumerate(todo, 1):
         try:
             doc = fetch_companyfacts(cik_map[sym.upper()], sess)
-            if doc:
-                for row in parse_companyfacts(doc):
-                    row["ticker"] = sym
-                    pending.append(row)
+            rows = parse_companyfacts(doc) if doc else []
+            # A present-but-empty doc is a resolution failure, not an absence —
+            # see the resolve_by_name comment. Retry before giving up on it.
+            if doc and not rows and name_idx:
+                alt, alt_cik = resolve_by_name(doc, sess, name_idx,
+                                               tried=cik_map[sym.upper()])
+                if alt:
+                    rows = parse_companyfacts(alt)
+                    recovered.append(f"{sym}→{alt_cik}")
+            if doc and not rows:
+                empty.append(sym)
+            for row in rows:
+                row["ticker"] = sym
+                pending.append(row)
             done += 1
         except KeyboardInterrupt:
             print("\ninterrupted — checkpointing")
@@ -368,6 +637,15 @@ def main() -> int:
     store = save_store(store, pending, collected_at)
     print(f"done: {done} fetched, {failed} failed, store {len(store):,} rows "
           f"/ {store['ticker'].nunique() if not store.empty else 0} tickers")
+    if recovered:
+        print(f"  recovered via successor-CIK: {len(recovered)} "
+              f"({', '.join(recovered[:8])}{' …' if len(recovered) > 8 else ''})")
+    # Named, not just counted. These are tickers SEC HAS a record for and we
+    # could not parse — ETFs and trusts legitimately, but also any new tag or
+    # framework we do not yet map. A bare count hides which.
+    if empty:
+        print(f"  no parseable annual facts: {len(empty)} "
+              f"({', '.join(empty[:12])}{' …' if len(empty) > 12 else ''})")
     coverage(store)
     return 0
 

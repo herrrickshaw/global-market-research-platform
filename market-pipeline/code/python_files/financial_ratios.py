@@ -78,10 +78,19 @@ SYMBOL_MASTER = Path(os.environ.get(
 OUT_PARQUET = FUND_DIR / "ratios_latest.parquet"
 OUT_CSV = HERE / "reports" / "financial_ratios.csv"
 
+# 🔴 2026-08-19: the US close source was `ohlcv_US.parquet`, an ORPHAN panel no
+# scheduled job refreshes — it sat at the 14 Aug session while the store the US
+# scan actually reads held 17 Aug. Every US PE and PB here was therefore a
+# four-day-old price over current fundamentals, silently. The live source is the
+# per-ticker OHLC tree the scan itself writes, where the SYMBOL IS THE FILENAME
+# (see _latest_closes).
+_US_OHLC_DIR = Path(os.environ.get(
+    "MARKET_CACHE", "/Users/umashankar/market-pipeline/market_cache")) / "ohlc"
+
 MARKETS = {
-    # market -> (store parquet, close parquet, currency)
+    # market -> (store parquet, close source, currency)
     "india": (FUND_DIR / "IN_current.parquet", BHAV / "cleaned_long.parquet", "INR"),
-    "us":    (FUND_DIR / "US_current.parquet", BHAV / "ohlcv_US.parquet",     "USD"),
+    "us":    (FUND_DIR / "US_current.parquet", _US_OHLC_DIR,                  "USD"),
     # Korea: official DART filings via dart_kr_store.py (IFRS-tagged, 2 FYs).
     # ebit/fcf/debt are deliberately NULL there (no borrowings/EBIT tag in the
     # single-account endpoint) → roce/operating_margin/fcf_yield/d-e stay NULL
@@ -91,12 +100,23 @@ MARKETS = {
 
 
 def _latest_closes(con, path: Path) -> pd.DataFrame:
-    """(symbol, close, close_date) at each symbol's own last bar."""
+    """(symbol, close, close_date) at each symbol's own last bar.
+
+    Accepts either a single long-format parquet (Symbol column) or a DIRECTORY
+    of per-ticker parquets, where the symbol is the filename and there is no
+    Symbol column at all.
+    """
+    if path.is_dir():
+        src = f"read_parquet('{path}/*.parquet', filename=true)"
+        sym = "regexp_extract(filename, '([^/]+)\\.parquet$', 1)"
+    else:
+        src, sym = f"read_parquet('{path}')", "Symbol"
     return con.execute(f"""
-        SELECT Symbol AS symbol, Close AS close, CAST(Date AS DATE) AS close_date
-        FROM (SELECT *, row_number() OVER (PARTITION BY Symbol ORDER BY Date DESC) rn
-              FROM read_parquet('{path}'))
-        WHERE rn = 1 AND Close IS NOT NULL
+        SELECT symbol, close, close_date FROM (
+            SELECT {sym} AS symbol, Close AS close, CAST(Date AS DATE) AS close_date,
+                   row_number() OVER (PARTITION BY {sym} ORDER BY Date DESC) rn
+            FROM {src})
+        WHERE rn = 1 AND close IS NOT NULL
     """).df()
 
 
