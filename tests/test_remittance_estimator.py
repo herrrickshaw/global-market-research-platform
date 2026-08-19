@@ -195,11 +195,88 @@ def test_every_wage_has_a_grade():
     assert all(g[0] in "ABC" for g in WAGE_GRADE.values())
 
 
-def test_gulf_wages_are_not_graded_a():
-    # They are recruitment-survey national averages, not migrant-specific, and
-    # must never enter the like-for-like table.
-    for c in ("UAE", "Qatar", "Saudi Arabia"):
-        assert WAGE_GRADE[c].startswith("C")
+def test_gulf_wages_are_migrant_specific_and_never_graded_a():
+    # Gulf wages come from the ILO-anchored segment model, not the OECD series,
+    # so they must never be graded A or enter the like-for-like table.
+    for c in ("UAE", "Qatar", "Saudi Arabia", "Kuwait", "Oman", "Bahrain"):
+        assert not WAGE_GRADE[c].startswith("A")
+        assert "Indian-migrant-specific" in WAGE_GRADE[c]
+
+
+def test_gulf_gets_no_basket_and_no_savings_figure():
+    """Applying the advanced-economy basket to a Gulf migrant wage returns
+    negative savings, which the observed remittance flow falsifies. The Gulf is
+    carried for its wage only."""
+    from real_savings_ranking import GULF
+
+    d = build_frame(28000).set_index("country")
+    gulf = d[d.index.isin(GULF)]
+    assert len(gulf) == 6
+    assert gulf.wage_ppp_usd.notna().all()
+    assert gulf.real_basket_usd.isna().all()
+    assert gulf.savings_ppp_usd.isna().all()
+
+
+def test_ilo_correction_moved_the_gulf_wage_down_hard():
+    """The recruitment-survey national averages overstated the Indian migrant
+    wage by several times. If that correction is ever silently reverted, the
+    Gulf reappears at the top of every savings table."""
+    from gulf_wage_model import NATIONAL_AVERAGE_USD_YEAR, blended_wage
+
+    central = blended_wage().set_index("scenario").blended_indian_migrant_usd_yr["central"]
+    for _c, national in NATIONAL_AVERAGE_USD_YEAR.items():
+        assert national / central > 4
+
+
+def test_gulf_wage_band_is_consistent_with_the_knomad_survey_medians():
+    """The blue-collar band is anchored on Qatar's post-2021 statutory floor.
+    The 2015 survey predates that floor, so the check is not "both medians sit
+    inside the band" — it is that the higher-paid nationality sits inside it and
+    the lower-paid one sits below the floor that was later introduced to lift
+    exactly such wages."""
+    from gulf_wage_model import (
+        BLUE_COLLAR_USD_YEAR,
+        KNOMAD_QATAR_MEDIAN_USD_MONTH,
+        KNOMAD_SURVEY_YEAR,
+    )
+
+    lo, hi = BLUE_COLLAR_USD_YEAR[0] / 12, BLUE_COLLAR_USD_YEAR[2] / 12
+    assert KNOMAD_SURVEY_YEAR < 2021
+    assert lo <= KNOMAD_QATAR_MEDIAN_USD_MONTH["Philippines"] <= hi
+    assert KNOMAD_QATAR_MEDIAN_USD_MONTH["Ethiopia"] < lo
+    # And the whole survey sits below the band's top, as pre-floor wages should.
+    assert max(KNOMAD_QATAR_MEDIAN_USD_MONTH.values()) < hi
+
+
+def test_only_qatar_and_kuwait_bind_on_migrant_workers():
+    from gulf_wage_model import WAGE_FLOORS
+
+    binding = {c for c, (_b, _t, covers, _n) in WAGE_FLOORS.items() if covers}
+    assert binding == {"Qatar", "Kuwait"}
+    # The two largest Indian-migrant destinations have no expatriate floor.
+    for c in ("UAE", "Saudi Arabia"):
+        assert WAGE_FLOORS[c][0] is None
+
+
+def test_stock_composition_is_used_not_the_arrival_flow():
+    """The arrival flow has shifted to majority-skilled; the stock has not.
+    Using the flow mix would roughly double the modelled wage."""
+    from gulf_wage_model import COMPOSITION_FLOW_2025, COMPOSITION_STOCK
+
+    assert COMPOSITION_STOCK["blue_collar"] == 0.70
+    assert COMPOSITION_FLOW_2025["skilled"] > COMPOSITION_STOCK["professional"]
+
+
+def test_remittance_estimate_only_fits_the_most_generous_wage_scenario():
+    """The headline cross-module finding: the ILO-anchored wage base supports
+    the Gulf remittance figure only at the top of every band."""
+    from gulf_wage_model import consistency_check, segment_decomposition
+
+    cc = consistency_check(8659.0)
+    assert (cc.verdict == "fits").sum() == 1
+    assert cc.loc[cc.verdict == "fits", "wage scenario"].iat[0] == "high"
+    sd = segment_decomposition(8659.0)
+    assert (sd["credible?"] == "yes").sum() == 1
 
 
 def test_savings_falls_as_the_basket_rises():
