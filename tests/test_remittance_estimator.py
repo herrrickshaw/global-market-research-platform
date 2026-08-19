@@ -14,6 +14,7 @@ Run:
 import os
 import sys
 
+import pandas as pd
 import pytest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "research", "diaspora"))
@@ -315,3 +316,123 @@ def test_the_two_rankings_genuinely_disagree():
     us = m.loc[m.country == "United States"].iloc[0]
     assert us.savings_rank == 1
     assert us.retention_rank > len(m)
+
+
+# ===========================================================================
+# Effective tax rate — the wage/rate mismatch fix
+# ===========================================================================
+def test_effective_rate_interpolates_between_the_two_known_points():
+    import pandas as pd
+
+    from real_savings_ranking import effective_tax_rate
+
+    wage = pd.Series([30000.0, 75000.0, 120000.0])
+    r30 = pd.Series([10.0, 10.0, 10.0])
+    r120 = pd.Series([40.0, 40.0, 40.0])
+    got = effective_tax_rate(wage, r30, r120)
+    assert got.iloc[0] == 10.0
+    assert got.iloc[2] == 40.0
+    assert got.iloc[1] == 25.0   # exactly halfway
+
+
+def test_effective_rate_clamps_outside_the_known_range():
+    import pandas as pd
+
+    from real_savings_ranking import effective_tax_rate
+
+    wage = pd.Series([5000.0, 400000.0])
+    got = effective_tax_rate(wage, pd.Series([10.0, 10.0]), pd.Series([40.0, 40.0]))
+    assert got.iloc[0] == 10.0    # never below the low anchor
+    assert got.iloc[1] == 40.0    # never above the high anchor
+
+
+def test_effective_rate_sits_inside_the_schedule_for_every_country():
+    d = build_frame(28000).dropna(subset=["effective_tax_pct", "tax_burden_30k_pct"])
+    assert (d.effective_tax_pct >= d.tax_burden_30k_pct - 1e-9).all()
+    assert (d.effective_tax_pct <= d.tax_burden_120k_pct + 1e-9).all()
+
+
+def test_the_old_bug_would_have_overtaxed_the_average_wage():
+    """Every country's average wage is below $120k, so charging the $120k rate
+    overstated tax everywhere. Guards against a silent revert."""
+    d = build_frame(28000).dropna(subset=["effective_tax_pct"])
+    assert (d.wage_ppp_usd < 120000).all()
+    # Only where the schedule is actually progressive. The Gulf's is flat at
+    # zero (Bahrain flat at 1%), so there the two rates coincide by definition.
+    prog = d[d.tax_burden_120k_pct > d.tax_burden_30k_pct]
+    assert len(prog) >= 7
+    assert (prog.effective_tax_pct < prog.tax_burden_120k_pct).all()
+    flat = d[d.tax_burden_120k_pct == d.tax_burden_30k_pct]
+    assert (flat.effective_tax_pct == flat.tax_burden_120k_pct).all()
+
+
+# ===========================================================================
+# Immigration destination panel
+# ===========================================================================
+from immigration_destination_panel import (  # noqa: E402
+    PATHWAY,
+    US_BACKLOG,
+    WAGE_PPP_USD_2024_EXTENDED,
+    panel,
+)
+
+
+def test_panel_covers_more_than_the_savings_modules():
+    d = panel()
+    assert len(d) >= 30
+    assert len(d) > len(WAGE_PPP_USD_2024)
+
+
+def test_extended_wages_do_not_collide_with_the_ranked_set():
+    """The extended set is grade B and must not silently overwrite a grade-A or
+    ILO-anchored wage already in the ranked set."""
+    assert not (set(WAGE_PPP_USD_2024_EXTENDED) & set(WAGE_PPP_USD_2024))
+
+
+def test_every_country_with_a_wage_or_pathway_appears_once():
+    d = panel()
+    assert d.country.is_unique
+    assert set(PATHWAY) <= set(d.country)
+
+
+def test_blocked_reason_is_recorded_for_every_unrankable_row():
+    d = panel()
+    blocked = d[~d.has_savings_inputs]
+    assert len(blocked) > 0
+    assert (blocked.blocked_by.str.len() > 0).all()
+    assert (d[d.has_savings_inputs].blocked_by == "").all()
+
+
+def test_the_tax_schedule_is_now_the_binding_constraint():
+    """Adding 14 OECD wages moved nothing into the ranked set — the gap is tax
+    data, not wage data. If that ever flips, the README's claim is stale."""
+    d = panel()
+    blocked = d[~d.has_savings_inputs]
+    tax_blocked = blocked.blocked_by.str.contains("no tax schedule").sum()
+    wage_only = (blocked.blocked_by == "no wage").sum()
+    assert tax_blocked > wage_only
+
+
+def test_gulf_has_inputs_but_is_still_excluded_downstream():
+    """Having wage + a zero tax schedule is not the same as being rankable on
+    savings; the Gulf still has no migrant-specific living cost."""
+    from real_savings_ranking import GULF
+
+    d = panel().set_index("country")
+    assert d.loc[list(GULF), "has_savings_inputs"].all()
+    rs = build_frame(28000).set_index("country")
+    assert rs.loc[list(GULF), "savings_ppp_usd"].isna().all()
+
+
+def test_points_based_routes_reach_permanence_faster_than_sponsored_ones():
+    d = panel().dropna(subset=["years_to_permanence"])
+    pts = d[d.points_based]
+    spons = d[~d.points_based.astype(bool)]
+    assert pts.years_to_permanence.mean() < spons.years_to_permanence.mean()
+
+
+def test_us_has_no_statutory_timeline_and_carries_the_backlog_note():
+    d = panel().set_index("country")
+    assert pd.isna(d.loc["United States", "years_to_permanence"])
+    assert "US_BACKLOG" in d.loc["United States", "pathway_note"]
+    assert "per-country cap" in US_BACKLOG["cause"]
