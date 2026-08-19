@@ -436,3 +436,99 @@ def test_us_has_no_statutory_timeline_and_carries_the_backlog_note():
     assert pd.isna(d.loc["United States", "years_to_permanence"])
     assert "US_BACKLOG" in d.loc["United States", "pathway_note"]
     assert "per-country cap" in US_BACKLOG["cause"]
+
+
+# ===========================================================================
+# ROI on a foreign life
+# ===========================================================================
+from roi_foreign_life import (  # noqa: E402
+    GULF_RECRUITMENT_MONTHS,
+    HOST_WAGE_GROWTH_BAND,
+    PLFS_SALARIED_INR_MONTH,
+    india_wage_growth,
+    payback,
+)
+
+
+def test_india_wage_growth_is_derived_from_the_plfs_series():
+    g = india_wage_growth()
+    yrs = sorted(PLFS_SALARIED_INR_MONTH)
+    lo, hi = PLFS_SALARIED_INR_MONTH[yrs[0]], PLFS_SALARIED_INR_MONTH[yrs[-1]]
+    expected = round(((hi / lo) ** (1 / (yrs[-1] - yrs[0])) - 1) * 100, 2)
+    assert g["cagr_pct"] == expected
+    assert len(g["yoy_pct"]) == len(yrs) - 1
+
+
+def test_the_crossover_holds_indian_wages_grow_faster():
+    """The module's central finding. If PLFS is revised such that this flips,
+    the conclusion must be rewritten rather than silently kept."""
+    assert india_wage_growth()["cagr_pct"] > HOST_WAGE_GROWTH_BAND[1]
+
+
+def test_india_wages_beat_india_cpi_in_real_terms():
+    from real_savings_ranking import INDIA_CPI
+
+    assert india_wage_growth()["cagr_pct"] > INDIA_CPI["CPI (General)"]
+
+
+def test_india_wages_do_not_beat_wpi():
+    """Which is why property is the case where the foreign premium fails."""
+    from real_savings_ranking import INDIA_WPI_YOY
+
+    assert india_wage_growth()["cagr_pct"] < INDIA_WPI_YOY
+
+
+def test_payback_scales_inversely_with_savings():
+    p = payback(15000)
+    assert (p.payback_years.diff().dropna() >= 0).all()      # sorted ascending
+    assert (p.savings_landed_india_usd.diff().dropna() <= 0).all()
+
+
+def test_payback_is_proportional_to_cost():
+    a, b = payback(10000), payback(20000)
+    ja = a.set_index("country").payback_years
+    jb = b.set_index("country").payback_years
+    assert ((jb / ja).round(1) == 2.0).all()
+
+
+def test_gulf_recruitment_cost_is_a_measured_range_not_a_point():
+    lo, hi = GULF_RECRUITMENT_MONTHS
+    assert lo < hi
+    assert hi >= 9    # the survey's upper bound; nine months of earnings
+
+
+# ===========================================================================
+# OECD ingest slot
+# ===========================================================================
+def test_oecd_slot_is_empty_and_falls_back_to_interpolation():
+    """The slot ships empty because oecd.org is unreachable here. Every row must
+    therefore be on the interpolated basis, and say so."""
+    from real_savings_ranking import OECD_NPATR_AT_AVERAGE_WAGE
+
+    d = build_frame(28000)
+    if not OECD_NPATR_AT_AVERAGE_WAGE:
+        assert (d.tax_basis == "interpolated from the $30k/$120k schedule").all()
+
+
+def test_an_oecd_rate_overrides_the_interpolation_for_that_country():
+    """Proves the ingest path works before anyone has data to put in it."""
+    import real_savings_ranking as rs
+
+    original = dict(rs.OECD_NPATR_AT_AVERAGE_WAGE)
+    try:
+        rs.OECD_NPATR_AT_AVERAGE_WAGE["Germany"] = 37.5
+        d = rs.build_frame(28000).set_index("country")
+        assert d.loc["Germany", "effective_tax_pct"] == 37.5
+        assert d.loc["Germany", "tax_basis"] == "OECD net personal average tax rate"
+        # everyone else is untouched
+        assert d.loc["Japan", "tax_basis"] == "interpolated from the $30k/$120k schedule"
+    finally:
+        rs.OECD_NPATR_AT_AVERAGE_WAGE.clear()
+        rs.OECD_NPATR_AT_AVERAGE_WAGE.update(original)
+
+
+def test_the_denmark_sanity_anchor_is_recorded_for_whoever_fills_the_slot():
+    from real_savings_ranking import OECD_NPATR_SANITY
+
+    assert OECD_NPATR_SANITY["max_country"] == "Denmark"
+    assert 30 < OECD_NPATR_SANITY["max_rate_2024"] < 40

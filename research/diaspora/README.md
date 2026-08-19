@@ -543,3 +543,131 @@ but one anchored at both ends beats using one end for everything.
 The Netherlands was the big casualty of the bug — its $30k rate is 4.3%, so
 charging it 37.9% at a $75,370 wage buried it three places below where it
 belongs.
+
+
+---
+
+# ROI on a foreign life — `roi_foreign_life.py`
+
+```bash
+python3 research/diaspora/roi_foreign_life.py
+python3 research/diaspora/roi_foreign_life.py --migration-cost 25000
+```
+
+The savings modules give a *level*: how much lands in India per year. ROI is a
+different question — what you paid, how long until it pays back, and what the
+Indian career you gave up was doing meanwhile.
+
+## The unit problem, stated rather than fudged
+
+Landed savings are in PPP-USD; the Indian salary is in rupees. Bridging them
+needs India's PPP conversion factor (World Bank `PA.NUS.PPP`), which is not
+reachable here. So this module computes **no rupee-denominated NPV** — that
+would put an invented conversion factor at the centre of the result. It works in
+the two units needing no bridge: **payback years** and **growth rates**.
+
+## Term 1 — what you pay
+
+Gulf labour migration is measured: the KNOMAD/ILO returnee survey puts
+recruitment cost at **1–9 months of foreign earnings** — at the ILO-anchored
+blended Gulf wage, **US$1,260–11,342 before the first day of work**. For skilled
+migration to advanced economies no measured figure was reachable, so it is a
+swept parameter.
+
+## Term 2 — what you get back
+
+At a US$15,000 migration cost, **six of seven destinations repay inside a year**;
+Japan takes 1.68. Only past US$40,000 does every destination cross a year.
+
+On this term the answer is trivially "go" — which is exactly why this term alone
+is not the ROI.
+
+## Term 3 — what you gave up
+
+MoSPI PLFS, average monthly earnings from regular salaried employment, All India:
+
+| Year | ₹/month | YoY |
+|---|---|---|
+| 2022 | 19,315.50 | — |
+| 2023 | 20,407.54 | +5.65% |
+| 2024 | 21,454.87 | +5.13% |
+
+**CAGR +5.39%.**
+
+## The crossover
+
+| | Rate | Basis |
+|---|---|---|
+| **Indian salaried wages, nominal** | **5.39%** | PLFS, measured |
+| Advanced-economy wages, nominal | 2–4% | cycle range |
+| India CPI | 4.45% | MoSPI |
+| India WPI | 8.30% | MoSPI |
+
+**The Indian salary you left is growing faster in nominal terms than the foreign
+salary you took.** Measured on the India side against a cycle range on the
+other, so it is a direction rather than a decimal — but the direction is not
+close.
+
+Real terms says the same from the other end: an Indian salary at 5.39% against
+4.45% CPI gains about **+0.94%/yr** in purchasing power, while foreign savings
+are eroded at that same 4.45% once landed — or 8.30% if destined for property —
+having grown at only 2–4%.
+
+## What the ROI actually is
+
+**A foreign life buys a step change in level, not a faster rate.** The step is
+large. But the rate underneath it is worse than the one you left, and erosion
+applies at Indian prices wherever the money was earned. Three consequences, none
+about tax:
+
+1. **The gain is front-loaded** — banked in the early years when the level gap is
+   widest, not accumulated steadily across a career.
+2. **Deferring the transfer destroys it** — money held abroad to send "later"
+   compounds at the host rate and is spent at the Indian one.
+3. **What the money is *for* decides whether it worked** — against consumption at
+   4.45% the maths holds; against property at 8.30% it does not, and property is
+   what remittances most often accumulate toward.
+
+## Known weaknesses
+
+- The PLFS counterfactual is the **all-India salaried average**. Migrants skew
+  graduate and urban, so the salary actually given up is higher and the foreign
+  premium correspondingly smaller. PLFS carries an education breakdown that
+  would fix this; the filter combination returned no rows and was not resolved.
+- Advanced-economy migration cost is a parameter, not a measurement.
+- No value is placed on residency, healthcare, schooling, or wanting to live
+  there — see `immigration_destination_panel.py`.
+
+---
+
+# OECD Taxing Wages — ingest slot
+
+`oecd.org` returns **403** from this environment's egress proxy, so the tax gaps
+blocking 15 countries stay open. Rather than leave that as a note, the slot is
+wired and tested:
+
+```python
+# research/diaspora/real_savings_ranking.py
+OECD_NPATR_AT_AVERAGE_WAGE: dict[str, float] = {}   # ← fill this
+```
+
+The series is **net personal average tax rate** — income tax plus employee social
+security, net of cash benefits, as % of gross, for a **single person without
+children at 100% of the average wage**. It is the right series and not merely a
+convenient one: it is quoted at exactly the income the OECD average wage
+measures, so pairing the two needs **no interpolation at all**. Where a country
+appears in the dict, that rate is used directly and the two-point interpolation
+is skipped — `tax_basis` records which path each row took.
+
+**To fill:** open Taxing Wages (any recent edition), take the
+net-personal-average-tax-rate column from the single-no-children /
+100%-of-average-wage table, add `"Country": rate` rows. Countries already
+carrying an OECD wage become rankable immediately; nothing else needs changing.
+
+**Sanity anchor for whatever you paste in:** Denmark is the OECD's highest at
+**35.3% (2025) / 35.7% (2024)**, and only Denmark, Germany, Lithuania and
+Slovenia exceeded 35% in the 2024 edition.
+
+Two tests cover this: one asserts every row is currently on the interpolated
+basis, and one injects a rate to prove the override path works before anyone has
+data to put in it.

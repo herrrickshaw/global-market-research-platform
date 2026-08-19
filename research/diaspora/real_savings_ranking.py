@@ -129,6 +129,35 @@ WAGE_GRADE = {c: ("B - ILO-anchored segment model, Indian-migrant-specific, nomi
                         else "A - OECD average annual wages 2024, USD PPP"))
               for c in WAGE_PPP_USD_2024}
 
+# ===========================================================================
+# INGEST SLOT — OECD Taxing Wages, net personal average tax rate.
+# ===========================================================================
+# The series: "net personal average tax rate" — personal income tax plus
+# employee social security contributions, net of cash benefits, as a percentage
+# of gross wage earnings, for a SINGLE PERSON WITHOUT CHILDREN at 100% OF THE
+# AVERAGE WAGE.
+#
+# It is the right series for this module and not merely a convenient one: it is
+# quoted at exactly the income the OECD average wage measures, so pairing the
+# two needs no interpolation at all. Where a country appears here, this rate is
+# used directly and the two-point interpolation is skipped.
+#
+# oecd.org returns 403 from this environment's egress proxy, so the table could
+# not be read. TO FILL: open Taxing Wages (any recent edition), take the
+# net-personal-average-tax-rate column from the single-no-children /
+# 100%-of-average-wage table, and add rows below as
+# "Country": rate_pct. Countries in WAGE_PPP_USD_2024_EXTENDED that gain a rate
+# here become rankable on savings immediately — nothing else needs changing.
+#
+# Known anchor from the published summary, for checking whatever you paste in:
+# Denmark is the highest in the OECD at 35.3% (2025) / 35.7% (2024), and only
+# Denmark, Germany, Lithuania and Slovenia exceeded 35% in the 2024 edition.
+OECD_NPATR_AT_AVERAGE_WAGE: dict[str, float] = {}
+OECD_NPATR_SOURCE = ("OECD Taxing Wages — net personal average tax rate, single person "
+                     "no children, 100% of average wage")
+OECD_NPATR_SANITY = {"max_country": "Denmark", "max_rate_2024": 35.7, "max_rate_2025": 35.3}
+
+
 # PARAM — the real basket, in PPP-USD. One number, because in PPP terms a fixed
 # real standard of living costs the same everywhere by construction. Swept.
 DEFAULT_BASKET_USD = 28000
@@ -171,6 +200,12 @@ def build_frame(basket: float) -> pd.DataFrame:
     d["wage_grade"] = d.country.map(WAGE_GRADE)
     d["effective_tax_pct"] = effective_tax_rate(
         d.wage_ppp_usd, d.tax_burden_30k_pct, d.tax_burden_120k_pct)
+    # An OECD rate, where present, is quoted at exactly this wage — so it
+    # replaces the interpolation rather than being averaged with it.
+    oecd = d.country.map(OECD_NPATR_AT_AVERAGE_WAGE)
+    d["tax_basis"] = ["OECD net personal average tax rate" if pd.notna(v)
+                      else "interpolated from the $30k/$120k schedule" for v in oecd]
+    d["effective_tax_pct"] = oecd.fillna(d.effective_tax_pct)
     d["net_wage_ppp_usd"] = (d.wage_ppp_usd * (1 - d.effective_tax_pct / 100)).round(0)
     # Gulf rows are carried for their wage only. They get no basket and no
     # savings figure, because none can be computed without double-counting —
