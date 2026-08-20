@@ -15,6 +15,7 @@ from pathlib import Path
 from typing import Iterator
 
 from .models import Connection
+from .normalize import repair_mojibake
 
 EXPECTED_HEADER = "First Name"
 _MAX_PREAMBLE_LINES = 12
@@ -51,7 +52,13 @@ def parse_date(value: str) -> date | None:
 
 
 def _clean(value: str | None) -> str:
-    return (value or "").strip()
+    """Strip whitespace and undo any codepage round-trip damage.
+
+    Exports pulled through a text-extraction layer can arrive with UTF-8 decoded
+    as a single-byte codepage; repairing at parse time keeps every downstream
+    join key and report clean.
+    """
+    return repair_mojibake((value or "").strip())
 
 
 def iter_connections(path: str | Path) -> Iterator[Connection]:

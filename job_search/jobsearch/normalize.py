@@ -103,3 +103,37 @@ def normalize_linkedin_url(url: str) -> str:
     u = re.sub(r"^[a-z]{2,3}\.linkedin\.com", "linkedin.com", u)
     u = u.split("?")[0].split("#")[0].rstrip("/")
     return u
+
+
+# --- Encoding repair -------------------------------------------------------
+# Some export paths (notably text extraction out of a zip) hand back UTF-8 bytes
+# that were decoded with a single-byte codepage and re-encoded, so a name like
+# "S\u00f8ren" arrives as "S\u00c3\u017eren". The codepage is not always
+# consistent within one file, so repair tries a cascade and accepts only a
+# result that decodes as valid UTF-8 AND reduces the mojibake signature.
+
+_MOJIBAKE_SIGNATURE = re.compile("[\u00c3\u00c2\u00d0\u00d1][\u0080-\u024f]")
+_REPAIR_CODECS = ("cp1252", "cp1250", "latin-1")
+
+
+def looks_mojibake(text: str) -> bool:
+    return bool(_MOJIBAKE_SIGNATURE.search(text or ""))
+
+
+def repair_mojibake(text: str) -> str:
+    """Undo a UTF-8-decoded-as-codepage round trip.
+
+    Returns the input unchanged when no candidate repair is a strict
+    improvement, so clean text is never mangled by a speculative decode.
+    """
+    if not text or not looks_mojibake(text):
+        return text
+    before = len(_MOJIBAKE_SIGNATURE.findall(text))
+    for codec in _REPAIR_CODECS:
+        try:
+            candidate = text.encode(codec).decode("utf-8")
+        except (UnicodeEncodeError, UnicodeDecodeError):
+            continue
+        if len(_MOJIBAKE_SIGNATURE.findall(candidate)) < before:
+            return candidate
+    return text
