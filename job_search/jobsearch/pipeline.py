@@ -11,7 +11,8 @@ from .models import JobPosting, Match
 from .network import build_company_index, network_strength
 from .normalize import normalize_company
 from .scoring import score_job
-from .sources import (AdzunaSource, ArbeitnowSource, CareersPageSource, RemotiveSource)
+from .sources import (AdzunaSource, ApolloDumpSource, ArbeitnowSource,
+                      CareersPageSource, RemotiveSource)
 from .sources.base import SourceError
 from .discovery import SlugCache, resolve_board
 from .sources import ATS_SOURCES
@@ -52,6 +53,13 @@ def collect_feed_jobs(cfg: Config) -> list[JobPosting]:
             jobs += batch
         except SourceError as exc:
             log.warning("remotive failed: %s", exc)
+    if cfg.apollo_dump:
+        try:
+            batch = ApolloDumpSource().fetch(cfg.apollo_dump)
+            log.info("apollo dump: %d postings", len(batch))
+            jobs += batch
+        except SourceError as exc:
+            log.warning("apollo dump failed: %s", exc)
     if cfg.enable_adzuna:
         src = AdzunaSource(cfg.adzuna_app_id, cfg.adzuna_app_key)
         for country in cfg.adzuna_countries:

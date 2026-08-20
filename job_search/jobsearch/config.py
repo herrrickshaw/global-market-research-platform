@@ -21,6 +21,7 @@ class Config:
     adzuna_queries: list[str] = field(default_factory=lambda: [
         "business development", "investment", "strategy", "partnerships"])
     ats_probe_top_n: int = 40
+    apollo_dump: str = ""
     careers_pages: dict = field(default_factory=dict)
     out_dir: str = "out"
     top_n: int = 200
@@ -34,7 +35,8 @@ def load_config(path: str | Path | None) -> Config:
     if p.exists():
         import yaml
         raw = yaml.safe_load(p.read_text(encoding="utf-8")) or {}
-        for key in ("connections_files", "out_dir", "top_n", "ats_probe_top_n", "careers_pages"):
+        for key in ("connections_files", "out_dir", "top_n", "ats_probe_top_n",
+                    "careers_pages", "apollo_dump"):
             if key in raw:
                 setattr(cfg, key, raw[key])
         src = raw.get("sources", {}) or {}
