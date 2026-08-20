@@ -120,20 +120,54 @@ def plan(state: dict, markets: list[str] | None, require: list[str] | None
 
 
 def run_step(cmd: str, timeout_s: float) -> dict:
-    """Run one refresh through the venv interpreter, capturing the outcome."""
+    """Run one refresh through the venv interpreter, capturing the outcome.
+
+    🔴 2026-08-20: THE BUDGET MUST BE WALL-CLOCK, NOT MONOTONIC. This used
+    `subprocess.run(timeout=...)`, whose timeout is measured with a monotonic
+    clock — and on macOS that clock DOES NOT ADVANCE WHILE THE MACHINE IS
+    SUSPENDED. On a laptop that sleeps 8 times inside a run, the internal budget
+    silently under-counts and never fires: on 20 Aug this step ran 67 minutes of
+    wall-clock against a 35-minute budget without tripping, and was eventually
+    killed by daily_mailer's outer `cap` at 2400s.
+
+    This is the SAME defect `cap()` was fixed for on 2026-08-15, reintroduced
+    here in Python. Comparing `time.time()` stamps counts suspended time the way
+    an observer does, so the bound now means what it says.
+    """
     argv = shlex.split(cmd)
     if argv and argv[0].endswith(".py"):
         argv = [PY, "-u"] + argv
     t0 = time.time()
     try:
-        p = subprocess.run(argv, cwd=HERE, capture_output=True, text=True,
-                           timeout=timeout_s)
-        ok, code = p.returncode == 0, p.returncode
-        tail = (p.stderr or p.stdout or "").strip().splitlines()[-3:]
-    except subprocess.TimeoutExpired:
-        ok, code, tail = False, "TIMEOUT", [f"exceeded {timeout_s/60:.0f} min"]
+        p = subprocess.Popen(argv, cwd=HERE, stdout=subprocess.PIPE,
+                             stderr=subprocess.STDOUT, text=True)
     except Exception as e:
-        ok, code, tail = False, "ERROR", [str(e)]
+        return {"cmd": cmd, "ok": False, "code": "ERROR", "secs": 0.0,
+                "tail": [str(e)]}
+
+    timed_out = False
+    while p.poll() is None:
+        if time.time() - t0 >= timeout_s:
+            timed_out = True
+            p.terminate()
+            try:
+                p.wait(timeout=10)
+            except Exception:
+                p.kill()
+            break
+        time.sleep(1)
+    out = ""
+    try:
+        out = p.communicate(timeout=15)[0] or ""
+    except Exception:
+        p.kill()
+    if timed_out:
+        ok, code = False, "TIMEOUT"
+        tail = [f"exceeded {timeout_s/60:.0f} min wall-clock"] + \
+               out.strip().splitlines()[-2:]
+    else:
+        ok, code = p.returncode == 0, p.returncode
+        tail = out.strip().splitlines()[-3:]
     return {"cmd": cmd, "ok": ok, "code": code, "secs": round(time.time() - t0, 1),
             "tail": tail}
 
