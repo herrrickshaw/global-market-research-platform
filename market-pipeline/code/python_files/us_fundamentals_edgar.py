@@ -345,6 +345,45 @@ def parse_companyfacts(doc: dict) -> list[dict]:
     return rows
 
 
+# ── transient-failure retry ───────────────────────────────────────────────────
+# A full pass is ~7,670 requests over ~2h, so a per-request failure rate that
+# looks negligible still loses names: the 2026-08-20 backfill ended
+# "7,669 fetched, 1 failed" — one ticker with no fundamentals for a week until
+# FRESH_DAYS expires and it gets another try.
+#
+# Retried on transport errors AND on 429/5xx, which for SEC means "slow down" or
+# "try later" rather than an answer. 404 is NOT retried — for a fund or an ADR
+# with no XBRL it is the correct, final reply, and the caller already treats it
+# as one. Backoff starts at 1s and caps at 20s, comfortably inside SEC's
+# documented 10 req/s while still riding out a rate-limit burst.
+def _sec_retryable(exc: Exception) -> bool:
+    if isinstance(exc, (requests.Timeout, requests.ConnectionError)):
+        return True
+    if isinstance(exc, requests.HTTPError) and exc.response is not None:
+        return exc.response.status_code == 429 or exc.response.status_code >= 500
+    return False
+
+
+try:
+    from tenacity import retry as _tretry, retry_if_exception, stop_after_attempt, wait_exponential
+
+    def _log_sec_retry(state):
+        print(f"    sec: {type(state.outcome.exception()).__name__} — "
+              f"retry {state.attempt_number}/4 in {state.next_action.sleep:.0f}s")
+
+    _retry_sec = _tretry(
+        retry=retry_if_exception(_sec_retryable),
+        wait=wait_exponential(multiplier=1, min=1, max=20),
+        stop=stop_after_attempt(4),
+        before_sleep=_log_sec_retry,
+        reraise=True,
+    )
+except ImportError:                      # tenacity absent → previous behaviour
+    def _retry_sec(fn):
+        return fn
+
+
+@_retry_sec
 def fetch_companyfacts(cik: int, session: requests.Session) -> dict | None:
     url = f"https://data.sec.gov/api/xbrl/companyfacts/CIK{cik:010d}.json"
     r = session.get(url, headers=UA, timeout=30)

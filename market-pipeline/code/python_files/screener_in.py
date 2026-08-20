@@ -22,8 +22,54 @@ import pandas as pd
 import requests
 
 warnings.filterwarnings("ignore")
+
 _UA = {"User-Agent": "Mozilla/5.0 (research)"}
 CCC_SCREEN = "https://www.screener.in/screens/228040/cash-conversion-cycle/"
+
+
+# ── transient-failure retry ───────────────────────────────────────────────────
+# 🔴 2026-08-20: `[6/13] India CCC screen refresh` failed the daily run on a
+# single 25s read timeout to screener.in — and the scrape TEST that runs seconds
+# later against the same host passed. The site was fine; one request wasn't.
+#
+# The cost was disproportionate because the GET sits inside a pagination loop:
+# one timeout on any page raised and killed the whole screen, so a momentary
+# blip took out the entire CCC refresh and raised an alert.
+#
+# Retried on TRANSPORT failures only — timeouts and connection errors. A 4xx is
+# a real answer (the screen moved, or we are blocked) and retrying it would turn
+# a clear failure into a slow one. Backoff is exponential and attempts are few:
+# this is someone else's public site, and the goal is riding out a blip, not
+# grinding through an outage.
+#
+# `reraise=True` so the ORIGINAL requests exception surfaces when every attempt
+# fails, rather than a tenacity RetryError that existing handlers would not
+# recognise. Retries are printed, never silent — a source that needs three
+# attempts every run is telling you something.
+try:
+    from tenacity import (retry, retry_if_exception_type, stop_after_attempt,
+                          wait_exponential)
+
+    def _log_retry(state):
+        print(f"    screener.in: {type(state.outcome.exception()).__name__} — "
+              f"retry {state.attempt_number}/3 in {state.next_action.sleep:.0f}s")
+
+    _retry_transport = retry(
+        retry=retry_if_exception_type(
+            (requests.Timeout, requests.ConnectionError)),
+        wait=wait_exponential(multiplier=2, min=2, max=30),
+        stop=stop_after_attempt(3),
+        before_sleep=_log_retry,
+        reraise=True,
+    )
+except ImportError:                      # tenacity absent → previous behaviour
+    def _retry_transport(fn):
+        return fn
+
+
+@_retry_transport
+def _get(url: str, timeout: int = 25):
+    return requests.get(url, headers=_UA, timeout=timeout)
 
 
 _CELL = re.compile(r"<td[^>]*>(.*?)</td>", re.S)
@@ -50,7 +96,7 @@ def fetch_screen(url: str, max_pages: int = 40, verbose: bool = True) -> pd.Data
     cells), which is robust to repeated header rows / median rows across pages."""
     rows, cols, seen = [], None, set()
     for page in range(1, max_pages + 1):
-        r = requests.get(f"{url}?page={page}", headers=_UA, timeout=25)
+        r = _get(f"{url}?page={page}")
         if r.status_code != 200:
             break
         if cols is None:

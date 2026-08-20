@@ -64,6 +64,38 @@ def _invalid(df):
     )
 
 
+def _panel_lock(market: str):
+    """Exclusive lock on one market's panel for the read-modify-write below.
+
+    🔴 THE MERGE IS A LOST-UPDATE WAITING TO HAPPEN. Each year partition is
+    rewritten by reading the old parquet, concatenating, deduping and writing
+    back. The write itself is atomic (tmp + replace), which protects a READER
+    from seeing a half-file — but it does nothing for two concurrent WRITERS:
+    both read the same `old`, both merge their own rows, and the second replace
+    silently discards everything the first one added.
+
+    That is not hypothetical here. `refresh_panels.py` is invoked by
+    `ensure_fresh.py` from the 06:30 send phase AND by hand — on 2026-08-20 I
+    ran `--markets EU --backfill-days 7` manually while the scheduled path could
+    have fired the same command. It is the same failure the daily_mailer lock
+    was built for ("both write watchlist.csv, and that file is read-modify-write,
+    so a collision does not merge").
+
+    Per-market rather than global: refreshing JP and EU at once is safe and the
+    planner deliberately runs independent markets together.
+    """
+    try:
+        from filelock import FileLock
+
+        return FileLock(f"/tmp/refresh_panels.{market}.lock", timeout=1800)
+    except ImportError:
+        import contextlib
+
+        print(f"  {market}: ⚠ filelock absent — concurrent refreshes of this "
+              f"market can silently lose rows")
+        return contextlib.nullcontext()
+
+
 def refresh(market: str, backfill_days: int = 0) -> None:
     con = duckdb.connect()
     src = f"{WH}/ohlcv/{market}/*.parquet"
@@ -147,40 +179,44 @@ def refresh(market: str, backfill_days: int = 0) -> None:
         f"({new.Date.min().date()} -> {new.Date.max().date()})"
     )
 
-    # merge into year partitions atomically, dedup on (Symbol, Date)
-    for y, g in new.groupby(new["Date"].dt.year):
-        p = WH / "ohlcv" / market / f"year={y}.parquet"
-        if p.exists():
-            old = pd.read_parquet(p)
-            old["Date"] = pd.to_datetime(old["Date"])
-            # 🔴 CORRUPTION WAS PERMANENT. `keep="first"` with `old` concatenated
-            # first means an existing row always wins, which is right for
-            # adjustment stability — increments are fetched auto_adjust=True and
-            # re-fetching a valid bar would churn its adjusted base — but it also
-            # meant a bad row could NEVER be corrected by a later fetch. The 473
-            # zero-range EU bars from 2026-08-18 would have survived every future
-            # refresh.
-            #
-            # So old rows keep priority, EXCEPT the structurally invalid ones:
-            # those are evicted here, which makes them eligible to be replaced by
-            # a good fetch instead of shadowing it forever. Valid rows are
-            # untouched, so adjustment semantics are unchanged.
-            old_bad = _invalid(old)
-            if old_bad.any():
-                print(f"    year={y}: evicting {int(old_bad.sum()):,} invalid "
-                      f"existing row(s) so a good fetch can replace them")
-                old = old[~old_bad]
-            merged = pd.concat([old, g], ignore_index=True).drop_duplicates(
-                subset=["Symbol", "Date"], keep="first"
+    # merge into year partitions atomically, dedup on (Symbol, Date).
+    # The lock spans the whole read-modify-write, not each individual replace —
+    # holding it per-partition would still let two writers interleave across
+    # years and lose rows.
+    with _panel_lock(market):
+        for y, g in new.groupby(new["Date"].dt.year):
+            p = WH / "ohlcv" / market / f"year={y}.parquet"
+            if p.exists():
+                old = pd.read_parquet(p)
+                old["Date"] = pd.to_datetime(old["Date"])
+                # 🔴 CORRUPTION WAS PERMANENT. `keep="first"` with `old` concatenated
+                # first means an existing row always wins, which is right for
+                # adjustment stability — increments are fetched auto_adjust=True and
+                # re-fetching a valid bar would churn its adjusted base — but it also
+                # meant a bad row could NEVER be corrected by a later fetch. The 473
+                # zero-range EU bars from 2026-08-18 would have survived every future
+                # refresh.
+                #
+                # So old rows keep priority, EXCEPT the structurally invalid ones:
+                # those are evicted here, which makes them eligible to be replaced by
+                # a good fetch instead of shadowing it forever. Valid rows are
+                # untouched, so adjustment semantics are unchanged.
+                old_bad = _invalid(old)
+                if old_bad.any():
+                    print(f"    year={y}: evicting {int(old_bad.sum()):,} invalid "
+                          f"existing row(s) so a good fetch can replace them")
+                    old = old[~old_bad]
+                merged = pd.concat([old, g], ignore_index=True).drop_duplicates(
+                    subset=["Symbol", "Date"], keep="first"
+                )
+            else:
+                merged = g
+            tmp = p.with_suffix(".parquet.tmp")
+            merged.sort_values(["Symbol", "Date"]).to_parquet(
+                tmp, compression="zstd", index=False
             )
-        else:
-            merged = g
-        tmp = p.with_suffix(".parquet.tmp")
-        merged.sort_values(["Symbol", "Date"]).to_parquet(
-            tmp, compression="zstd", index=False
-        )
-        tmp.replace(p)
-        print(f"    year={y}: {len(merged):,} rows")
+            tmp.replace(p)
+            print(f"    year={y}: {len(merged):,} rows")
 
 
 def main() -> int:
