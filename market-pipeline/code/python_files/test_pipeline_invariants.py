@@ -167,6 +167,126 @@ def _():
     assert rows.get("2025-12-31") == 400, rows
 
 
+@check("panels: invalid EXISTING rows are evicted so a good fetch can replace them")
+def _():
+    try:
+        import pandas as pd
+        from refresh_panels import _invalid
+    except Exception as e:
+        raise _Skip(f"refresh_panels unavailable ({type(e).__name__})")
+    # The merge keeps `old` on a (Symbol, Date) collision, which is right for
+    # adjustment stability and made corruption PERMANENT: the 473 zero-range EU
+    # bars would have shadowed every future fetch. Invalid old rows must be
+    # dropped BEFORE the dedup so the good row wins.
+    old = pd.DataFrame({"Symbol": ["AAL.L", "SAP.DE"], "Date": ["2026-08-18"] * 2,
+                        "Open": [0.0, 100.0], "High": [0.0, 110.0],
+                        "Low": [0.0, 90.0], "Close": [3831.0, 105.0],
+                        "Volume": [1, 1]})
+    new = pd.DataFrame({"Symbol": ["AAL.L"], "Date": ["2026-08-18"],
+                        "Open": [3800.0], "High": [3850.0], "Low": [3790.0],
+                        "Close": [3831.0], "Volume": [4536]})
+    kept = old[~_invalid(old)]
+    merged = pd.concat([kept, new], ignore_index=True).drop_duplicates(
+        subset=["Symbol", "Date"], keep="first")
+    row = merged[merged.Symbol == "AAL.L"].iloc[0]
+    assert row["High"] == 3850.0, f"bad row survived: {row.to_dict()}"
+    assert len(merged) == 2, merged          # SAP.DE untouched
+
+
+@check("edgar: EPS uses weighted-average diluted, not a far-off cover-page count")
+def _():
+    try:
+        import us_fundamentals_edgar as M
+    except Exception as e:
+        raise _Skip(f"module unavailable ({type(e).__name__})")
+    # The Visa shape. Its only dei counts are years stale; matching the NEAREST
+    # with no distance bound gave FY2025 a ~469M share count against a real
+    # ~1.9bn, and an EPS of 42.74 where Visa's is ~10.
+    doc = {"facts": {
+        "us-gaap": {
+            "NetIncomeLoss": {"units": {"USD": [
+                {"start": "2025-01-01", "end": "2025-12-31", "val": 20_000_000_000,
+                 "form": "10-K", "filed": "2026-02-01"}]}},
+            "WeightedAverageNumberOfDilutedSharesOutstanding": {"units": {"shares": [
+                {"start": "2025-01-01", "end": "2025-12-31", "val": 2_000_000_000,
+                 "form": "10-K", "filed": "2026-02-01"}]}}},
+        "dei": {"EntityCommonStockSharesOutstanding": {"units": {"shares": [
+            {"end": "2019-01-31", "val": 469_000_000}]}}}}}
+    row = M.parse_companyfacts(doc)[-1]
+    assert row["shares"] == 2_000_000_000, row["shares"]
+    assert abs(row["net_income"] / row["shares"] - 10.0) < 0.01
+
+    # And with NO usable share figure the answer must be None, never a guess:
+    # a wrong EPS prices a mega-cap at a quarter of its multiple, a missing one
+    # is merely missing.
+    doc["facts"]["us-gaap"].pop("WeightedAverageNumberOfDilutedSharesOutstanding")
+    assert M.parse_companyfacts(doc)[-1]["shares"] is None
+
+
+@check("edgar: ifrs-full filers parse when us-gaap is absent")
+def _():
+    try:
+        import us_fundamentals_edgar as M
+    except Exception as e:
+        raise _Skip(f"module unavailable ({type(e).__name__})")
+    # 20-F/40-F forms were already accepted but only us-gaap was ever searched,
+    # so every IFRS filer parsed to zero rows: TSM, SHEL, BP, AZN, NVO and ~200
+    # more ADRs. The reporting currency must be recorded, not assumed USD —
+    # NVO files in DKK and SPOT in EUR.
+    doc = {"facts": {"ifrs-full": {
+        "Revenue": {"units": {"DKK": [
+            {"start": "2025-01-01", "end": "2025-12-31", "val": 309_000_000_000,
+             "form": "20-F", "filed": "2026-02-01"}]}},
+        "ProfitLoss": {"units": {"DKK": [
+            {"start": "2025-01-01", "end": "2025-12-31", "val": 102_000_000_000,
+             "form": "20-F", "filed": "2026-02-01"}]}},
+        "Assets": {"units": {"DKK": [
+            {"end": "2025-12-31", "val": 400_000_000_000,
+             "form": "20-F", "filed": "2026-02-01"}]}}}}}
+    rows = M.parse_companyfacts(doc)
+    assert rows, "IFRS filer parsed to zero rows"
+    r = rows[-1]
+    assert r["framework"] == "ifrs", r["framework"]
+    assert r["currency"] == "DKK", r["currency"]
+    assert r["revenue"] == 309_000_000_000
+
+
+@check("edgar: successor-CIK retry fires for operating companies, not funds")
+def _():
+    try:
+        import us_fundamentals_edgar as M
+    except Exception as e:
+        raise _Skip(f"module unavailable ({type(e).__name__})")
+    # XOM's mapped CIK returns a present-but-empty doc that still carries
+    # `us-gaap` — a re-registered filer. An ETF carries `dei` alone and never
+    # will, and retrying every fund cost 0.6 tickers/s against 4/s allowed.
+    reregistered = {"entityName": "Exxon Mobil Corporation",
+                    "facts": {"dei": {}, "us-gaap": {}}}
+    fund = {"entityName": "SPDR S&P 500 ETF Trust", "facts": {"dei": {}}}
+    assert M.resolve_by_name(fund, None, {}, tried=1) == (None, None)
+    # the operating company gets past the namespace gate and into the lookup
+    # (which finds nothing here because the index passed in is empty)
+    assert M.resolve_by_name(reregistered, None, {"EXXON MOBIL CORP": []},
+                             tried=1) == (None, None)
+
+
+@check("catalog: a report depends on its scan, so a refresh rebuilds both")
+def _():
+    try:
+        import data_catalog as dc
+    except Exception as e:
+        raise _Skip(f"data_catalog unavailable ({type(e).__name__})")
+    # 2026-08-19: scan.US reached 18 Aug while combined_US_..._0459.json still
+    # held 17 Aug prices under a 19 Aug filename. The brief reads BOTH, so a
+    # planner that refreshes only the scan ships mismatched halves.
+    ds = {d.id: d for d in dc.catalog()}
+    for m in ("IN", "US"):
+        assert f"report.{m}" in ds, f"report.{m} not registered"
+        assert f"scan.{m}" in ds[f"report.{m}"].depends_on, ds[f"report.{m}"].depends_on
+    assert "report.IN" in ds["brief"].depends_on, ds["brief"].depends_on
+    assert "report.US" in ds["brief"].depends_on, ds["brief"].depends_on
+
+
 # ── refresh planner ───────────────────────────────────────────────────────────
 @check("ensure_fresh: budget is wall-clock, not monotonic")
 def _():
