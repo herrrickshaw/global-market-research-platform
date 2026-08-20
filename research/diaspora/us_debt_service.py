@@ -97,9 +97,17 @@ INDIA_EDU_SOURCE = ("SBI Global Ed-Vantage 8.65%/9.15%, HDFC Credila from 9%, Cr
                     "Prodigy Finance from 9.66% USD; US master's total cost Rs 70-100 lakh; "
                     "tenor up to 15 years")
 
-# PARAM — market exchange rate. NOT sourced here; swept, because the rupee
-# EMI has to be paid out of dollars and the rate decides how much that costs.
-DEFAULT_INR_PER_USD = 87.0
+# SOURCED — market exchange rate, August 2026. Previously an unsourced 87.0
+# parameter; now taken from occupation_wages.FX_PER_USD, which carries the
+# Federal Reserve H.10 / HMRC / HDFC treasury figures. The rupee is materially
+# weaker than the old placeholder, which makes a rupee education loan CHEAPER
+# to service out of dollars than this module previously showed.
+def _inr_per_usd() -> float:
+    from occupation_wages import FX_PER_USD
+    return FX_PER_USD["INR"]
+
+
+DEFAULT_INR_PER_USD = _inr_per_usd()
 
 
 def emi(principal: float, annual_rate_pct: float, years: int) -> float:
