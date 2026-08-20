@@ -109,7 +109,7 @@ USE_OF_FUNDS = {
 #          like-for-like table.
 # ===========================================================================
 WAGE_PPP_USD_2024 = {
-    "United States": 82933, "Switzerland": 83000, "Netherlands": 75370,
+    "United States": 82933, "Switzerland": 87468, "Netherlands": 75370,
     "Germany": 69433, "Canada": 69417, "Australia": 67000,
     "United Kingdom": 63691, "Japan": 49446, "Singapore": 93643,
 }
@@ -152,7 +152,39 @@ WAGE_GRADE = {c: ("B - ILO-anchored segment model, Indian-migrant-specific, nomi
 # Known anchor from the published summary, for checking whatever you paste in:
 # Denmark is the highest in the OECD at 35.3% (2025) / 35.7% (2024), and only
 # Denmark, Germany, Lithuania and Slovenia exceeded 35% in the 2024 edition.
+# VERIFICATION ATTEMPT, 2026-08-20 — deliberately left unfilled.
+#
+# The OECD publishes net income at the average wage in USD, and those figures
+# were retrieved: Switzerland 87,303; Netherlands 67,017; Luxembourg 63,385;
+# United Kingdom 63,277; Norway 63,052; Iceland 60,863; Canada 60,811;
+# Ireland 60,643; Australia 60,275 (single worker, average wage, 2025).
+#
+# They CANNOT be reconciled with the average-wage series in WAGE_PPP_USD_2024
+# and must not be used to derive rates from it. The UK is the proof: a net
+# income of 63,277 against the 63,691 gross carried here implies a tax rate of
+# 0.65%, which is impossible. Switzerland's net of 87,303 is likewise higher
+# than its gross on that series. The two are published on different conversion
+# bases, so dividing one by the other produces nonsense.
+#
+# What the check DID establish, and it is worth keeping: the OECD-wide average
+# net personal average tax rate for a single worker at average earnings was
+# 25.1% in 2025. The mean effective rate this module computes across its ranked
+# set is 23.3% — the right neighbourhood, which is a sanity check passed rather
+# than a validation of any individual country.
+#
+# So the slot stays empty. Filling it from figures that cannot be reconciled
+# would be worse than the gap it leaves.
 OECD_NPATR_AT_AVERAGE_WAGE: dict[str, float] = {}
+
+OECD_NET_INCOME_AT_AW_USD_2025 = {
+    "Switzerland": 87303, "Netherlands": 67017, "Luxembourg": 63385,
+    "United Kingdom": 63277, "Norway": 63052, "Iceland": 60863,
+    "Canada": 60811, "Ireland": 60643, "Australia": 60275,
+}
+OECD_NET_INCOME_NOTE = ("Retrieved for verification and NOT usable as a rate denominator — "
+                        "published on a different conversion basis from the average-wage series. "
+                        "See the comment above OECD_NPATR_AT_AVERAGE_WAGE.")
+OECD_AVG_NPATR_2025_PCT = 25.1
 OECD_NPATR_SOURCE = ("OECD Taxing Wages — net personal average tax rate, single person "
                      "no children, 100% of average wage")
 OECD_NPATR_SANITY = {"max_country": "Denmark", "max_rate_2024": 35.7, "max_rate_2025": 35.3}
