@@ -532,3 +532,242 @@ def test_the_denmark_sanity_anchor_is_recorded_for_whoever_fills_the_slot():
 
     assert OECD_NPATR_SANITY["max_country"] == "Denmark"
     assert 30 < OECD_NPATR_SANITY["max_rate_2024"] < 40
+
+
+# ===========================================================================
+# US debt service
+# ===========================================================================
+from us_debt_service import (  # noqa: E402
+    AUTO,
+    INDIA_EDU_LOAN,
+    MORTGAGE,
+    NYFED_Q1_2026_TRILLIONS,
+    STUDENT_LOAN,
+    emi,
+    india_loan_emi_usd,
+    scenarios,
+    us_surplus,
+)
+
+
+def test_emi_matches_the_closed_form_annuity():
+    # A loan at 0% amortises to principal/n; the formula must approach that.
+    assert emi(120000, 0.0001, 10) == pytest.approx(1000, rel=1e-3)
+    # And a known case: higher rate and longer tenor both raise the total paid.
+    assert emi(1000000, 12, 15) > emi(1000000, 9, 15)
+    assert emi(1000000, 9, 10) > emi(1000000, 9, 15)
+
+
+def test_nyfed_components_do_not_exceed_the_total():
+    parts = sum(v for k, v in NYFED_Q1_2026_TRILLIONS.items() if k != "total_household")
+    assert parts <= NYFED_Q1_2026_TRILLIONS["total_household"]
+
+
+def test_debt_service_only_reduces_what_lands():
+    s = scenarios(87.0)
+    base = s.iloc[0]
+    assert base.debt_service_usd_yr == 0
+    assert (s.lands_in_india_usd_yr <= base.lands_in_india_usd_yr).all()
+    assert (s.share_of_surplus_pct >= 0).all()
+
+
+def test_the_indian_financed_case_costs_more_than_half_the_surplus():
+    s = scenarios(87.0).set_index("scenario")
+    assert s.loc["Indian education loan + new car", "share_of_surplus_pct"] > 50
+
+
+def test_a_weaker_rupee_makes_the_indian_loan_cheaper_in_dollars():
+    """The one line in the whole analysis where rupee depreciation helps."""
+    strong = scenarios(80.0).set_index("scenario")
+    weak = scenarios(95.0).set_index("scenario")
+    k = "Indian education loan, Rs 85L @ 9.15%"
+    assert weak.loc[k, "debt_service_usd_yr"] < strong.loc[k, "debt_service_usd_yr"]
+
+
+def test_india_loan_emi_rises_with_principal_and_rate():
+    d = india_loan_emi_usd(87.0)
+    for lender in d.lender.unique():
+        sub = d[d.lender == lender].sort_values("loan_rs_lakh")
+        assert (sub.emi_usd_month.diff().dropna() > 0).all()
+    for lakh in d.loan_rs_lakh.unique():
+        sub = d[d.loan_rs_lakh == lakh].sort_values("rate_pct")
+        assert (sub.emi_usd_month.diff().dropna() > 0).all()
+
+
+def test_mortgage_is_never_netted_against_the_surplus():
+    """A mortgage replaces rent already in the basket and its principal is
+    saving, not spending. Netting it would double-count housing AND misread
+    equity as consumption. No scenario may include it."""
+    s = scenarios(87.0)
+    assert not s.scenario.str.contains("ortgage").any()
+    # And the source figures are still carried, for the narrative.
+    assert MORTGAGE["monthly_pi"] < MORTGAGE["monthly_piti"]
+    assert MORTGAGE["first_payment_interest"] > MORTGAGE["first_payment_principal"]
+
+
+def test_us_surplus_matches_the_savings_ranking():
+    from real_savings_ranking import build_frame as bf
+
+    s = us_surplus()
+    r = bf(28000).set_index("country").loc["United States"]
+    assert s["surplus"] == pytest.approx(float(r.savings_ppp_usd))
+    assert s["landed"] == pytest.approx(float(r.savings_landed_india_usd))
+
+
+def test_used_car_is_cheaper_than_new_and_masters_only_cheaper_than_with_undergrad():
+    assert AUTO["monthly_used"] < AUTO["monthly_new"]
+    assert STUDENT_LOAN["monthly_masters_only"] < STUDENT_LOAN["monthly_incl_undergrad"]
+    assert INDIA_EDU_LOAN["cost_lakh_low"] < INDIA_EDU_LOAN["cost_lakh_high"]
+
+
+# ===========================================================================
+# Rent vs wages (non-US)
+# ===========================================================================
+from rent_vs_wages import PANEL, surplus_path  # noqa: E402
+from rent_vs_wages import table as rent_table  # noqa: E402
+
+
+def test_the_us_is_excluded_from_the_rent_panel():
+    """The US is handled in us_debt_service.py on its own terms."""
+    assert "United States" not in PANEL
+
+
+def test_gap_is_wage_growth_minus_rent_growth():
+    t = rent_table(0.35).set_index("country")
+    for c, (w, r_sit, r_new, _n) in PANEL.items():
+        assert t.loc[c, "gap_sitting_pp"] == pytest.approx(w - r_sit, abs=0.01)
+        if r_new is not None:
+            assert t.loc[c, "gap_new_pp"] == pytest.approx(w - r_new, abs=0.01)
+
+
+def test_new_letting_rent_is_never_below_sitting_except_where_rents_are_falling():
+    """Tenant protections hold sitting rents down, so new lettings normally run
+    hotter. Canada is the exception because the whole market is falling."""
+    for c, (_w, r_sit, r_new, _n) in PANEL.items():
+        if r_new is None:
+            continue
+        if r_sit >= 0:
+            assert r_new >= r_sit, c
+
+
+def test_the_basis_flips_the_sign_where_protection_is_strongest():
+    t = rent_table(0.35).set_index("country")
+    flipped = set(t[t.basis_flips_sign].index)
+    assert {"Japan", "Germany", "Netherlands"} <= flipped
+    # And Japan is the widest gap of the panel.
+    gaps = {c: v[2] - v[1] for c, v in PANEL.items() if v[2] is not None}
+    assert max(gaps, key=gaps.get) == "Japan"
+
+
+def test_new_letting_basis_is_never_kinder_than_sitting_where_they_differ():
+    a = surplus_path(0.35, 10, False).set_index("country").change_pct
+    b = surplus_path(0.35, 10, True).set_index("country").change_pct
+    for c in a.index:
+        r_sit, r_new = PANEL[c][1], PANEL[c][2]
+        if r_new is not None and r_new > r_sit:
+            assert b[c] < a[c], c
+
+
+def test_a_bigger_rent_share_hurts_where_rent_outruns_wages():
+    small = surplus_path(0.25, 10, True).set_index("country").change_pct
+    large = surplus_path(0.45, 10, True).set_index("country").change_pct
+    # Japan: rent growth far exceeds wage growth, so more rent exposure is worse.
+    assert large["Japan"] < small["Japan"]
+    # Canada: rents are falling, so more rent exposure is better.
+    assert large["Canada"] > small["Canada"]
+
+
+def test_japan_surplus_collapses_on_the_migrants_own_rent_basis():
+    """The module's headline. Pinned so a data revision surfaces it."""
+    sp = surplus_path(0.35, 10, True).set_index("country")
+    assert sp.loc["Japan", "change_pct"] < -50
+    assert (sp.drop(index="Japan").change_pct > 0).all()
+
+
+def test_the_savings_ordering_survives_a_decade_of_rent_divergence():
+    """Also a real result: what moves is the size of the gaps, not the order."""
+    sp = surplus_path(0.35, 10, True)
+    now = sp.sort_values("surplus_now_usd", ascending=False).country.tolist()
+    later = sp.sort_values("surplus_yr10_usd", ascending=False).country.tolist()
+    assert now == later
+
+
+# ===========================================================================
+# Consolidated ranking
+# ===========================================================================
+from consolidated_ranking import assemble, rank_of  # noqa: E402
+
+
+def test_the_us_is_the_only_row_carrying_a_debt_adjustment():
+    d = assemble().set_index("country")
+    assert d.loc["United States", "yr1_debtloaded_usd"] < d.loc["United States", "yr1_debtfree_usd"]
+    others = d.drop(index="United States")
+    assert (others.yr1_debtloaded_usd == others.yr1_debtfree_usd).all()
+    assert (others.debt_data == "none gathered").all()
+
+
+def test_the_us_has_no_ten_year_figure_and_is_not_ranked_on_it():
+    """rent_vs_wages is non-US by design, so the US cannot be placed on that
+    horizon. It must be absent rather than silently defaulted."""
+    d = assemble()
+    us = d[d.country == "United States"].iloc[0]
+    assert pd.isna(us.yr10_rentadj_usd)
+    assert "United States" not in rank_of(d, "yr10_rentadj_usd")
+
+
+def test_ranks_are_dense_and_start_at_one():
+    d = assemble()
+    for col in ("yr1_debtfree_usd", "yr1_debtloaded_usd", "yr10_rentadj_usd"):
+        r = rank_of(d, col)
+        assert sorted(r.values()) == list(range(1, len(r) + 1))
+
+
+def test_ranking_is_by_descending_value():
+    d = assemble()
+    r = rank_of(d, "yr1_debtfree_usd")
+    s = d.set_index("country").yr1_debtfree_usd
+    best = min(r, key=r.get)
+    assert s[best] == s.max()
+
+
+def test_the_ordering_is_stable_across_all_three_horizons():
+    """The module's central claim: over the countries present in all three,
+    nothing moves. If a data revision breaks that, the write-up is stale."""
+    d = assemble()
+    r1, r2, r3 = (rank_of(d, c) for c in
+                  ("yr1_debtfree_usd", "yr1_debtloaded_usd", "yr10_rentadj_usd"))
+    common = [c for c in d.country if c in r3]
+    assert len(common) == 6
+    reb = [{c: i + 1 for i, c in enumerate(sorted(common, key=lambda x: r[x]))}
+           for r in (r1, r2, r3)]
+    for c in common:
+        assert reb[0][c] == reb[1][c] == reb[2][c], c
+
+
+def test_permanence_is_reported_but_not_folded_into_any_score():
+    """It is in the table and deliberately out of the ordering — no savings
+    figure prices a green-card queue."""
+    d = assemble()
+    assert "years_to_permanence" in d.columns
+    r = rank_of(d, "yr1_debtfree_usd")
+    byrank = sorted(r, key=r.get)
+    perm = d.set_index("country").years_to_permanence
+    # If permanence were in the score the ordering would track it; it does not.
+    assert byrank != sorted(byrank, key=lambda c: (perm[c] if pd.notna(perm[c]) else 99))
+
+
+def test_the_oecd_net_income_figures_are_carried_but_flagged_unusable():
+    from real_savings_ranking import (
+        OECD_NET_INCOME_AT_AW_USD_2025,
+        OECD_NET_INCOME_NOTE,
+        OECD_NPATR_AT_AVERAGE_WAGE,
+        WAGE_PPP_USD_2024,
+    )
+
+    assert OECD_NPATR_AT_AVERAGE_WAGE == {}, "slot must stay empty until reconcilable"
+    assert "different conversion basis" in OECD_NET_INCOME_NOTE
+    # The proof they are unusable: dividing them by our gross wage series yields
+    # tax rates no country levies. Nobody taxes an average wage at under 5%.
+    for c in ("United Kingdom", "Switzerland"):
+        implied = (1 - OECD_NET_INCOME_AT_AW_USD_2025[c] / WAGE_PPP_USD_2024[c]) * 100
+        assert implied < 5, f"{c} implies {implied:.2f}% — absurd, hence the basis mismatch"

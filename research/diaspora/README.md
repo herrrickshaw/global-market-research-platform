@@ -671,3 +671,284 @@ Slovenia exceeded 35% in the 2024 edition.
 Two tests cover this: one asserts every row is currently on the interpolated
 basis, and one injects a rate to prove the override path works before anyone has
 data to put in it.
+
+
+---
+
+# What the American surplus is already promised to — `us_debt_service.py`
+
+```bash
+python3 research/diaspora/us_debt_service.py
+python3 research/diaspora/us_debt_service.py --inr-per-usd 90
+```
+
+The savings chain assumes the surplus above the basket is free to remit. For a
+US-based Indian professional it usually is not — a degree was financed, a car
+was financed, a house may be. **Debt service comes out of exactly the same
+surplus that funds remittances.**
+
+US-only, and deliberately so: the US is the **numeraire of the PPP conversion**,
+so PPP dollars *are* dollars there and these figures subtract from the savings
+line with no exchange-rate step. That is true of no other destination.
+
+## Three debts, three different treatments
+
+Lumping them together is the mistake worth avoiding.
+
+| Debt | Treatment |
+|---|---|
+| **Student loan** | Pure claim on the surplus. Nothing comes back. |
+| **Auto loan** | Also pure cost — the asset depreciates, so the payment buys transport, not wealth. |
+| **Mortgage** | **Not a deduction.** See below. |
+
+## Scenarios — US, per year
+
+| Scenario | Debt service | Share of surplus | Lands in India |
+|---|---|---|---|
+| No debt *(the ranking's assumption)* | $0 | 0% | **$34,215** |
+| Used car only | $6,372 | 17.9% | $28,104 |
+| US student loan, master's only | $7,680 | 21.5% | $26,850 |
+| New car | $9,240 | 25.9% | $25,353 |
+| US student loan incl. undergrad | $11,100 | 31.1% | $23,570 |
+| Indian education loan, ₹85L @ 9.15% | $11,996 | 33.6% | $22,710 |
+| **US student loan + used car** | $14,052 | 39.4% | **$20,738** |
+| **Indian education loan + new car** | $21,236 | **59.5%** | **$13,848** |
+
+## The finding that connects back to the remittance work
+
+An Indian who financed a US master's with an **Indian** education loan services
+a rupee debt out of dollar income — and those payments **cross into India and
+are recorded as remittances**. They are not family support and they are not
+savings. They are loan amortisation.
+
+Every module here has been circling the conclusion that India's remittance
+series measures more than migrants sending wages home. **This is one concrete
+channel, and at ₹9,600–14,800/yr per borrower it is not small.**
+
+A ₹70–100 lakh loan at 8.65–9.95% over 15 years costs **$9,593–14,780 a year**
+to service. And the sensitivity runs the unusual way:
+
+| ₹/US$ | EMI $/yr | Share of US surplus |
+|---|---|---|
+| 80 | $13,046 | 36.6% |
+| 87 | $11,996 | 33.6% |
+| 95 | $10,986 | 30.8% |
+
+**A weaker rupee makes the loan cheaper to service out of dollars** — the one
+line in this whole analysis where rupee depreciation helps the migrant.
+
+## The mortgage is not a deduction
+
+Treating $2,883/month as lost savings is wrong twice:
+
+1. **It replaces rent**, which the $28,000 basket already contains. Only the
+   excess is new spending, and the basket's rent share is not separately sourced
+   — so this module **does not net a mortgage against the surplus**, because
+   doing so would double-count housing.
+2. **Principal is not consumption.** On an early payment $260 of $1,930 builds
+   equity — saving redirected into American property rather than sent to India.
+   Only the $1,670 of interest, plus tax and insurance, is cost.
+
+So a mortgage **relocates** savings rather than destroying them — out of rupees
+into a dollar asset. And that is a real decision with a real answer, because
+Indian property inflates at the 8.30% WPI rate no advanced-economy wage clears.
+Against *that* hurdle, holding property in the US is not obviously the worse
+side of the trade.
+
+## What it does to the headline — and what it does not
+
+Debt-free the US lands $34,215 and ranks **first of seven**. Indian-financed
+with a new car it lands **$13,848**, which is below every other country in the
+table.
+
+**That is not a fair fight, and the module says so.** Those comparisons put a
+debt-laden American against six debt-*free* peers; migrants to Germany, Canada
+and Australia borrow too. Read it as *how far the US position can move*, not as
+"Germany now beats the US".
+
+What is genuinely US-specific — and why the module is US-only:
+
+- A US master's costs ₹70–100 lakh. **German public universities charge no
+  tuition**, so the same qualification carries no comparable debt.
+- US car dependence is structural in most metros, so the payment is closer to a
+  fixed cost than a choice.
+- The Indian-education-loan route exists at scale **because US study is what it
+  is most often taken out to fund**.
+
+Doing this properly for the other six needs their borrowing data, which was not
+gathered. Until then the honest statement is conditional: **a debt-financed US
+route lands materially less than the headline, and the gap to the rest is
+smaller than the ranking implies.**
+
+Sources: NY Fed Household Debt and Credit Report Q1 2026 (mortgage $13.19tn,
+auto $1.69tn, student $1.66tn, cards $1.25tn, total $18.8tn); educationdata.org
+2026; Experian State of the Automotive Finance Market Q1 2026; SBI Global
+Ed-Vantage, HDFC Credila, Credila, Prodigy Finance.
+
+
+---
+
+# Do wages keep up with rent? — `rent_vs_wages.py`
+
+```bash
+python3 research/diaspora/rent_vs_wages.py
+python3 research/diaspora/rent_vs_wages.py --rent-share 0.45 --years 10
+```
+
+Non-US destinations. The savings chain holds the basket at a constant $28,000 —
+fine for ranking countries in one year, wrong for asking whether the surplus
+survives. Rent is the largest and fastest-moving item in it.
+
+## The measurement problem, which is the point
+
+There are **two** rent inflation numbers per country and they are not close:
+
+- **Sitting-tenant rent** — what the CPI housing component measures. It averages
+  over the whole rented stock, most of it occupied by people on running
+  contracts protected by caps, indexation and long leases.
+- **New-listing rent** — what someone signing a fresh lease actually pays.
+
+**A migrant is always a new tenant.** They arrive and sign at market. So the CPI
+figure — the one every cost-of-living comparison uses, *including this repo's own
+$28,000 basket* — systematically understates a migrant's housing cost, and
+understates it **most where tenant protections are strongest**, because that is
+where the two series diverge.
+
+| Country | Wage growth | Rent (sitting) | Gap | Rent (new) | Gap |
+|---|---|---|---|---|---|
+| Canada | 2.3% | **−4.0%** | **+6.30pp** | −4.0% | **+6.30pp** |
+| Japan | 2.3% | 0.7% | +1.60pp | **7.82%** | **−5.52pp** |
+| Germany | 3.5% | 3.0% | +0.50pp | 4.0% | −0.50pp |
+| Netherlands | 4.5% | 4.1% | +0.40pp | 6.5% | −2.00pp |
+| United Kingdom | 3.4% | 3.3% | +0.10pp | — | — |
+| Australia | 3.3% | 3.6% | −0.30pp | — | — |
+
+**The basis flips the sign for Japan, Germany and the Netherlands.** On the
+published CPI a migrant to Japan is gaining ground on rent; on Tokyo listings
+they are losing more than five points a year. The gap is widest exactly where
+protection is strongest — Japan +7.12pp, Netherlands +2.40pp, Germany +1.00pp.
+
+## What it does to the surplus over 10 years
+
+Rent at 35% of the basket, other items at 2.5%:
+
+| Country | New-letting basis | Surplus in 10 yrs |
+|---|---|---|
+| Netherlands | +61.0% | $50,492 |
+| Germany | +50.5% | $27,062 |
+| United Kingdom | +49.2% | $35,359 |
+| Canada | +47.2% | $36,275 |
+| Australia | +43.7% | $39,667 |
+| **Japan** | **−70.5%** | **$2,753** |
+
+## Two findings, one of them negative
+
+**The ordering survives.** Netherlands > Australia > Canada > UK > Germany >
+Japan, both today and in ten years. That is a real result worth stating plainly:
+the savings ranking is robust to a decade of divergent rent inflation. What moves
+is the size of the gaps, not who is ahead.
+
+**Japan is the exception, and not a small one** — the surplus falls 70% over ten
+years on the migrant's own rent basis, turning a thin surplus into almost none.
+It already ranked last; this widens the gap.
+
+**Canada is the one genuinely favourable case.** Asking rents have fallen for 22
+consecutive months — the only negative rent figure in the panel — so a migrant
+arriving now signs into a *falling* market while wages still rise. It improves
+Canada's position without changing its rank, because the countries above start
+far enough ahead.
+
+The general lesson is the one this directory keeps arriving at from different
+directions: **the published series measures a population the migrant is not in.**
+
+Sources: Eurostat and national statistics offices, ABS, StatCan, Rentals.ca,
+Kiel Institute, Japan CPI and listing indices, Indeed Hiring Lab and OECD wage
+bulletins, 2026 vintages. Rent share of the basket is a swept parameter, not a
+measurement.
+
+
+---
+
+# Verification pass, 2026-08-20
+
+## What checked out
+
+- **US average wage $82,933 confirmed exactly** against OECD. It is the single
+  most load-bearing figure in the stack and it is right.
+- **Aggregate tax sanity passes.** The mean effective rate across the ranked set
+  is **23.3%**, against an OECD-wide **25.1%** net personal average tax rate for
+  a single worker at average earnings, 2025. Right neighbourhood.
+
+## What was corrected
+
+**Switzerland's wage was wrong** — carried at ~$83,000, actually **$87,468**
+(OECD 2024). Switzerland is unranked for want of a tax datum, so no result
+moved, but the figure is fixed.
+
+## What could *not* be verified, and why it matters
+
+**Country-level tax rates remain the weakest input in the stack.** The OECD
+publishes net income at the average wage in USD and those figures were
+retrieved — Switzerland $87,303, Netherlands $67,017, UK $63,277, Canada
+$60,811, Australia $60,275 (single, average wage, 2025). They **cannot be
+reconciled** with the average-wage series used here:
+
+| Country | OECD net | Our gross | Implied rate |
+|---|---|---|---|
+| Switzerland | $87,303 | $87,468 | **0.19%** |
+| United Kingdom | $63,277 | $63,691 | **0.65%** |
+| Netherlands | $67,017 | $75,370 | 11.08% |
+| Canada | $60,811 | $69,417 | 12.40% |
+| Australia | $60,275 | $67,000 | 10.04% |
+
+**No country taxes an average wage at 0.19%.** The two series are published on
+different conversion bases, so dividing one by the other produces nonsense. They
+are carried in `OECD_NET_INCOME_AT_AW_USD_2025` **flagged as unusable for that
+purpose**, and the ingest slot stays empty — filling it from figures that cannot
+be reconciled would be worse than the gap it leaves. A test enforces both.
+
+---
+
+# The ranking, after everything — `consolidated_ranking.py`
+
+```bash
+python3 research/diaspora/consolidated_ranking.py
+```
+
+Puts the three orderings side by side and reports where they agree. **No
+weighted composite** — weighting savings against residency against rent
+trajectory needs exchange rates between incommensurable things, chosen by me,
+and the output would look more authoritative than any of its inputs.
+
+| # | Country | Lands/yr | Permanence | Confidence |
+|---|---|---|---|---|
+| 1 | **Netherlands** | $30,077 | 5 yr | firm |
+| 2 | Australia | $25,900 | **1 yr** | firm |
+| 3 | Canada | $23,591 | **1 yr** | firm |
+| 4 | United Kingdom | $23,239 | 5 yr | firm |
+| 5 | Germany | $17,249 | 3 yr | firm |
+| 6 | Japan | $8,945 | 2 yr | firm |
+| — | *United States* | *$34,215 debt-free · $20,738 debt-loaded* | *no route* | **not placed** |
+
+**Nothing moves.** Across a debt adjustment and a decade of divergent rent
+inflation, the ordering of those six is unchanged — a stronger result than any
+single ordering on its own, and pinned by a test.
+
+**The US is deliberately not placed.** It tops the one-year debt-free table,
+falls to fifth of seven once its own debt is netted, has no rent series here,
+and carries the longest green-card queue in the set. Three reasons no single
+position would be honest.
+
+Ranks are re-based over the countries present in all three orderings — the US
+dropping out of the ten-year view would otherwise shift everyone up one and read
+as movement that did not happen.
+
+## What would change it
+
+1. **Borrowing data for the six non-US destinations.** The US is the only row
+   carrying a debt figure and it is the row most exposed. Give the others their
+   real debt and the gap narrows, probably a lot.
+2. **Country-level tax rates** — see the verification pass above.
+3. **Migrant-specific wages outside the Gulf.** Indian migrants to the US and UK
+   earn above the national averages used here; correcting that widens the lead
+   of the countries already at the top.
