@@ -9,7 +9,7 @@
 #
 # WHAT RUNS HERE
 #   lint  — ruff over the whole repo, bug-only rule set (see ruff.toml)
-#   test  — the two genuine pytest suites, 136 tests total
+#   test  — the three genuine pytest suites, 346 tests total
 #
 # WHAT DOES NOT RUN HERE, AND WHY
 #   market-pipeline/test_*.py are live API probes against DART, SEC EDGAR,
@@ -103,3 +103,16 @@ jobs:
       - name: Run portfolio-evaluator suite
         working-directory: stock-portfolio-evaluator
         run: python -m pytest tests/ -v
+
+      # Same `python -m pytest` + working-directory reason as above: the
+      # job_search suite does `import jobsearch`, which only resolves with the
+      # package root on sys.path. Its third-party deps (yaml, bs4, rapidfuzz)
+      # are all imported lazily inside functions, so the tests themselves need
+      # nothing beyond pytest -- but requirements.txt is installed anyway so a
+      # future test that does exercise a network source fails on the assertion
+      # rather than on ImportError.
+      - name: Run job-search suite
+        working-directory: job_search
+        run: |
+          pip install -r requirements.txt
+          python -m pytest tests/ -v

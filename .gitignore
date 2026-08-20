@@ -137,3 +137,21 @@ market-pipeline/code/python_files/cache_seed/factorial_screener_signals_us.parqu
 market-pipeline/code/python_files/cache_seed/factorial_screener_signals_CN_technical.parquet
 market-pipeline/code/python_files/cache_seed/factorial_screener_signals_us.parquet
 market-pipeline/code/python_files/cache_seed/factorial_screener_signals_CN_technical.parquet
+
+# ---------------------------------------------------------------------------
+# Personal contact data — NEVER commit.
+# job_search/.gitignore covers that package's own paths, but it does not reach
+# the repo-root reports/ directory, which IS tracked. A connections export or
+# any report derived from one carries names, employers, titles and emails for
+# thousands of real people who did not consent to being in a public repo.
+# reports/network_targets.csv was committed once from a fixture run; the path
+# is the hazard, not that fixture.
+# ---------------------------------------------------------------------------
+Connections.csv
+**/Connections.csv
+*[Cc]onnections*.csv
+reports/network_targets.csv
+**/network_targets.csv
+reports/*contacts*.csv
+reports/*network*.csv
+private/
