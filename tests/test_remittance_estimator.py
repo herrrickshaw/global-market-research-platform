@@ -771,3 +771,61 @@ def test_the_oecd_net_income_figures_are_carried_but_flagged_unusable():
     for c in ("United Kingdom", "Switzerland"):
         implied = (1 - OECD_NET_INCOME_AT_AW_USD_2025[c] / WAGE_PPP_USD_2024[c]) * 100
         assert implied < 5, f"{c} implies {implied:.2f}% — absurd, hence the basis mismatch"
+
+
+# ===========================================================================
+# Literature validation
+# ===========================================================================
+from literature_validation import LIT, rows as lit_rows  # noqa: E402
+
+
+def test_every_judgement_parameter_carries_a_verdict():
+    valid = {"SUPPORTED", "DIRECTIONAL", "STRUCTURAL", "UNSUPPORTED"}
+    for r in lit_rows():
+        assert r["verdict"] in valid, r["parameter"]
+        assert r["evidence"] and r["reading"], r["parameter"]
+
+
+def test_unsupported_parameters_are_named_not_hidden():
+    """Two parameters have no literature behind them. They must stay visible."""
+    unsup = {r["parameter"] for r in lit_rows() if r["verdict"] == "UNSUPPORTED"}
+    assert "Hub-routing exposure weights (h)" in unsup
+    assert "Advanced-economy migration cost" in unsup
+
+
+def test_the_wage_band_derives_from_the_measured_panel_not_a_literal():
+    """The bug this exercise found: a hardcoded 2.0-4.0% band contradicted the
+    repo's own panel, where the Netherlands runs at 4.50%."""
+    from rent_vs_wages import PANEL
+    from roi_foreign_life import HOST_WAGE_GROWTH_BAND
+
+    w = [v[0] for v in PANEL.values()]
+    assert HOST_WAGE_GROWTH_BAND == (min(w), max(w))
+    for c, v in PANEL.items():
+        assert HOST_WAGE_GROWTH_BAND[0] <= v[0] <= HOST_WAGE_GROWTH_BAND[1], c
+
+
+def test_the_crossover_survives_the_widened_band():
+    """Widening the band could have killed the ROI module's central finding.
+    It does not — but if a data revision ever makes it, fail loudly."""
+    from roi_foreign_life import HOST_WAGE_GROWTH_BAND, india_wage_growth
+
+    assert india_wage_growth()["cagr_pct"] > HOST_WAGE_GROWTH_BAND[1]
+
+
+def test_the_gulf_band_sits_above_the_global_mean_and_the_ae_band_below():
+    """The IOM global average is 15%. Gulf labour migration should sit above it
+    and advanced-economy professionals at or below it."""
+    from india_remittance_estimator import PLAUSIBLE_REMIT_RATE
+
+    global_mean = 0.15
+    assert PLAUSIBLE_REMIT_RATE["GCC"][0] > global_mean
+    assert PLAUSIBLE_REMIT_RATE["Advanced"][1] <= global_mean
+    assert "15%" in LIT["iom_15pct"]
+
+
+def test_rent_share_stays_under_the_eurostat_overburden_threshold():
+    from rent_vs_wages import DEFAULT_RENT_SHARE
+
+    assert DEFAULT_RENT_SHARE < 0.40, "40% is Eurostat's housing-cost overburden line"
+    assert DEFAULT_RENT_SHARE > 0.25, "below this it stops being a market-rate city rent"
