@@ -68,6 +68,19 @@ class TargetProfile:
         "front end engineering": 0.8,
         "feed": 0.6,
         "cost engineer": 0.7,
+        # Cost engineering is an explicit CV bullet (basis-of-design, scope and
+        # cost engineering on a ~USD 7bn LNG train; USD 40M saved) and a listed
+        # core competency, but only the exact string "cost engineer" matched, so
+        # "Tech Specialist - Cost Estimation" scored zero.
+        "cost estimation": 0.75,
+        "cost engineering": 0.75,
+        # Finance-planning titles. Weighted mid, not high: the ESMT MBA is
+        # Accounting & Finance and the CV carries NPV/IRR/TCO modelling, but
+        # this is adjacent to the BD/investment core rather than the centre of
+        # it, so these should rank below a genuine BD or energy-research role.
+        "fp&a": 0.55,
+        "financial planning": 0.5,
+        "financial analysis": 0.5,
         "technical sales": 0.65,
         "proposal manager": 0.6,
         # --- Offshoring / capability-centre build-out ---
@@ -158,6 +171,13 @@ class TargetProfile:
         "data engineer", "machine learning engineer", "android", "ios developer",
         "java developer", "python developer", ".net", "salesforce developer",
         # Wrong function - volume sales / support / ops
+        # Financial-crime / compliance. These wear "due diligence" and
+        # "advisory" in their titles and were scoring near the top on those
+        # words alone, but the CV's due diligence is TRANSACTION due diligence
+        # (M&A, deal structuring, JV/BOOT), not KYC/AML screening. Different
+        # discipline, different hiring managers.
+        "fincrime", "financial crime", "anti-money laundering", "aml",
+        "kyc", "sanctions screening", "compliance officer",
         "sales representative", "sales executive", "sdr", "bdr", "telecaller",
         "cold calling", "customer support", "customer service", "call center",
         "call centre", "field sales", "insurance agent", "real estate agent",

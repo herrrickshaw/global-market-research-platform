@@ -108,3 +108,35 @@ def test_account_management_still_excluded_from_market_analyst_change():
     score, _ = role_fit(_job("Senior Account Manager - Financials",
                              location="London, United Kingdom"), P)
     assert score == 0.0
+
+
+def test_cost_estimation_titles_are_matched():
+    """Regression: only the exact string "cost engineer" matched, so
+    "Tech Specialist - Cost Estimation" scored zero — despite cost engineering
+    being an explicit CV bullet on a ~USD 7bn LNG train."""
+    score, reasons = role_fit(
+        _job("Tech Specialist - Cost Estimation", location="Chennai, Tamil Nadu, India"), P)
+    assert score > 0.3, reasons
+
+
+def test_finance_planning_ranks_below_core_business_development():
+    """FP&A is adjacent to the CV, not central, so it must score but must not
+    outrank a genuine business-development role."""
+    fpa, _ = role_fit(_job("Head of FP&A", location="Chennai, Tamil Nadu, India"), P)
+    bd, _ = role_fit(_job("Head of Business Development",
+                          location="Chennai, Tamil Nadu, India"), P)
+    assert 0 < fpa < bd
+
+
+def test_financial_crime_roles_are_excluded():
+    """Regression: "FinCrime Due Diligence & Advisory Sr Mgr" ranked 4th at
+    0.892 on the words "due diligence" and "advisory". The CV's due diligence
+    is transaction due diligence (M&A, JV/BOOT), not KYC/AML screening."""
+    score, reasons = role_fit(
+        _job("FinCrime Due Diligence & Advisory Sr Mgr", location="Poland"), P)
+    assert score == 0.0, reasons
+
+    # ...but genuine transaction due diligence must still rank.
+    deal, _ = role_fit(_job("Manager, Transaction Advisory & Due Diligence",
+                            location="London, United Kingdom"), P)
+    assert deal > 0.3
