@@ -287,18 +287,46 @@ def parse_companyfacts(doc: dict) -> list[dict]:
     # populated where the cover-page tag is not (GOOGL 12.23bn, XOM 4.305bn). So
     # prefer it, per fiscal year, and keep the cover-page count only as a bounded
     # fallback. A year with neither gets None, which is the honest answer.
-    SHARE_TAGS = ["WeightedAverageNumberOfDilutedSharesOutstanding",
-                  "WeightedAverageNumberOfSharesOutstandingBasic",
-                  "CommonStockSharesOutstanding", "CommonStockSharesIssued"]
+    # Ordered best-to-worst as an EPS denominator. `shares_basis` records WHICH
+    # one supplied the figure, because they are not interchangeable: EPS is
+    # defined on a WEIGHTED AVERAGE, so a period-end count is an approximation,
+    # and a basic count is a different statistic from a diluted one. Without the
+    # basis on the row, a cross-sectional PE screen silently compares a diluted
+    # multiple for one company against a basic one for the next.
+    SHARE_TAGS = [("WeightedAverageNumberOfDilutedSharesOutstanding", "diluted"),
+                  ("WeightedAverageNumberOfSharesOutstandingBasic", "basic"),
+                  ("CommonStockSharesOutstanding", "period_end"),
+                  ("CommonStockSharesIssued", "issued")]
+
+    # EPS = (net income − PREFERRED DIVIDENDS) / weighted-average shares. The
+    # subtraction was missing, which overstates earnings available to common for
+    # every issuer with preferred stock — banks, insurers and REITs routinely —
+    # and an overstated EPS understates PE, making such a name look cheaper than
+    # it is. Stored as its own field plus a derived `net_income_to_common` so a
+    # consumer can see the adjustment rather than inherit it silently.
+    PREF_TAGS = ["PreferredStockDividendsAndOtherAdjustments",
+                 "PreferredStockDividendsIncomeStatementImpact",
+                 "DividendsPreferredStock"]
     gaap_space = facts.get("us-gaap", {})
     shares_by_fy: dict[str, float] = {}
-    for tag in SHARE_TAGS:
+    basis_by_fy: dict[str, str] = {}
+    for tag, basis in SHARE_TAGS:
         if tag not in gaap_space:
             continue
         instant = tag.startswith("CommonStock")
-        s, _ = _annual_series(gaap_space[tag]["units"], instant)
-        for end, val in s.items():
-            shares_by_fy.setdefault(end, val)
+        ser, _ = _annual_series(gaap_space[tag]["units"], instant)
+        for end, val in ser.items():
+            if end not in shares_by_fy:
+                shares_by_fy[end] = val
+                basis_by_fy[end] = basis
+
+    pref_by_fy: dict[str, float] = {}
+    for tag in PREF_TAGS:
+        if tag not in gaap_space:
+            continue
+        ser, _ = _annual_series(gaap_space[tag]["units"], False)
+        for end, val in ser.items():
+            pref_by_fy.setdefault(end, val)
 
     # dei cover-page count: a point-in-time figure filed WITH the 10-K, so it is
     # only meaningful within about a year of the period it accompanies.
@@ -341,6 +369,16 @@ def parse_companyfacts(doc: dict) -> list[dict]:
             gap = abs((dt.date.fromisoformat(near) - dt.date.fromisoformat(end)).days)
             shares = shares_series[near] if gap <= SHARES_MAX_GAP_DAYS else None
         row["shares"] = shares
+        row["shares_basis"] = basis_by_fy.get(end) if shares is not None else None
+        pref = pref_by_fy.get(end)
+        row["preferred_dividends"] = pref
+        ni_row = row.get("net_income")
+        # Absent a preferred-dividend tag the adjustment is zero, which is the
+        # right default: the vast majority of filers have no preferred stock,
+        # and treating "not reported" as "unknown" would null out earnings for
+        # all of them.
+        row["net_income_to_common"] = (
+            (ni_row - (pref or 0.0)) if ni_row is not None else None)
         rows.append(row)
     return rows
 
