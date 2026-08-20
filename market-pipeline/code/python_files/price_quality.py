@@ -86,6 +86,11 @@ FLATLINE_SESSIONS = 3
 COVERAGE_WARN, COVERAGE_FAIL = 0.05, 0.25
 
 NULL_WARN, NULL_FAIL = 0.01, 0.05
+
+# Checks whose Finding.value is a COUNT rather than a fraction. Kept as an
+# explicit set so adding a count-valued check forces a decision here instead
+# of silently inheriting percentage formatting.
+_COUNT_CHECKS = {"gaps"}
 DUPE_WARN = 0.001
 
 
@@ -294,7 +299,13 @@ def main() -> int:
         if f.dataset != cur:
             cur = f.dataset
             print(f"\n  {cur}")
-        v = "" if f.value is None else f"{f.value:7.2%}" if f.value <= 1 else f"{f.value:7.0f}"
+        # 🔴 Format by WHAT THE NUMBER IS, not by its magnitude. Deciding on
+        # `value <= 1` treated the `gaps` COUNT as a ratio: 0 gaps printed as
+        # "0.00%" (harmless, and why it went unseen) but the very first single
+        # missing session would have printed "100.00%" — total failure, from one
+        # absent day. `_COUNT_CHECKS` names the checks whose value is a count.
+        v = "" if f.value is None else (
+            f"{f.value:7.0f}" if f.check in _COUNT_CHECKS else f"{f.value:7.2%}")
         print(f"    {_ICON[f.status]} {f.check:9} {v:>8}  {f.detail}")
 
     bad = [f for f in fs if f.status == FAIL]

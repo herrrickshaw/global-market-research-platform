@@ -284,7 +284,13 @@ def show_ticker(df: pd.DataFrame, ticker: str, market: str | None) -> None:
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--ticker", help="print one ticker's ratios (from last build)")
-    ap.add_argument("--market", default="all", choices=["all", "india", "us"])
+    # 🔴 DERIVED FROM MARKETS, not hand-listed. The literal was
+    # ["all","india","us"] while MARKETS had gained "korea" — so 1,564 korea
+    # tickers were built into the table and then rejected by argparse, with
+    # `--market korea` failing as an "invalid choice" for data that was right
+    # there. A hand-maintained mirror of a dict will drift from it; this cannot.
+    ap.add_argument("--market", default="all",
+                    choices=["all", *sorted(MARKETS)])
     ap.add_argument("--status", action="store_true")
     ap.add_argument("--dry-run", action="store_true",
                     help="write Postgres output to a scratch schema instead of fundamentals.ratios")

@@ -77,8 +77,18 @@ def expectations(d: pd.DataFrame) -> list:
     return out
 
 
-def main() -> int:
-    d = pd.read_csv(HERE / "reports" / "financial_ratios.csv")
+def main(strict: bool = False) -> int:
+    # 🔴 keep_default_na=False, or pandas ANNIHILATES the ticker "NA". Nabors
+    # Industries trades as NA; a plain read_csv turns it into NaN, data_quality
+    # then stringifies it to "nan", it matches no fundamentals, and it is written
+    # back to financial_ratios_enriched.csv without an identity. "NAT" survives
+    # only because it is not in pandas' sentinel list — the bug is silent and
+    # ticker-specific. Applied to the numeric columns explicitly instead, so a
+    # genuinely empty ratio is still NaN.
+    d = pd.read_csv(HERE / "reports" / "financial_ratios.csv", keep_default_na=False)
+    for _c in d.columns:
+        if _c not in ("market", "ticker", "name", "sector", "industry", "currency"):
+            d[_c] = pd.to_numeric(d[_c], errors="coerce")
     before = {c: d[c].notna().mean() for c in ["pe", "pb", "roe", "roce"]}
 
     # ---- 3. derive missing ratios from raw fundamentals ----------------------
@@ -158,12 +168,27 @@ def main() -> int:
           "for the snapshot). Enriched file: `reports/financial_ratios_enriched.csv`. Not advice."]
     (HERE / "reports" / "data_quality.md").write_text("\n".join(L))
     npass = sum(1 for _, ok, _ in exp if ok)
+    # 🔴 THE SUFFICIENCY GATE HAS TO BE ABLE TO FAIL. This returned 0
+    # unconditionally, so a report headed "sufficiency gate" with four of seven
+    # expectations FAILING still exited clean and nothing downstream could tell.
+    # A gate that cannot fail is not a gate — it is a log line.
+    #
+    # --strict is opt-in rather than the default because this script also
+    # ENRICHES (it derives missing ratios and writes the enriched CSV), and a
+    # non-zero exit on the enrichment path would look like the write failed.
+    # Callers that want the gate ask for it; the summary always states the score
+    # either way.
+    failed = [name for name, ok, _ in exp if not ok]
+    if failed:
+        print(f"\n⚠️  {len(failed)}/{len(exp)} expectations FAILED: "
+              + "; ".join(failed))
     LOG.info(f"expectations {npass}/{len(exp)} pass; filled pe+{fills['pe']} roe+{fills['roe']} "
              f"pb+{fills['pb']} roce+{fills['roce']}")
     print("\n".join(L))
     print(f"\nwrote reports/data_quality.md + financial_ratios_enriched.csv")
-    return 0
+    return 1 if (strict and failed) else 0
 
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    import sys
+    raise SystemExit(main(strict="--strict" in sys.argv))

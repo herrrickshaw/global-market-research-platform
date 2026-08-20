@@ -96,6 +96,56 @@ def _panel_lock(market: str):
         return contextlib.nullcontext()
 
 
+def purge_invalid(market: str) -> None:
+    """Drop structurally impossible bars from EVERY year partition.
+
+    🔴 WHY A SEPARATE MODE. `_invalid` stops new corruption and the merge evicts
+    old corruption — but only from the year partitions a refresh happens to
+    rewrite, and `--backfill-days` reaches back DAYS. The EU panel carries 33,532
+    invalid bars spread over 2016-2025 (2017: 5,743 · 2018: 7,193 · 2019: 6,075,
+    tapering to 390 in 2025), and no refresh will ever touch those partitions.
+    Anything reading EU true-range, ATR or Darvas boxes before 2026 is reading
+    garbage.
+
+    PURGE, NOT RE-FETCH, deliberately. Re-fetching a decade would pull it with
+    `auto_adjust=True` against today's adjustment base, silently re-basing every
+    historical bar in the panel — a much larger change than the one being fixed,
+    and one that invalidates any backtest run against the old series. Dropping
+    the bad rows leaves a HOLE, which is honest: a missing bar is visibly
+    missing, an impossible one is silently wrong, and the gap check will now
+    report it against the real trading calendar.
+
+    Symbols losing the most bars are named, because a name that loses hundreds is
+    a candidate for a targeted re-fetch rather than a hole.
+    """
+    con = duckdb.connect()
+    total_before = con.execute(
+        f"SELECT count(*) FROM read_parquet('{WH}/ohlcv/{market}/*.parquet')"
+    ).fetchone()[0]
+    removed_total = 0
+    for p in sorted((WH / "ohlcv" / market).glob("year=*.parquet")):
+        df = pd.read_parquet(p)
+        bad = _invalid(df)
+        if not bad.any():
+            continue
+        worst = (df.loc[bad, "Symbol"].value_counts().head(3).to_dict()
+                 if "Symbol" in df.columns else {})
+        removed_total += int(bad.sum())
+        print(f"  {p.name}: dropping {int(bad.sum()):,} of {len(df):,}"
+              + (f"  worst: {', '.join(f'{k} {v}' for k, v in worst.items())}"
+                 if worst else ""))
+        with _panel_lock(market):
+            tmp = p.with_suffix(".parquet.tmp")
+            df[~bad].sort_values(["Symbol", "Date"]).to_parquet(
+                tmp, compression="zstd", index=False)
+            tmp.replace(p)
+    print(f"  {market}: removed {removed_total:,} invalid bar(s) of "
+          f"{total_before:,} ({100 * removed_total / max(total_before, 1):.2f}%)")
+    if removed_total:
+        print(f"  those sessions are now GAPS — visible to price_quality rather "
+              f"than silently wrong. Re-fetch specific symbols if the hole matters.")
+
+
 def refresh(market: str, backfill_days: int = 0) -> None:
     con = duckdb.connect()
     src = f"{WH}/ohlcv/{market}/*.parquet"
@@ -240,6 +290,9 @@ def refresh(market: str, backfill_days: int = 0) -> None:
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--markets", nargs="+", required=True)
+    ap.add_argument("--purge-invalid", action="store_true",
+                    help="drop structurally impossible bars from ALL year "
+                         "partitions (no fetch); leaves gaps rather than garbage")
     ap.add_argument("--backfill-days", type=int, default=0,
                     help="re-fetch this many days already covered, to refill "
                          "bars evicted as structurally invalid")
@@ -248,7 +301,10 @@ def main() -> int:
         if m == "IN":
             print("  IN is bhavcopy-fed (daily_pipeline) — skipping")
             continue
-        refresh(m, a.backfill_days)
+        if a.purge_invalid:
+            purge_invalid(m)
+        else:
+            refresh(m, a.backfill_days)
     print(
         "NOTE: re-run price_adjuster_global.py for refreshed markets "
         "(residual-split staleness trigger)."
