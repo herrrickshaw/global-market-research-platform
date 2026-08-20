@@ -55,7 +55,10 @@ def collect_feed_jobs(cfg: Config) -> list[JobPosting]:
             log.warning("remotive failed: %s", exc)
     if cfg.apollo_dump:
         try:
-            batch = ApolloDumpSource().fetch(cfg.apollo_dump)
+            batch = ApolloDumpSource().fetch(
+                cfg.apollo_dump,
+                countries=tuple(cfg.apollo_countries) or None,
+                days=cfg.apollo_days or None)
             log.info("apollo dump: %d postings", len(batch))
             jobs += batch
         except SourceError as exc:

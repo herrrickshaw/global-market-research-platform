@@ -22,6 +22,8 @@ class Config:
         "business development", "investment", "strategy", "partnerships"])
     ats_probe_top_n: int = 40
     apollo_dump: str = ""
+    apollo_countries: list = field(default_factory=list)
+    apollo_days: int = 0
     careers_pages: dict = field(default_factory=dict)
     out_dir: str = "out"
     top_n: int = 200
@@ -36,7 +38,8 @@ def load_config(path: str | Path | None) -> Config:
         import yaml
         raw = yaml.safe_load(p.read_text(encoding="utf-8")) or {}
         for key in ("connections_files", "out_dir", "top_n", "ats_probe_top_n",
-                    "careers_pages", "apollo_dump"):
+                    "careers_pages", "apollo_dump",
+                    "apollo_countries", "apollo_days"):
             if key in raw:
                 setattr(cfg, key, raw[key])
         src = raw.get("sources", {}) or {}
