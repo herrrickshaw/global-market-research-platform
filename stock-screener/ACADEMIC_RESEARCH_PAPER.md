@@ -76,18 +76,18 @@ This paper makes five primary contributions:
 **Piotroski (2000)** introduced the nine-point quality score based on profitability, operating efficiency, and leverage metrics. Subsequent research has validated its effectiveness:
 
 - **Mohanram (2005)**: Examines F-Score among high-growth firms, finding limited predictive power in that subset.
-- **Oprea & Rees (2012)**: Test F-Score across UK equities, documenting 4-6% annual excess returns.
+- Oprea & Rees, 2012 — *citation unverified, 2026-08-20*: reported as testing F-Score across UK equities with 4-6% annual excess returns. Not locatable in any index searched; treat the 4-6% figure as unsourced until the paper is identified.
 - **Novy-Marx & Velikov (2016)**: Demonstrate that transaction costs substantially reduce published F-Score returns.
 
 **Geographic variation** in fundamental signal effectiveness has been documented:
 - **Fama & French (2012)**: Value factors show different returns across regions.
-- **Beck, Levine & Levkov (2010)**: Legal system and financial development affect earnings quality.
+- **Beck, Levine & Levkov (2010)**: US branch deregulation and its effect on the income distribution. *(Description corrected 2026-08-20 — the paper is not about earnings quality.)*
 
 ### 2.2 Technical Analysis and Market Microstructure
 
 **Darvas Box** pattern analysis (Darvas 1957, 1960) has received limited modern academic treatment:
 - **Park & Irwin (2007)**: Meta-analysis of technical analysis studies shows mixed evidence.
-- **Lim & Hooy (2010)**: Document technical pattern effectiveness varies by market and period.
+- Lim & Hooy, 2010 — *citation unverified, 2026-08-20*: the locatable work by these authors is 2013 (*Non-Linear Predictability in G7 Stock Index Returns*, Manchester School), not 2010.
 
 **Volume analysis** in technical trading:
 - **Blume, Easley & O'Hara (1994)**: Volume relationship to price discovery.
@@ -98,11 +98,11 @@ This paper makes five primary contributions:
 **Earnings-related seasonality** has been documented:
 - **Ball & Brown (1968)**: Post-announcement drift phenomenon.
 - **Livnat & Mendenhall (2006)**: Earnings surprise predictability.
-- **DellaVigna & Pollet (2009)**: Disagreement effects around earnings.
+- **DellaVigna & Pollet (2009)**: Investor inattention to Friday earnings announcements. *(Description corrected 2026-08-20 — the paper is about inattention, not disagreement.)*
 
 **Quarterly patterns**:
 - **Heston & Sadka (2008)**: January effect and seasonal patterns.
-- **Boehmer & Musumeci (1991)**: Pre-announcement drift patterns.
+- **Boehmer, Musumeci & Poulsen (1991)**: Event-study test statistics under event-induced variance. *(Corrected 2026-08-20 — a methodology paper, not a drift study; third author was omitted.)*
 
 ### 2.4 International Diversification
 

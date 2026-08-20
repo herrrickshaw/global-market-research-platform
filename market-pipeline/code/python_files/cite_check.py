@@ -58,7 +58,34 @@ STOP = {
     "DSR", "PBO", "SSRN", "TEDE", "JIER", "IJACSA", "FF",
     # generic tails of named methods ("Magic Formula (2005)", "Domain-Driven Design (2003)")
     "Formula", "Design", "Name",
+    # 🔴 2026-08-20: 39 of 54 findings under stock-screener/ were prose — a 72%
+    # false-positive rate, which is why none of them were ever fixed. A checker
+    # that noisy trains the operator to skip past it, and then it catches
+    # nothing. These are the labels this corpus puts before a year: table row
+    # headings ("Best Timing (2020)", "Lump Sum (2015)"), tree nodes
+    # ("Systemic (2008)"), period markers ("Pre-crisis (2020)") and result
+    # columns ("Returns (2026)").
+    "Timing", "Value", "Portfolio", "Sum", "Returns", "Period", "Markets",
+    "Market", "Profile", "Resolution", "Reconstitution", "Situation",
+    "Systemic", "Bubble", "Shock", "Pre-crisis", "Crisis", "Recovery",
+    "Peak", "Trough", "Baseline", "Target", "Actual", "Total", "Average",
+    # Named methods whose tail is not an author ("Piotroski F-Score (2000)" —
+    # the real cite is Piotroski, checked separately wherever it appears alone).
+    "F-Score", "G-Score", "Z-Score", "Ratio", "Index", "Model", "Score",
+    # Company/instrument names that appear as `Name (year)` in results tables.
+    # Trade-off accepted knowingly: an author genuinely surnamed Shell would now
+    # be missed. That is a far smaller cost than a gate nobody reads.
+    "Shell", "Samsung", "Toyota", "Nestle",
+    # battery-domain prose ("Cell (2024)", "Battery (2024)")
+    "Cell", "Battery", "Pack", "Module",
 }
+
+# A surname is essentially never written in block capitals, but tickers and
+# table headings routinely are — MSFT, ICICI, MUFG, MARKET, SITUATION. This is
+# the general form of the stoplist above and needs no per-token maintenance.
+def _is_shouting(name: str) -> bool:
+    core = name.replace(".", "").replace("-", "").replace(" ", "")
+    return len(core) >= 3 and core.isupper()
 
 
 def load_bib() -> tuple[set[tuple[str, str]], set[str]]:
@@ -118,7 +145,7 @@ def check_file(path: Path, pairs, names) -> list[tuple[str, int, str, str]]:
         for m in CITE.finditer(line):
             raw, year = m.group(1), m.group(2)
             leads = lead_candidates(raw)
-            if not leads or raw in STOP or all(
+            if not leads or raw in STOP or _is_shouting(raw) or all(
                     lead.split()[0].capitalize() in STOP for lead in leads):
                 continue
             if not (1900 <= int(year) <= 2035):
