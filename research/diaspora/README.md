@@ -671,3 +671,116 @@ Slovenia exceeded 35% in the 2024 edition.
 Two tests cover this: one asserts every row is currently on the interpolated
 basis, and one injects a rate to prove the override path works before anyone has
 data to put in it.
+
+
+---
+
+# What the American surplus is already promised to — `us_debt_service.py`
+
+```bash
+python3 research/diaspora/us_debt_service.py
+python3 research/diaspora/us_debt_service.py --inr-per-usd 90
+```
+
+The savings chain assumes the surplus above the basket is free to remit. For a
+US-based Indian professional it usually is not — a degree was financed, a car
+was financed, a house may be. **Debt service comes out of exactly the same
+surplus that funds remittances.**
+
+US-only, and deliberately so: the US is the **numeraire of the PPP conversion**,
+so PPP dollars *are* dollars there and these figures subtract from the savings
+line with no exchange-rate step. That is true of no other destination.
+
+## Three debts, three different treatments
+
+Lumping them together is the mistake worth avoiding.
+
+| Debt | Treatment |
+|---|---|
+| **Student loan** | Pure claim on the surplus. Nothing comes back. |
+| **Auto loan** | Also pure cost — the asset depreciates, so the payment buys transport, not wealth. |
+| **Mortgage** | **Not a deduction.** See below. |
+
+## Scenarios — US, per year
+
+| Scenario | Debt service | Share of surplus | Lands in India |
+|---|---|---|---|
+| No debt *(the ranking's assumption)* | $0 | 0% | **$34,215** |
+| Used car only | $6,372 | 17.9% | $28,104 |
+| US student loan, master's only | $7,680 | 21.5% | $26,850 |
+| New car | $9,240 | 25.9% | $25,353 |
+| US student loan incl. undergrad | $11,100 | 31.1% | $23,570 |
+| Indian education loan, ₹85L @ 9.15% | $11,996 | 33.6% | $22,710 |
+| **US student loan + used car** | $14,052 | 39.4% | **$20,738** |
+| **Indian education loan + new car** | $21,236 | **59.5%** | **$13,848** |
+
+## The finding that connects back to the remittance work
+
+An Indian who financed a US master's with an **Indian** education loan services
+a rupee debt out of dollar income — and those payments **cross into India and
+are recorded as remittances**. They are not family support and they are not
+savings. They are loan amortisation.
+
+Every module here has been circling the conclusion that India's remittance
+series measures more than migrants sending wages home. **This is one concrete
+channel, and at ₹9,600–14,800/yr per borrower it is not small.**
+
+A ₹70–100 lakh loan at 8.65–9.95% over 15 years costs **$9,593–14,780 a year**
+to service. And the sensitivity runs the unusual way:
+
+| ₹/US$ | EMI $/yr | Share of US surplus |
+|---|---|---|
+| 80 | $13,046 | 36.6% |
+| 87 | $11,996 | 33.6% |
+| 95 | $10,986 | 30.8% |
+
+**A weaker rupee makes the loan cheaper to service out of dollars** — the one
+line in this whole analysis where rupee depreciation helps the migrant.
+
+## The mortgage is not a deduction
+
+Treating $2,883/month as lost savings is wrong twice:
+
+1. **It replaces rent**, which the $28,000 basket already contains. Only the
+   excess is new spending, and the basket's rent share is not separately sourced
+   — so this module **does not net a mortgage against the surplus**, because
+   doing so would double-count housing.
+2. **Principal is not consumption.** On an early payment $260 of $1,930 builds
+   equity — saving redirected into American property rather than sent to India.
+   Only the $1,670 of interest, plus tax and insurance, is cost.
+
+So a mortgage **relocates** savings rather than destroying them — out of rupees
+into a dollar asset. And that is a real decision with a real answer, because
+Indian property inflates at the 8.30% WPI rate no advanced-economy wage clears.
+Against *that* hurdle, holding property in the US is not obviously the worse
+side of the trade.
+
+## What it does to the headline — and what it does not
+
+Debt-free the US lands $34,215 and ranks **first of seven**. Indian-financed
+with a new car it lands **$13,848**, which is below every other country in the
+table.
+
+**That is not a fair fight, and the module says so.** Those comparisons put a
+debt-laden American against six debt-*free* peers; migrants to Germany, Canada
+and Australia borrow too. Read it as *how far the US position can move*, not as
+"Germany now beats the US".
+
+What is genuinely US-specific — and why the module is US-only:
+
+- A US master's costs ₹70–100 lakh. **German public universities charge no
+  tuition**, so the same qualification carries no comparable debt.
+- US car dependence is structural in most metros, so the payment is closer to a
+  fixed cost than a choice.
+- The Indian-education-loan route exists at scale **because US study is what it
+  is most often taken out to fund**.
+
+Doing this properly for the other six needs their borrowing data, which was not
+gathered. Until then the honest statement is conditional: **a debt-financed US
+route lands materially less than the headline, and the gap to the rest is
+smaller than the ranking implies.**
+
+Sources: NY Fed Household Debt and Credit Report Q1 2026 (mortgage $13.19tn,
+auto $1.69tn, student $1.66tn, cards $1.25tn, total $18.8tn); educationdata.org
+2026; Experian State of the Automotive Finance Market Q1 2026; SBI Global
+Ed-Vantage, HDFC Credila, Credila, Prodigy Finance.

@@ -532,3 +532,89 @@ def test_the_denmark_sanity_anchor_is_recorded_for_whoever_fills_the_slot():
 
     assert OECD_NPATR_SANITY["max_country"] == "Denmark"
     assert 30 < OECD_NPATR_SANITY["max_rate_2024"] < 40
+
+
+# ===========================================================================
+# US debt service
+# ===========================================================================
+from us_debt_service import (  # noqa: E402
+    AUTO,
+    INDIA_EDU_LOAN,
+    MORTGAGE,
+    NYFED_Q1_2026_TRILLIONS,
+    STUDENT_LOAN,
+    emi,
+    india_loan_emi_usd,
+    scenarios,
+    us_surplus,
+)
+
+
+def test_emi_matches_the_closed_form_annuity():
+    # A loan at 0% amortises to principal/n; the formula must approach that.
+    assert emi(120000, 0.0001, 10) == pytest.approx(1000, rel=1e-3)
+    # And a known case: higher rate and longer tenor both raise the total paid.
+    assert emi(1000000, 12, 15) > emi(1000000, 9, 15)
+    assert emi(1000000, 9, 10) > emi(1000000, 9, 15)
+
+
+def test_nyfed_components_do_not_exceed_the_total():
+    parts = sum(v for k, v in NYFED_Q1_2026_TRILLIONS.items() if k != "total_household")
+    assert parts <= NYFED_Q1_2026_TRILLIONS["total_household"]
+
+
+def test_debt_service_only_reduces_what_lands():
+    s = scenarios(87.0)
+    base = s.iloc[0]
+    assert base.debt_service_usd_yr == 0
+    assert (s.lands_in_india_usd_yr <= base.lands_in_india_usd_yr).all()
+    assert (s.share_of_surplus_pct >= 0).all()
+
+
+def test_the_indian_financed_case_costs_more_than_half_the_surplus():
+    s = scenarios(87.0).set_index("scenario")
+    assert s.loc["Indian education loan + new car", "share_of_surplus_pct"] > 50
+
+
+def test_a_weaker_rupee_makes_the_indian_loan_cheaper_in_dollars():
+    """The one line in the whole analysis where rupee depreciation helps."""
+    strong = scenarios(80.0).set_index("scenario")
+    weak = scenarios(95.0).set_index("scenario")
+    k = "Indian education loan, Rs 85L @ 9.15%"
+    assert weak.loc[k, "debt_service_usd_yr"] < strong.loc[k, "debt_service_usd_yr"]
+
+
+def test_india_loan_emi_rises_with_principal_and_rate():
+    d = india_loan_emi_usd(87.0)
+    for lender in d.lender.unique():
+        sub = d[d.lender == lender].sort_values("loan_rs_lakh")
+        assert (sub.emi_usd_month.diff().dropna() > 0).all()
+    for lakh in d.loan_rs_lakh.unique():
+        sub = d[d.loan_rs_lakh == lakh].sort_values("rate_pct")
+        assert (sub.emi_usd_month.diff().dropna() > 0).all()
+
+
+def test_mortgage_is_never_netted_against_the_surplus():
+    """A mortgage replaces rent already in the basket and its principal is
+    saving, not spending. Netting it would double-count housing AND misread
+    equity as consumption. No scenario may include it."""
+    s = scenarios(87.0)
+    assert not s.scenario.str.contains("ortgage").any()
+    # And the source figures are still carried, for the narrative.
+    assert MORTGAGE["monthly_pi"] < MORTGAGE["monthly_piti"]
+    assert MORTGAGE["first_payment_interest"] > MORTGAGE["first_payment_principal"]
+
+
+def test_us_surplus_matches_the_savings_ranking():
+    from real_savings_ranking import build_frame as bf
+
+    s = us_surplus()
+    r = bf(28000).set_index("country").loc["United States"]
+    assert s["surplus"] == pytest.approx(float(r.savings_ppp_usd))
+    assert s["landed"] == pytest.approx(float(r.savings_landed_india_usd))
+
+
+def test_used_car_is_cheaper_than_new_and_masters_only_cheaper_than_with_undergrad():
+    assert AUTO["monthly_used"] < AUTO["monthly_new"]
+    assert STUDENT_LOAN["monthly_masters_only"] < STUDENT_LOAN["monthly_incl_undergrad"]
+    assert INDIA_EDU_LOAN["cost_lakh_low"] < INDIA_EDU_LOAN["cost_lakh_high"]

@@ -1,0 +1,9 @@
+scenario,debt_service_usd_yr,share_of_surplus_pct,remittable_usd_yr,lands_in_india_usd_yr,note
+No debt (the ranking's assumption),0,0.0,35676,34215,
+"US student loan, master's only",7680,21.5,27996,26850,pure cost
+US student loan incl. undergrad,11100,31.1,24576,23570,pure cost
+"Indian education loan, Rs 85L @ 9.15%",11996,33.6,23680,22710,"pure cost — and it is REMITTED, so it inflates the remittance series"
+Used car only,6372,17.9,29304,28104,"pure cost, depreciating asset"
+New car,9240,25.9,26436,25353,"pure cost, depreciating asset"
+US student loan + used car,14052,39.4,21624,20738,the common early-career case
+Indian education loan + new car,21236,59.5,14440,13848,the common Indian-financed case
