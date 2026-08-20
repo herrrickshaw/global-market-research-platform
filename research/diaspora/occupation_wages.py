@@ -120,6 +120,20 @@ INDIA_VARIANTS = {
 }
 
 
+# Which point of each country's distribution a figure describes. A multiple
+# built from two different points is not a multiple of anything — the
+# accountant row is the case: a US all-levels mean over an Indian mid-level
+# figure produces a number larger than the software-engineer multiple, purely
+# because the denominators sit at different seniorities.
+def seniority_basis(note: str) -> str:
+    n = note.lower()
+    if "entry" in n:
+        return "entry"
+    if "mid-level" in n or "chartered" in n:
+        return "mid-level"
+    return "all-levels"
+
+
 def to_usd(amount: float, currency: str, fx: dict[str, float]) -> float:
     return amount / fx[currency]
 
@@ -141,6 +155,7 @@ def table(fx: dict[str, float]) -> pd.DataFrame:
                 "currency": cur,
                 "usd_market": round(usd),
                 "multiple_of_india": round(usd / india, 1) if india else None,
+                "seniority_basis": seniority_basis(note),
                 "source_note": note,
             })
     return pd.DataFrame(rows)
@@ -198,11 +213,22 @@ def main() -> int:
 
     df = table(fx)
 
+    # A multiple is only meaningful when both sides describe the same point of
+    # their distribution. Where a role's rows disagree, say so instead of
+    # printing a ratio that compares a mean to a median-of-mid-levels.
+    mixed = {occ: sorted(set(g.seniority_basis))
+             for occ, g in df.groupby("occupation")
+             if g.seniority_basis.nunique() > 1}
+
     for occ in SALARIES:
         print(f"\n=== {occ.upper()} ===")
         d = df[df.occupation == occ].sort_values("usd_market", ascending=False)
         print(d[["country", "local_amount", "currency", "usd_market",
-                 "multiple_of_india"]].to_string(index=False))
+                 "multiple_of_india", "seniority_basis"]].to_string(index=False))
+        if occ in mixed:
+            print(f"    NOT COMPARABLE ACROSS COUNTRIES: this role mixes "
+                  f"{' and '.join(mixed[occ])} figures.")
+            print("    The multiple divides one seniority by another and means nothing.")
 
     print("\n=== AFTER TAX ===")
     t = with_tax(df)
@@ -269,12 +295,26 @@ def main() -> int:
     if not same:
         print("  So there is no single 'best country' — only a best country for a job.")
 
+    if mixed:
+        print("\n=== ROLES WHOSE MULTIPLES MUST NOT BE COMPARED WITH EACH OTHER ===")
+        for occ, bases in mixed.items():
+            print(f"  {occ}: mixes {' and '.join(bases)}")
+        print("  The accountant row is the clearest case. Its US figure is an")
+        print("  all-levels mean and its Indian figure is mid-level, so it reports a")
+        print("  larger multiple than software engineering — not because accountancy")
+        print("  pays better to move for, but because the denominators sit at")
+        print("  different points of the Indian distribution. Only the roles with a")
+        print("  single basis carry a multiple worth quoting.")
+
     print("\n=== HOW BIG IS THE GAIN, REALLY ===")
     for occ in SALARIES:
         d = df[(df.occupation == occ) & (df.country != "India")].dropna(
             subset=["multiple_of_india"])
         if d.empty:
             print(f"  {occ:<20s} no Indian comparator — multiple cannot be computed")
+            continue
+        if occ in mixed:
+            print(f"  {occ:<20s} SUPPRESSED — mixed seniority basis, see above")
             continue
         print(f"  {occ:<20s} {d.multiple_of_india.min():.1f}x to "
               f"{d.multiple_of_india.max():.1f}x an Indian salary in the same job")

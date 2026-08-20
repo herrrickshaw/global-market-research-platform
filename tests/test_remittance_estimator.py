@@ -1006,3 +1006,31 @@ def test_the_debt_module_now_uses_the_sourced_rupee_rate():
 
     assert DEFAULT_INR_PER_USD == FX_PER_USD["INR"]
     assert DEFAULT_INR_PER_USD > 90, "the old hardcoded 87.0 was an unsourced guess"
+
+
+def test_seniority_basis_is_recorded_for_every_salary():
+    from occupation_wages import seniority_basis
+
+    d = table(FX_PER_USD)
+    assert d.seniority_basis.notna().all()
+    assert seniority_basis("BLS OEWS May-2025 mean") == "all-levels"
+    assert seniority_basis("chartered accountant, mid-level") == "mid-level"
+    assert seniority_basis("entry-level band") == "entry"
+
+
+def test_the_accountant_row_is_flagged_as_mixed_basis():
+    """It reports a larger multiple than software engineering purely because
+    its Indian denominator is mid-level while the US figure is an all-levels
+    mean. Presenting that as a finding would be wrong."""
+    d = table(FX_PER_USD)
+    acc = d[d.occupation == "accountant"]
+    assert acc.seniority_basis.nunique() > 1
+    # ...while the two headline roles are internally consistent.
+    for occ in ("software engineer", "registered nurse"):
+        assert d[d.occupation == occ].seniority_basis.nunique() == 1
+
+
+def test_a_mixed_basis_multiple_is_larger_than_the_clean_one_which_is_the_trap():
+    d = table(FX_PER_USD).set_index(["occupation", "country"])
+    assert (d.loc[("accountant", "United States"), "multiple_of_india"]
+            > d.loc[("software engineer", "United States"), "multiple_of_india"])
