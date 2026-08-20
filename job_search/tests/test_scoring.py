@@ -63,3 +63,25 @@ def test_zero_role_fit_cannot_be_rescued_by_network():
     net = CompanyNetwork("Acme", "acme", [conn] * 50, [conn] * 5, [conn] * 20)
     m = score_job(_job("Warehouse Operative"), net, P, TODAY)
     assert m.total == 0.0
+
+
+def test_platform_implementation_roles_are_excluded():
+    """Consulting-sounding titles that are really platform work must not rank.
+
+    'Senior Manager - SAP Treasury, Advisory' previously scored 0.689 purely on
+    the generic 'advisory' keyword, despite requiring SAP depth the CV lacks.
+    """
+    for title in ["Senior Manager - SAP Treasury, Advisory",
+                  "Oracle Fusion SCM Manager",
+                  "ServiceNow ITOM Manager - Tech Consulting",
+                  "Manager, Salesforce Implementation"]:
+        assert role_fit(_job(title), P)[0] == 0.0, title
+
+
+def test_capability_centre_titles_are_matched():
+    """GCC / shared-services build-out is directly evidenced on the CV but the
+    titles never say 'business development', so they need their own keywords."""
+    for title in ["Manager - GBS, GCC & Outsourcing Advisory",
+                  "Global Capability Centre Lead",
+                  "Director, Shared Services Transformation"]:
+        assert role_fit(_job(title), P)[0] > 0.4, title

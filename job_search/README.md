@@ -169,6 +169,34 @@ Postings are deduped across sources on (company, title, location), preferring a
 dated record and the canonical ATS link over an aggregator's copy. Any source
 that fails is logged and skipped; one dead feed never kills a run.
 
+## Where a company's India roles actually live
+
+Measured across 11 employers. A global feed is not the same as a global company,
+and assuming it is silently drops entire countries:
+
+| Employer | Feed carries India? | Note |
+|---|---|---|
+| PwC India | yes, 100% | `pwc.in` resolves to a **separate** org from global PwC |
+| Accenture | yes, heavy | but volume is BPO/tech; the fit is Strategy & Consulting Global Network |
+| KPMG | yes | `kpmg.com` is the global org, and its feed still carries India |
+| Shell, Wood Mackenzie, S&P Global | yes | ordinary global ATS |
+| **Deloitte** | **no** | 4,709 postings, page 1 100% US. India lives on `southasiacareers.deloitte.com` |
+| **EY** | **no** | 3,198 postings, page 1 100% US/EU. EY India / GDS absent |
+| TotalEnergies | no India in window | France/US/Africa/Gulf heavy |
+
+Two lessons worth encoding: try the **country domain first** (`pwc.in` beat
+`pwc.com`), and never read an empty country result as "not hiring" until you have
+confirmed the feed covers that country at all.
+
+## Portals this tool does not read
+
+India's senior-hire market runs through portals with no public API and no ATS
+feed: **iimjobs** (the main one for BD / strategy / consulting at 8+ years),
+**Naukri**, **Foundit**, **Hirist**, **Instahyre**. They are worth searching by
+hand -- iimjobs in particular carries roles that never reach a company ATS, and
+lists experience bands (e.g. "6-8 yrs") that make grade mismatches obvious
+before you apply. Scraping them is against their terms and is not attempted here.
+
 ## Layout
 
 ```

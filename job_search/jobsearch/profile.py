@@ -70,7 +70,23 @@ class TargetProfile:
         "cost engineer": 0.7,
         "technical sales": 0.65,
         "proposal manager": 0.6,
+        # --- Offshoring / capability-centre build-out ---
+        # Directly evidenced: established a ~USD 400M India technology hub for a
+        # pan-European insurer (BOOT/JV evaluation, 550+ hires). Titles in this
+        # space rarely say "business development", so they need their own keys.
+        "gcc": 0.85,
+        "global capability": 0.85,
+        "capability center": 0.85,
+        "capability centre": 0.85,
+        "shared services": 0.8,
+        "outsourcing advisory": 0.85,
+        "outsourcing": 0.7,
+        "global business services": 0.8,
+        "gbs": 0.8,
+        "offshoring": 0.8,
+        "location strategy": 0.75,
         # --- Adjacent: consulting, procurement, analytics ---
+        "advisory": 0.6,
         "management consultant": 0.75,
         "engagement manager": 0.7,
         "consultant": 0.5,
@@ -116,6 +132,14 @@ class TargetProfile:
         "intern", "internship", "working student", "werkstudent", "praktikum",
         "apprentice", "graduate scheme", "trainee", "fresher", "entry level",
         "phd", "postdoc", "doctoral",
+        # Wrong function - enterprise-platform implementation. These carry
+        # consulting-sounding titles ("Senior Manager, SAP Treasury, Advisory")
+        # and slip through on generic keywords, but they need deep platform
+        # skills the CV does not evidence.
+        "sap", "oracle", "salesforce", "servicenow", "workday", "d365",
+        "dynamics 365", "guidewire", "coupa", "onestream", "mulesoft",
+        "sailpoint", "hana", "netsuite", "peoplesoft", "tableau", "power bi",
+        "sharepoint", "microsoft 365", "m365",
         # Wrong function - software/IC engineering
         "software engineer", "software developer", "backend engineer",
         "frontend engineer", "full stack", "devops", "sre", "qa engineer",
