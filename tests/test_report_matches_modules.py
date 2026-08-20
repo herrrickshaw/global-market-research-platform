@@ -23,6 +23,7 @@ import pytest
 ROOT = os.path.join(os.path.dirname(__file__), "..")
 sys.path.insert(0, os.path.join(ROOT, "research", "diaspora"))
 
+from gulf_wage_model import blended_wage  # noqa: E402,F401
 from real_savings_ranking import build_frame  # noqa: E402
 from us_debt_service import scenarios  # noqa: E402
 
@@ -124,3 +125,39 @@ def test_the_basket_quoted_in_the_report_is_the_one_the_model_uses(html, cases):
     row = d.loc["Netherlands"]
     implied = float(row.net_wage_ppp_usd) - float(row.savings_ppp_usd)
     assert round(implied) == BASKET
+
+
+def test_the_salaried_scope_limit_is_stated_in_the_report(html):
+    """The report is a salaried-worker model and must say so, not imply it."""
+    assert "salaried</em> migrants throughout" in html or "salaried" in html
+    assert "salaried-worker rankings" in html.lower() or "salaried-worker" in html
+
+
+def test_the_gulf_business_decomposition_matches_the_module(html):
+    """The report quotes the implied business remittance at three owner shares.
+    They must match what salaried_vs_business computes."""
+    import re
+
+    from salaried_vs_business import gulf_decomposition
+
+    d = gulf_decomposition()
+    d = d[d.salaried_remit_rate == "40%"].set_index("business_owner_share")
+    quoted = {int(m) for m in re.findall(r'\{l:"\d+% own businesses",v:(\d+)\}', html)}
+    assert quoted, "the split-chart data block's shape changed"
+    for share in ("3%", "5%", "10%"):
+        expected = int(d.loc[share, "implied_business_remit_usd_yr"])
+        assert expected in quoted, f"{share} owner share: report says {quoted}, module says {expected}"
+
+
+def test_the_us_payroll_contrast_is_quoted_correctly(html):
+    from salaried_vs_business import US_TAX_MECHANICS
+
+    assert f"{US_TAX_MECHANICS['self_employment_pct']}%" in html
+    assert f"{US_TAX_MECHANICS['employee_fica_pct']}%" in html
+
+
+def test_the_gulf_wage_anchor_in_the_report_matches_the_ilo_model(html):
+    from gulf_wage_model import blended_wage
+
+    central = int(blended_wage().set_index("scenario").blended_indian_migrant_usd_yr["central"])
+    assert f"{central:,}" in html, "the Gulf blended wage quoted in the report is stale"
