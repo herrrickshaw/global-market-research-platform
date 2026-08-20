@@ -43,11 +43,32 @@ added — Japan). China's multiples converge but don't pay a return premium.
   nulls and flips as real verdicts; discount magnitude on thin/selected samples.
 - Full treatment, assumptions, and citations: **[docs/METHODOLOGY.md](docs/METHODOLOGY.md)**.
 
+## How metrics are computed
+
+Every screened number, with its exact definition **as implemented**, its inputs, and the
+source it is taken from: **[docs/METRICS.md](docs/METRICS.md)**.
+
+| metric | definition | source |
+|---|---|---|
+| **EPS** | `(net income − preferred dividends) / weighted-average common shares` — the share basis (`diluted`/`basic`/`period_end`) is recorded per row, since they are different statistics | standard accounting definition, validated against filers' own `us-gaap:EarningsPerShareDiluted` to **<0.7%** across 7 mega-caps |
+| **PE · PB · earnings yield** | `close/EPS`, `mcap/book equity`, `1/PE`; priced off the live per-ticker tree, outliers nulled not carried | — |
+| **ROCE** | `EBIT / capital employed` — **India only**; left `NULL` elsewhere rather than approximated | — |
+| **Piotroski F-Score** | 9 binary signals; signal 4 is the accrual test in level form (`CFO > net income`) | Piotroski (2000), *J. Accounting Research* 38:1–41 |
+| **Darvas Box** | `box_top` = unbeaten high; `box_bottom` = lowest low *after* it; breakout = close above `box_top`. Current bar excluded from formation | Darvas (1960), *How I Made $2,000,000 in the Stock Market* |
+| **Liquidity** | floors are **absolute** ($10k structural, ₹1cr India policy); tiers are **percentile within market** — one USD constant is four different filters across five markets | Amihud (2002), *J. Financial Markets* 5:31–56 |
+| **Freshness** | graded by the trading **session the data contains**, never mtime/filename/row-count; median symbol, not maximum | see METRICS.md §5 |
+
+Deviations from a canonical definition are stated rather than glossed — e.g. Piotroski
+signal 7 defaults to *true* on missing share history, awarding a free point to **12%** of
+US tickers. An undocumented deviation is how a screen silently stops measuring what its
+name claims.
+
 ## Documentation
 
 | doc | what |
 |---|---|
 | [docs/METHODOLOGY.md](docs/METHODOLOGY.md) | assumptions · how to read results · literature |
+| [docs/METRICS.md](docs/METRICS.md) | **how every metric is computed** — exact formulas, inputs, sources |
 | [docs/EDGE_MATRIX.md](docs/EDGE_MATRIX.md) | **the fat-pitch grid** — where the edge is (filter × market) |
 | [docs/WHY_THESE_WIN.md](docs/WHY_THESE_WIN.md) | **why** each filter wins — economics + literature + caveats |
 | [docs/FUNDAMENTALS_VS_SPECULATION.md](docs/FUNDAMENTALS_VS_SPECULATION.md) | **fundamentals vs speculation** by sector/time + Damodaran + R&D/asset nuance |
