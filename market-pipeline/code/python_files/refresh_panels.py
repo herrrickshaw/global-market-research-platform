@@ -118,8 +118,26 @@ def refresh(market: str, backfill_days: int = 0) -> None:
             f"  {market}: {len(syms)} symbols, panel ends {dmax.date()}, "
             f"fetching {start} -> today"
         )
-        if dmax >= pd.Timestamp.now().normalize() - pd.Timedelta(days=1):
-            print(f"  {market}: already fresh")
+        # 🔴 2026-08-20: this was `dmax >= today - 1 day` — a CALENDAR-DAY guard
+        # in the one stack built to never use wall-clock. It creates a silent
+        # no-op loop: on 20 Aug the JP panel held 08-19 against an expected
+        # 08-20, so `data_state` graded it behind, `ensure_fresh` planned a
+        # refresh, and this returned "already fresh" without fetching. Plan →
+        # no-op → still behind → re-plan tomorrow, indefinitely.
+        #
+        # The right question is not "is the panel within a day of the calendar"
+        # but "does it hold the session that has closed AND published". Same
+        # clock the planner used to decide this step was needed, so the two can
+        # no longer disagree.
+        try:
+            import market_sessions as _ms
+
+            target = _ms.expected_session(market)
+        except Exception:                       # keep the old behaviour if absent
+            target = (pd.Timestamp.now().normalize() - pd.Timedelta(days=1)).date()
+        if dmax.date() >= target:
+            print(f"  {market}: already fresh (holds {dmax.date()}, "
+                  f"expected session {target})")
             return
 
     frames = []

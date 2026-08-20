@@ -53,6 +53,7 @@ import datetime as dt
 import json
 import shlex
 import subprocess
+import tempfile
 import sys
 import time
 from pathlib import Path
@@ -138,29 +139,45 @@ def run_step(cmd: str, timeout_s: float) -> dict:
     if argv and argv[0].endswith(".py"):
         argv = [PY, "-u"] + argv
     t0 = time.time()
-    try:
-        p = subprocess.Popen(argv, cwd=HERE, stdout=subprocess.PIPE,
-                             stderr=subprocess.STDOUT, text=True)
-    except Exception as e:
-        return {"cmd": cmd, "ok": False, "code": "ERROR", "secs": 0.0,
-                "tail": [str(e)]}
 
+    # 🔴 STDOUT GOES TO A FILE, NOT A PIPE. The first version of this poll loop
+    # used Popen(stdout=PIPE) and only called communicate() AFTER the loop — so
+    # a child that writes more than the ~64KB pipe buffer blocks on write, never
+    # exits, and is killed as a TIMEOUT it never earned. Every step this runs is
+    # invoked with `-u` and prints per batch: `full_us_market_scan.py --workers 10`
+    # emits far past 64KB, so the 06:30 refresh would have spent its entire
+    # budget deadlocked and fetched nothing.
+    #
+    # A temp file has no such limit and needs no reader thread. `subprocess.run`
+    # (which this replaced, for the wall-clock reasons above) did not have this
+    # bug because it drains concurrently — the wall-clock fix was right and this
+    # was the cost of hand-rolling the wait.
     timed_out = False
-    while p.poll() is None:
-        if time.time() - t0 >= timeout_s:
-            timed_out = True
-            p.terminate()
-            try:
-                p.wait(timeout=10)
-            except Exception:
-                p.kill()
-            break
-        time.sleep(1)
-    out = ""
     try:
-        out = p.communicate(timeout=15)[0] or ""
-    except Exception:
-        p.kill()
+        with tempfile.TemporaryFile("w+", errors="replace") as fh:
+            try:
+                p = subprocess.Popen(argv, cwd=HERE, stdout=fh,
+                                     stderr=subprocess.STDOUT, text=True)
+            except Exception as e:
+                return {"cmd": cmd, "ok": False, "code": "ERROR", "secs": 0.0,
+                        "tail": [str(e)]}
+            while p.poll() is None:
+                if time.time() - t0 >= timeout_s:
+                    timed_out = True
+                    p.terminate()
+                    try:
+                        p.wait(timeout=10)
+                    except Exception:
+                        p.kill()
+                        p.wait()
+                    break
+                time.sleep(1)
+            fh.flush()
+            fh.seek(0)
+            out = fh.read()
+    except Exception as e:
+        return {"cmd": cmd, "ok": False, "code": "ERROR",
+                "secs": round(time.time() - t0, 1), "tail": [str(e)]}
     if timed_out:
         ok, code = False, "TIMEOUT"
         tail = [f"exceeded {timeout_s/60:.0f} min wall-clock"] + \

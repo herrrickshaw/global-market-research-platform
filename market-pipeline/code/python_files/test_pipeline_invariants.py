@@ -303,6 +303,27 @@ def _():
     assert el < 8, f"took {el:.1f}s — timeout did not fire on wall-clock"
 
 
+@check("ensure_fresh: a chatty child does not deadlock on the pipe buffer")
+def _():
+    import time
+
+    try:
+        import ensure_fresh as E
+    except Exception as e:
+        raise _Skip(f"module unavailable ({type(e).__name__})")
+    # Popen(stdout=PIPE) with the drain AFTER the wait loop deadlocks any child
+    # that exceeds the ~64KB pipe buffer — it blocks on write and is killed as a
+    # TIMEOUT it never earned. Every real step here prints per batch with -u and
+    # goes far past 64KB, so this would have burned the whole 06:30 budget.
+    t0 = time.time()
+    r = E.run_step("/bin/sh -c 'for i in $(seq 1 20000); do echo "
+                   "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa; done'", 20)
+    el = time.time() - t0
+    assert r["code"] == 0, f"chatty child did not exit cleanly: {r['code']}"
+    assert el < 15, f"took {el:.1f}s — output drain is blocking"
+    assert r["tail"], "output was lost"
+
+
 @check("ensure_fresh: BLOCKING steps are planned before optional ones")
 def _():
     try:
