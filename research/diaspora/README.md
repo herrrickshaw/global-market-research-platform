@@ -1144,3 +1144,118 @@ impossible for employees.
 Sources: IRS Schedule SE; RAND and Immigration Research Initiative on US
 business ownership; Grant Thornton "India in the UK"; FEMA NRE/NRO repatriation
 rules. Gulf: LuLu Group, Landmark, Jashanmal, Ajmal, Jumbo Electronics, Aster DM.
+
+
+---
+
+# Occupation-controlled salaries — `occupation_wages.py`
+
+```bash
+python3 research/diaspora/occupation_wages.py
+python3 research/diaspora/occupation_wages.py --inr 92
+```
+
+Every wage figure elsewhere here is an OECD **economy-wide average**. Indian
+migrants are not an economy-wide sample — they concentrate in technology,
+medicine, engineering and finance. So the national average describes a
+population they are not in, which is the same failure this directory found in
+the remittance shares, the CPI rent series and the Gulf wage data.
+
+## The unit rule
+
+OECD averages are **PPP**-converted; these salaries are **market**-rate. Those
+are different units and dividing one by the other is meaningless. Two earlier
+attempts in this project were wrecked by exactly that, one caught only because
+it implied a **0.19% Swiss tax rate**.
+
+So this module never compares an occupation salary to an OECD average. Only
+occupation to occupation, at market rates — which is the comparison a migrant
+actually faces.
+
+## The migration multiple
+
+| Software engineer | USD (market) | × India |
+|---|---|---|
+| United States | $151,136 | **16.0×** |
+| Australia | $85,040 | 9.0× |
+| United Kingdom | $75,975 | 8.1× |
+| Canada | $75,110 | 8.0× |
+| India | $9,431 | 1.0× |
+
+| Registered nurse | USD (market) | × India |
+|---|---|---|
+| United States | $101,420 | **10.2×** |
+| Canada | $64,962 | 6.5× |
+| Australia | $62,363 | 6.3× |
+| Germany | $42,985 | 4.3× |
+| United Kingdom | $42,363 | 4.3× |
+
+**This is the comparison `roi_foreign_life` could not make.** It needed both
+salaries in one unit and the PPP conversion factor was unreachable. Same
+occupation, same source, market rates on both sides — no conversion factor
+required.
+
+## There is no best country, only a best country for a job
+
+Restricted to the four countries in both roles:
+
+- **software engineer** — US > Australia > UK > Canada
+- **registered nurse** — US > Canada > Australia > UK
+
+**Australia and Canada swap.** A single national-average ranking cannot see that.
+
+## Tax reorders at the role level, though not at the national one
+
+| Role | Does tax reorder? |
+|---|---|
+| software engineer | no |
+| **registered nurse** | **yes — twice** |
+| accountant | no |
+| civil engineer | no |
+
+For nurses, **Australia overtakes Canada** and **the UK overtakes Germany** once
+tax is applied, because the gross gaps between those pairs are small enough for
+a ten-point burden difference to decide them. Where gross gaps are wide —
+anything against the US — tax changes nothing.
+
+An earlier draft asserted tax is always second-order. That is true of national
+averages and **false at the role level**; a test now pins both cases.
+
+## The multiples are upper bounds
+
+The Indian figure is a **national average** of $9,431. Migrants come from the
+top of that distribution:
+
+| | USD | US multiple falls to |
+|---|---|---|
+| National average | $9,431 | 16.0× |
+| Bangalore | $13,597 | 11.1× |
+| Senior engineer | $17,516 | **8.6×** |
+
+Against the salary a realistic candidate actually leaves behind, the US premium
+is closer to **9× than 16×**.
+
+## What is missing, deliberately
+
+**The spends leg.** Savings = net income minus living costs, and the only
+living-cost figure in this project is a PPP basket. Subtracting it from a
+market-rate salary would repeat the exact error that produced the 0.19% Swiss
+rate. Nominal per-country living costs were not sourced, so the chain stops at
+net income. For savings after living costs, use the savings ranking, which is
+internally consistent in PPP throughout.
+
+**Role coverage thins fast.** Software engineer and nurse are complete enough to
+rank; accountant and civil engineer are partial; **data scientist could not be
+assembled at all** — every retrieved figure was either in USD with no stated
+basis, a wide range rather than a central estimate, or the country's
+all-occupation average mislabelled as the role's. Rows are left incomplete
+rather than filled with numbers that cannot be compared. `EXCLUDED` carries the
+reason for each.
+
+Also corrected here: `us_debt_service` used an unsourced **₹87/USD**. The
+sourced August-2026 rate is **₹95.43**, which makes a rupee education loan
+cheaper to service from dollars — the Indian-financed case moves from $13,848 to
+$14,865 landed.
+
+Sources: Glassdoor and BLS OEWS 2026 salary pages; Federal Reserve H.10, HMRC
+monthly rates and HDFC treasury card rates for FX.

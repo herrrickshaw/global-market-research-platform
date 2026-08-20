@@ -71,12 +71,45 @@ SALARIES = {
     },
 }
 
+SALARIES["accountant"] = {
+    "United States": (89870, "USD", "BLS OEWS May-2025 mean, accountants and auditors"),
+    "United Kingdom": (55000, "GBP", "chartered accountant, mid-level"),
+    "India": (396000, "INR", "mid-level"),
+}
+SALARIES["civil engineer"] = {
+    "United States": (80680, "USD", "2026 national average"),
+    "Australia": (107215, "AUD", "2026 national average"),
+}
+
 # Deliberately excluded. The German software-engineer figure that surfaced was
 # quoted in USD by an aggregator with no stated conversion basis — it cannot be
 # placed on the same footing as the local-currency figures above, and guessing
 # which basis it used is how the errors in this project have happened.
-EXCLUDED = {("software engineer", "Germany"):
-            "quoted in USD by an aggregator, conversion basis unstated"}
+EXCLUDED = {
+    ("software engineer", "Germany"):
+        "quoted in USD by an aggregator, conversion basis unstated",
+    ("data scientist", "*"):
+        "every retrieved figure was either in USD with no stated basis, a wide "
+        "range rather than a central estimate, or the country's ALL-OCCUPATION "
+        "average mislabelled as the role's. Nothing comparable survived, so the "
+        "role is absent rather than approximated",
+    ("civil engineer", "Germany"):
+        "EUR 119,000 is roughly twice Germany's all-occupation average wage and "
+        "is not credible as a civil-engineer mean",
+    ("civil engineer", "United Kingdom"):
+        "entry-level band only, not comparable to the national averages here",
+    ("civil engineer", "Canada"):
+        "CAD 175,500 is an Alberta figure, a regional outlier",
+}
+
+# The panel thins fast past the first two roles. That is a property of the
+# sources, not of the roles: past software engineering and nursing, the
+# published figures stop sharing a basis. Rows are left incomplete rather than
+# filled with numbers that cannot be compared.
+ROLE_COVERAGE_NOTE = (
+    "software engineer and registered nurse are complete enough to rank; "
+    "accountant and civil engineer are partial; data scientist could not be "
+    "assembled at all")
 
 # Indian city and seniority variants, kept apart from the national figure
 # because migrants are drawn disproportionately from the top of this range —
@@ -94,7 +127,11 @@ def to_usd(amount: float, currency: str, fx: dict[str, float]) -> float:
 def table(fx: dict[str, float]) -> pd.DataFrame:
     rows = []
     for occ, by_country in SALARIES.items():
-        india = to_usd(*by_country["India"][:2], fx)
+        # Not every role has an Indian comparator. Where it does not, the
+        # multiple is absent rather than computed against some other base —
+        # a role with no counterfactual cannot answer the migration question.
+        india = (to_usd(*by_country["India"][:2], fx)
+                 if "India" in by_country else None)
         for country, (amt, cur, note) in by_country.items():
             usd = to_usd(amt, cur, fx)
             rows.append({
@@ -103,10 +140,42 @@ def table(fx: dict[str, float]) -> pd.DataFrame:
                 "local_amount": amt,
                 "currency": cur,
                 "usd_market": round(usd),
-                "multiple_of_india": round(usd / india, 1),
+                "multiple_of_india": round(usd / india, 1) if india else None,
                 "source_note": note,
             })
     return pd.DataFrame(rows)
+
+
+def with_tax(df: pd.DataFrame) -> pd.DataFrame:
+    """Apply each country's effective rate at the salary actually earned.
+
+    The rate comes from the same interpolated schedule the savings ranking
+    uses. It is applied to a MARKET-rate salary here, where the ranking applies
+    it to a PPP one — the rate is a percentage so it travels, but the resulting
+    net figures live in market dollars and must not be compared with the
+    ranking's PPP nets.
+    """
+    from real_savings_ranking import build_frame, effective_tax_rate
+
+    sched = build_frame(28000).set_index("country")[
+        ["tax_burden_30k_pct", "tax_burden_120k_pct"]]
+    d = df.copy()
+    rates = []
+    for _, r in d.iterrows():
+        if r.country not in sched.index:
+            rates.append(None)
+            continue
+        lo, hi = sched.loc[r.country]
+        rates.append(float(effective_tax_rate(
+            pd.Series([r.usd_market]), pd.Series([lo]), pd.Series([hi])).iloc[0]))
+    d["effective_tax_pct"] = rates
+    # pandas turns a None inside an assigned list into NaN, so the guard has to
+    # be pd.isna and not `is None` — the identity check silently stops working
+    # the moment the list touches a DataFrame.
+    d["net_usd_market"] = [
+        None if pd.isna(t) else round(u * (1 - t / 100))
+        for u, t in zip(d.usd_market, d.effective_tax_pct)]
+    return d
 
 
 def ordering(df: pd.DataFrame, occ: str) -> list[str]:
@@ -135,8 +204,59 @@ def main() -> int:
         print(d[["country", "local_amount", "currency", "usd_market",
                  "multiple_of_india"]].to_string(index=False))
 
+    print("\n=== AFTER TAX ===")
+    t = with_tax(df)
+    t = t[t.net_usd_market.notna()]
+    for occ in SALARIES:
+        sub = t[(t.occupation == occ)].sort_values("net_usd_market", ascending=False)
+        if sub.empty:
+            continue
+        india = sub[sub.country == "India"]
+        base = float(india.net_usd_market.iloc[0]) if len(india) else None
+        print(f"\n  {occ}")
+        for _, r in sub.iterrows():
+            mult = f"{r.net_usd_market / base:5.1f}x" if base else "    -"
+            print(f"    {r.country:<16s} gross US${r.usd_market:>7,.0f}  "
+                  f"tax {r.effective_tax_pct:>5.2f}%  net US${r.net_usd_market:>7,.0f}  {mult}")
+    print("\n  India has no net figure: this project carries no Indian tax schedule, so")
+    print("  the post-tax multiple cannot be computed. The gross multiples above are")
+    print("  the migration gain before either side is taxed.")
+
+    print("\n  Does tax reorder the countries?")
+    any_swap = False
+    for occ in SALARIES:
+        sub = t[t.occupation == occ]
+        if len(sub) < 2:
+            continue
+        gross_order = sub.sort_values("usd_market", ascending=False).country.tolist()
+        net_order = sub.sort_values("net_usd_market", ascending=False).country.tolist()
+        if gross_order == net_order:
+            print(f"    {occ:<20s} no — {' > '.join(gross_order)}")
+        else:
+            any_swap = True
+            print(f"    {occ:<20s} YES")
+            print(f"      gross: {' > '.join(gross_order)}")
+            print(f"      net:   {' > '.join(net_order)}")
+    if any_swap:
+        print("\n  So the claim that tax is a second-order effect does not hold at the role")
+        print("  level, even though it held for national averages. Nurses are the case:")
+        print("  Australia overtakes Canada and the UK overtakes Germany once tax is")
+        print("  applied, because the gross gaps between those pairs are small enough for")
+        print("  a ten-point difference in burden to decide them. Where gross gaps are")
+        print("  wide — anything against the United States — tax changes nothing.")
+
+    print("\n=== THE SPENDS LEG IS MISSING, DELIBERATELY ===")
+    print("  Savings = net income minus what living costs. These salaries are at MARKET")
+    print("  rates, and the only living-cost figure in this project is a PPP basket.")
+    print("  Subtracting one from the other would repeat the exact error that produced")
+    print("  a 0.19% Swiss tax rate earlier in this work. Nominal per-country living")
+    print("  costs were not sourced, so the chain stops at net income and says so.")
+    print("  For savings after living costs, use the savings ranking, which is")
+    print("  internally consistent in PPP throughout.")
+
     print("\n=== THE COUNTRY ORDERING DEPENDS ON THE OCCUPATION ===")
-    orders = {occ: ordering(df, occ) for occ in SALARIES}
+    orders = {occ: ordering(df, occ) for occ in SALARIES
+              if len(ordering(df, occ)) >= 2}
     for occ, o in orders.items():
         print(f"  {occ:<20s} {' > '.join(o)}")
     common = set.intersection(*(set(o) for o in orders.values()))
@@ -151,7 +271,11 @@ def main() -> int:
 
     print("\n=== HOW BIG IS THE GAIN, REALLY ===")
     for occ in SALARIES:
-        d = df[(df.occupation == occ) & (df.country != "India")]
+        d = df[(df.occupation == occ) & (df.country != "India")].dropna(
+            subset=["multiple_of_india"])
+        if d.empty:
+            print(f"  {occ:<20s} no Indian comparator — multiple cannot be computed")
+            continue
         print(f"  {occ:<20s} {d.multiple_of_india.min():.1f}x to "
               f"{d.multiple_of_india.max():.1f}x an Indian salary in the same job")
     print("\n  This is the comparison roi_foreign_life could not make. It needed the")
@@ -180,10 +304,11 @@ def main() -> int:
     print("  For reference only, and NOT as a comparison, the OECD figures are:")
     for c in ("United States", "United Kingdom", "Canada", "Australia"):
         print(f"    {c:<16s} US${WAGE_PPP_USD_2024[c]:,} (PPP)")
+    print(f"\n=== ROLE COVERAGE ===\n  {ROLE_COVERAGE_NOTE}.")
     if EXCLUDED:
-        print("\n  Excluded for want of a stated basis:")
+        print("\n  Excluded, with the reason:")
         for (occ, c), why in EXCLUDED.items():
-            print(f"    {c} / {occ}: {why}")
+            print(f"    {occ} / {c}:\n      {why}")
 
     out = Path(args.out)
     out.mkdir(parents=True, exist_ok=True)

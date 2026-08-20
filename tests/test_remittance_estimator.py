@@ -908,3 +908,101 @@ def test_indian_us_entrepreneurs_out_earn_the_business_owner_average():
     assert b["us_indian_entrepreneur_income_usd"] > b["us_all_business_owner_income_usd"]
     premium = b["us_indian_entrepreneur_income_usd"] / b["us_all_business_owner_income_usd"] - 1
     assert 0.5 < premium < 0.75
+
+
+# ===========================================================================
+# Occupation-controlled wages
+# ===========================================================================
+from occupation_wages import (  # noqa: E402
+    EXCLUDED,
+    FX_PER_USD,
+    INDIA_VARIANTS,
+    SALARIES,
+    table,
+    to_usd,
+    with_tax,
+)
+
+
+def test_every_salary_currency_has_an_exchange_rate():
+    for occ, by_country in SALARIES.items():
+        for country, (_amt, cur, _note) in by_country.items():
+            assert cur in FX_PER_USD, f"{occ}/{country} uses {cur}, which has no rate"
+
+
+def test_india_is_present_wherever_a_multiple_is_reported():
+    d = table(FX_PER_USD)
+    for occ in d.occupation.unique():
+        sub = d[d.occupation == occ]
+        has_india = "India" in set(sub.country)
+        if not has_india:
+            assert sub.multiple_of_india.isna().all(), (
+                f"{occ} reports a multiple with no Indian comparator")
+
+
+def test_the_multiple_is_one_for_india_itself():
+    d = table(FX_PER_USD).set_index(["occupation", "country"])
+    for occ in ("software engineer", "registered nurse"):
+        assert d.loc[(occ, "India"), "multiple_of_india"] == 1.0
+
+
+def test_conversion_is_division_not_multiplication():
+    """A rate of 95.43 INR per USD must make a rupee salary SMALLER in dollars."""
+    assert to_usd(900000, "INR", FX_PER_USD) < 900000
+    assert to_usd(56086, "GBP", FX_PER_USD) > 56086   # GBP is worth more than USD
+    assert to_usd(1000, "USD", FX_PER_USD) == 1000
+
+
+def test_the_ordering_differs_between_occupations():
+    """The module's central claim: there is no single best country, only a best
+    country for a job."""
+    from occupation_wages import ordering
+
+    d = table(FX_PER_USD)
+    swe = [c for c in ordering(d, "software engineer")]
+    nurse = [c for c in ordering(d, "registered nurse")]
+    common = [c for c in swe if c in nurse]
+    assert len(common) >= 3
+    assert [c for c in swe if c in common] != [c for c in nurse if c in common]
+
+
+def test_tax_reorders_the_nurse_row_but_not_the_engineer_row():
+    """Pinned because an earlier draft asserted tax never reorders, which is
+    true of national averages and false at the role level."""
+    t = with_tax(table(FX_PER_USD))
+    t = t[t.net_usd_market.notna()]
+    for occ, expect_swap in (("registered nurse", True), ("software engineer", False)):
+        sub = t[t.occupation == occ]
+        gross = sub.sort_values("usd_market", ascending=False).country.tolist()
+        net = sub.sort_values("net_usd_market", ascending=False).country.tolist()
+        assert (gross != net) is expect_swap, occ
+
+
+def test_india_has_no_net_figure_because_there_is_no_indian_tax_schedule():
+    t = with_tax(table(FX_PER_USD))
+    india = t[t.country == "India"]
+    assert len(india) > 0
+    assert india.net_usd_market.isna().all()
+
+
+def test_india_variants_are_all_above_the_national_average():
+    """Migrants come from the top of the Indian distribution, so every variant
+    must exceed the national figure — that is what makes the headline multiple
+    an upper bound."""
+    national = to_usd(*SALARIES["software engineer"]["India"][:2], FX_PER_USD)
+    for _label, (amt, cur) in INDIA_VARIANTS.items():
+        assert to_usd(amt, cur, FX_PER_USD) > national
+
+
+def test_unusable_figures_are_excluded_with_a_stated_reason():
+    assert len(EXCLUDED) >= 4
+    for key, why in EXCLUDED.items():
+        assert isinstance(key, tuple) and len(key) == 2
+        assert len(why) > 30, f"{key} needs a real reason, not a label"
+
+
+def test_the_debt_module_now_uses_the_sourced_rupee_rate():
+    from us_debt_service import DEFAULT_INR_PER_USD
+
+    assert DEFAULT_INR_PER_USD == FX_PER_USD["INR"]
+    assert DEFAULT_INR_PER_USD > 90, "the old hardcoded 87.0 was an unsourced guess"
