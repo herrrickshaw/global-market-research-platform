@@ -24,7 +24,7 @@ from __future__ import annotations
 import json
 import logging
 import os
-from datetime import datetime
+from datetime import date, datetime, timedelta
 from pathlib import Path
 
 from ..models import JobPosting
@@ -46,6 +46,23 @@ def _parse_date(raw: str | None):
         return datetime.fromisoformat(raw.replace("Z", "+00:00")).date()
     except ValueError:
         return None
+
+
+def _matches(job: JobPosting, countries: tuple[str, ...] | None,
+             since: date | None) -> bool:
+    """Country + recency gate applied to an already-normalised posting.
+
+    An undated posting is KEPT when a recency window is set: Apollo omits dates
+    on some rows, and silently dropping them would understate a company's
+    genuinely current openings.
+    """
+    if countries:
+        loc = (job.location or "").lower()
+        if not any(c.lower() in loc for c in countries):
+            return False
+    if since and job.posted_at and job.posted_at < since:
+        return False
+    return True
 
 
 def _to_posting(j: dict, company: str, source: str) -> JobPosting:
@@ -87,12 +104,21 @@ class ApolloSource(JobSource):
             raise SourceError(f"apollo enrich {domain}: HTTP {resp.status_code}")
         return ((resp.json() or {}).get("organization") or {}).get("id")
 
-    def fetch(self, org_id: str, company: str, max_pages: int = MAX_PAGES) -> list[JobPosting]:
-        """Page through a company's postings. 1 credit per page."""
+    def fetch(self, org_id: str, company: str, max_pages: int = MAX_PAGES,
+              countries: tuple[str, ...] | None = None,
+              days: int | None = None) -> list[JobPosting]:
+        """Page through a company's postings, filtering as it goes.
+
+        Apollo returns newest-first, so a recency window is a PREFIX of the
+        result set: once a full page falls entirely before the cutoff, every
+        later page does too and paging stops. That turns a 19-page employer into
+        a two-page fetch and saves the credits the rest would have cost.
+        """
         if not self.configured:
             raise SourceError("APOLLO_API_KEY not set")
         import requests
 
+        since = (date.today() - timedelta(days=days)) if days else None
         jobs: list[JobPosting] = []
         for page in range(1, max_pages + 1):
             resp = requests.get(ORG_POSTINGS.format(id=org_id),
@@ -104,12 +130,21 @@ class ApolloSource(JobSource):
             batch = data.get("organization_job_postings", [])
             if not batch:
                 break
-            jobs += [_to_posting(j, company, self.name) for j in batch]
+
+            page_jobs = [_to_posting(j, company, self.name) for j in batch]
+            jobs += [j for j in page_jobs if _matches(j, countries, since)]
+
+            # Stop once the whole page predates the window. Checked on dated
+            # rows only, so a page of undated rows never ends paging early.
+            dated = [j.posted_at for j in page_jobs if j.posted_at]
+            if since and dated and max(dated) < since:
+                log.info("apollo %s: page %d fully before cutoff, stopping", company, page)
+                break
 
             pg = data.get("pagination") or {}
             if page >= (pg.get("total_pages") or 1):
                 break
-        log.info("apollo %s: %d postings", company, len(jobs))
+        log.info("apollo %s: %d postings after filter", company, len(jobs))
         return jobs
 
 
@@ -118,7 +153,9 @@ class ApolloDumpSource(JobSource):
 
     name = "apollo_dump"
 
-    def fetch(self, path: str | Path = "data/apollo_postings.json") -> list[JobPosting]:
+    def fetch(self, path: str | Path = "data/apollo_postings.json",
+              countries: tuple[str, ...] | None = None,
+              days: int | None = None) -> list[JobPosting]:
         p = Path(path)
         if not p.exists():
             raise SourceError(f"no Apollo dump at {p}")
@@ -127,12 +164,15 @@ class ApolloDumpSource(JobSource):
         except ValueError as exc:
             raise SourceError(f"corrupt Apollo dump {p}: {exc}") from exc
 
+        since = (date.today() - timedelta(days=days)) if days else None
         jobs: list[JobPosting] = []
         for company, payload in data.items():
             if company.startswith("_") or not isinstance(payload, dict):
                 continue
             for j in payload.get("jobs", []):
-                jobs.append(_to_posting(j, company, self.name))
+                posting = _to_posting(j, company, self.name)
+                if _matches(posting, countries, since):
+                    jobs.append(posting)
             if payload.get("_caveat"):
                 # Surface partial coverage rather than letting it read as complete.
                 log.warning("%s: %s", company, payload["_caveat"])
