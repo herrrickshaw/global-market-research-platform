@@ -152,6 +152,19 @@ def check_file(path: Path, pairs, names) -> list[tuple[str, int, str, str]]:
                 continue
             if any((lead, year) in pairs for lead in leads):
                 # known citation — still flag adjacent quotes for a human look
+                # 🔴 A PYTHON DOCSTRING OPENER IS NOT A QUOTATION. `"""` at the
+                # head of a line abutting a citation is how every module here
+                # documents its source — `"""Corwin-Schultz (2012) two-day
+                # high-low spread estimator` — and flagging it asks the reader
+                # to "verify verbatim" against a quotation that does not exist.
+                # Stripped before the test rather than special-cased after, so
+                # a genuine quote INSIDE a docstring still flags.
+                # The 2-char window starts INSIDE a `"""`, so stripping it from
+                # the window cannot work — it only ever sees one of the three
+                # quotes. Test the actual text preceding the citation instead.
+                before = line[:m.start()].rstrip()
+                if before.endswith('"""') or before.endswith("'''"):
+                    continue
                 window = line[max(0, m.start() - 2): m.end() + 2]
                 if '"' in window or "“" in window or "”" in window:
                     findings.append(("QUOTE?", lineno, f"{raw} ({year})",
@@ -188,8 +201,14 @@ def main() -> int:
 
     n_unknown = 0
     for f in files:
-        # skip any copy of this script — its docstring cites example errors
-        if f.name == "cite_check.py":
+        # Skip files whose whole purpose is to QUOTE citation errors. This
+        # script's docstring cites example failures; LITERATURE_AUDIT.md is the
+        # record of the 2026-08 audit and reproduces each wrong quotation
+        # verbatim so the correction is legible. Both would otherwise flag
+        # forever on text that is deliberately, correctly there — and a warning
+        # that can never be cleared is one that gets filtered out mentally,
+        # taking the real ones with it.
+        if f.name in ("cite_check.py", "LITERATURE_AUDIT.md"):
             continue
         for kind, lineno, cite, msg in check_file(f, pairs, names):
             if kind == "UNKNOWN":
