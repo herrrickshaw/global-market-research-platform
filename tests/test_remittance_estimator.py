@@ -829,3 +829,82 @@ def test_rent_share_stays_under_the_eurostat_overburden_threshold():
 
     assert DEFAULT_RENT_SHARE < 0.40, "40% is Eurostat's housing-cost overburden line"
     assert DEFAULT_RENT_SHARE > 0.25, "below this it stops being a market-rate city rent"
+
+
+# ===========================================================================
+# Salaried vs business-owner migrants
+# ===========================================================================
+from salaried_vs_business import (  # noqa: E402
+    DIASPORA_BUSINESS,
+    GULF_PER_REMITTER_USD,
+    US_TAX_MECHANICS,
+    gulf_decomposition,
+    implied_business_remittance,
+    structural_table,
+    us_payroll_gap,
+)
+
+
+def test_self_employment_payroll_is_exactly_double_the_employee_share():
+    """The employee pays one half; the self-employed pay both."""
+    assert US_TAX_MECHANICS["self_employment_pct"] == pytest.approx(
+        US_TAX_MECHANICS["employee_fica_pct"] * 2, abs=0.01)
+
+
+def test_the_payroll_gap_grows_with_income_up_to_the_threshold():
+    g = us_payroll_gap()
+    assert (g.extra_cost_usd.diff().dropna() > 0).all()
+    assert (g.self_employed_payroll_usd > g.employee_payroll_usd).all()
+
+
+def test_both_populations_enter_india_through_the_same_channel():
+    """The core point: the data cannot separate them."""
+    t = structural_table().set_index("dimension")
+    row = t.loc["Enters India as"]
+    assert "NRE" in row["salaried migrant"]
+    assert "NRE" in row["business-owner migrant"]
+    assert "IDENTICAL" in row["business-owner migrant"]
+
+
+def test_the_salaried_side_has_a_ceiling_and_the_business_side_does_not():
+    t = structural_table().set_index("dimension")
+    assert "ceiling" in t.loc["Income basis", "salaried migrant"]
+    assert "no wage ceiling" in t.loc["Income basis", "business-owner migrant"]
+    assert "Unbounded" in t.loc["Remittance ceiling", "business-owner migrant"]
+
+
+def test_implied_business_remittance_solves_the_mixture():
+    """Recover the observed average from the decomposition it implies."""
+    wage, r, b = 15123.0, 0.40, 0.05
+    v = implied_business_remittance(GULF_PER_REMITTER_USD, wage, r, b)
+    recovered = (1 - b) * wage * r + b * v
+    assert recovered == pytest.approx(GULF_PER_REMITTER_USD, abs=1)
+
+
+def test_a_smaller_owner_share_demands_more_per_owner():
+    wage, r = 15123.0, 0.40
+    few = implied_business_remittance(GULF_PER_REMITTER_USD, wage, r, 0.03)
+    many = implied_business_remittance(GULF_PER_REMITTER_USD, wage, r, 0.10)
+    assert few > many
+
+
+def test_a_higher_salaried_rate_demands_less_from_owners():
+    wage, b = 15123.0, 0.05
+    lo = implied_business_remittance(GULF_PER_REMITTER_USD, wage, 0.30, b)
+    hi = implied_business_remittance(GULF_PER_REMITTER_USD, wage, 0.50, b)
+    assert hi < lo
+
+
+def test_every_gulf_decomposition_cell_is_plausible():
+    """If any cell required an implausible per-owner figure, the business
+    channel would not explain the gap and the module's claim would fail."""
+    d = gulf_decomposition()
+    assert (d.plausible == "yes").all()
+    assert (d.implied_business_remit_usd_yr > 0).all()
+
+
+def test_indian_us_entrepreneurs_out_earn_the_business_owner_average():
+    b = DIASPORA_BUSINESS
+    assert b["us_indian_entrepreneur_income_usd"] > b["us_all_business_owner_income_usd"]
+    premium = b["us_indian_entrepreneur_income_usd"] / b["us_all_business_owner_income_usd"] - 1
+    assert 0.5 < premium < 0.75
