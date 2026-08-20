@@ -1,0 +1,800 @@
+<title>Salary to Savings</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Newsreader:ital,opsz,wght@0,6..72,400;0,600;1,6..72,400&family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+<style>
+:root{
+  --ground:#FCFCFB; --surface:#F4F6F4; --raised:#FFFFFF;
+  --ink:#16211E; --ink-2:#3C4A46; --muted:#68766F; --rule:#DCE3E0;
+  --accent:#00806A; --accent-soft:#E3F0EC;
+  --c-landed:#00806A; --c-tax:#C2691B; --c-basket:#3B5FC0; --c-transfer:#9B2F6E;
+  --warn:#A8322A;
+  --sans:"IBM Plex Sans",ui-sans-serif,system-ui,sans-serif;
+  --serif:"Newsreader",Georgia,"Times New Roman",serif;
+  --mono:"IBM Plex Mono",ui-monospace,"SF Mono",Menlo,monospace;
+  --measure:68ch; --wide:1080px;
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  --ground:#141A18; --surface:#1D2523; --raised:#212B28;
+  --ink:#E7EDEA; --ink-2:#C3CFCB; --muted:#96A5A0; --rule:#2E3936;
+  --accent:#3FBFA3; --accent-soft:#17302B;
+  --c-landed:#26A08A; --c-tax:#CE7A2E; --c-basket:#6A85DC; --c-transfer:#C25E93;
+  --warn:#E0736A;
+}}
+:root[data-theme="dark"]{
+  --ground:#141A18; --surface:#1D2523; --raised:#212B28;
+  --ink:#E7EDEA; --ink-2:#C3CFCB; --muted:#96A5A0; --rule:#2E3936;
+  --accent:#3FBFA3; --accent-soft:#17302B;
+  --c-landed:#26A08A; --c-tax:#CE7A2E; --c-basket:#6A85DC; --c-transfer:#C25E93;
+  --warn:#E0736A;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--ground);color:var(--ink);font-family:var(--sans);
+  font-size:16.5px;line-height:1.62;-webkit-font-smoothing:antialiased}
+.wrap{max-width:var(--wide);margin:0 auto;padding:0 24px}
+.col{max-width:var(--measure);margin-inline:auto}
+h1,h2,h3{text-wrap:balance;margin:0}
+a{color:var(--accent)}
+.mono{font-family:var(--mono);font-variant-numeric:tabular-nums}
+.eyebrow{font-family:var(--mono);font-size:.7rem;letter-spacing:.14em;text-transform:uppercase;color:var(--muted)}
+
+/* ---------- masthead ---------- */
+header{border-bottom:1px solid var(--rule);padding:56px 0 34px;margin-bottom:44px}
+h1{font-family:var(--serif);font-size:clamp(2.5rem,6vw,3.9rem);line-height:1.04;font-weight:600;letter-spacing:-.018em}
+.standfirst{font-family:var(--serif);font-size:1.22rem;line-height:1.55;color:var(--ink-2);margin-top:18px}
+.meta{display:flex;flex-wrap:wrap;gap:8px 26px;margin-top:26px}
+.meta div{font-family:var(--mono);font-size:.74rem;color:var(--muted)}
+.meta b{color:var(--ink-2);font-weight:500}
+
+/* ---------- stat row ---------- */
+.tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:2px;
+  background:var(--rule);border:1px solid var(--rule);border-radius:3px;overflow:hidden;margin-bottom:52px}
+.tile{background:var(--raised);padding:20px 22px}
+.tile .k{font-family:var(--mono);font-size:.68rem;letter-spacing:.1em;text-transform:uppercase;color:var(--muted)}
+.tile .v{font-family:var(--serif);font-size:2.1rem;line-height:1.1;margin-top:8px;font-variant-numeric:tabular-nums}
+.tile .n{font-size:.83rem;color:var(--muted);margin-top:6px;line-height:1.45}
+.tile.hot .v{color:var(--warn)}
+
+/* ---------- stages ---------- */
+section{margin-bottom:64px}
+.stagehead{display:flex;gap:18px;align-items:baseline;border-top:2px solid var(--ink);padding-top:14px;margin-bottom:8px}
+.stagenum{font-family:var(--mono);font-size:.78rem;color:var(--accent);font-weight:500;flex:none}
+h2{font-family:var(--serif);font-size:1.85rem;font-weight:600;letter-spacing:-.012em}
+.dek{color:var(--muted);font-size:.95rem;margin:0 0 26px}
+p{margin:0 0 17px}
+.col p:last-child{margin-bottom:0}
+
+/* ---------- tables ---------- */
+.scroll{overflow-x:auto;margin:26px 0}
+table{border-collapse:collapse;width:100%;font-size:.87rem;min-width:560px}
+th,td{text-align:right;padding:9px 13px;border-bottom:1px solid var(--rule);white-space:nowrap}
+th:first-child,td:first-child{text-align:left}
+thead th{font-family:var(--mono);font-size:.67rem;letter-spacing:.08em;text-transform:uppercase;
+  color:var(--muted);font-weight:500;border-bottom:1px solid var(--ink)}
+tbody td:not(:first-child){font-family:var(--mono);font-variant-numeric:tabular-nums}
+tbody tr:hover{background:var(--surface)}
+td.strong{color:var(--ink);font-weight:500}
+.was{color:var(--muted);font-size:.8em}
+
+/* ---------- chart: stacked chain ---------- */
+.chart{margin:30px 0 8px}
+.legend{display:flex;flex-wrap:wrap;gap:7px 20px;margin-bottom:20px}
+.lg{display:flex;align-items:center;gap:7px;font-size:.79rem;color:var(--ink-2)}
+.sw{width:11px;height:11px;border-radius:2px;flex:none}
+.row{display:grid;grid-template-columns:118px 1fr 92px;gap:14px;align-items:center;margin-bottom:9px}
+.rowlab{font-size:.83rem;text-align:right;color:var(--ink-2)}
+.bar{display:flex;gap:2px;height:26px}
+.seg{border-radius:0;min-width:2px;cursor:default;transition:filter .12s}
+.seg:first-child{border-radius:3px 0 0 3px}
+.seg:last-child{border-radius:0 3px 3px 0}
+.seg:hover{filter:brightness(1.12)}
+.rowval{font-family:var(--mono);font-size:.83rem;font-variant-numeric:tabular-nums;color:var(--ink)}
+.axis{display:grid;grid-template-columns:118px 1fr 92px;gap:14px;margin-top:6px}
+.axis .t{display:flex;justify-content:space-between;font-family:var(--mono);font-size:.68rem;color:var(--muted)}
+
+/* ---------- chart: hurdle ---------- */
+.hrow{display:grid;grid-template-columns:210px 1fr 58px;gap:14px;align-items:center;margin-bottom:8px}
+.hlab{font-size:.83rem;text-align:right;color:var(--ink-2)}
+.htrack{position:relative;height:22px;background:var(--surface);border-radius:3px;overflow:hidden}
+.hbar{height:100%;background:var(--accent);border-radius:3px 0 0 3px;opacity:.88}
+.hband{position:absolute;top:0;bottom:0;background:color-mix(in srgb,var(--warn) 16%,transparent);
+  border-left:1px dashed var(--warn);border-right:1px dashed var(--warn)}
+.hval{font-family:var(--mono);font-size:.83rem;font-variant-numeric:tabular-nums}
+.hval.no{color:var(--warn);font-weight:500}
+.hnote{font-size:.78rem;color:var(--muted);margin-top:14px;display:flex;gap:8px;align-items:baseline}
+
+/* ---------- callouts ---------- */
+.note{background:var(--surface);border-left:2px solid var(--accent);padding:18px 22px;margin:26px 0;border-radius:0 3px 3px 0}
+.note.warn{border-left-color:var(--warn)}
+.note h3{font-family:var(--sans);font-size:.76rem;letter-spacing:.1em;text-transform:uppercase;
+  color:var(--muted);font-weight:600;margin-bottom:9px}
+.note p{font-size:.93rem}
+.note p:last-child{margin-bottom:0}
+.grade{display:inline-block;font-family:var(--mono);font-size:.66rem;font-weight:500;padding:2px 7px;
+  border-radius:2px;border:1px solid currentColor;letter-spacing:.05em}
+.gA{color:var(--c-landed)} .gB{color:var(--c-basket)} .gC{color:var(--c-tax)} .gD{color:var(--warn)}
+ul{margin:0 0 17px;padding-left:20px} li{margin-bottom:7px}
+footer{border-top:1px solid var(--rule);margin-top:24px;padding:30px 0 60px;
+  font-size:.82rem;color:var(--muted)}
+
+/* waterfall small multiples */
+:root{
+  --w-tax:#B5651D; --w-rent:#2E6FD9; --w-live:#C43C86; --w-debt:#7A5CD0; --w-save:#00806A;
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  --w-tax:#CE7A2E; --w-rent:#6A85DC; --w-live:#D9557A; --w-debt:#9A72DE; --w-save:#26A08A;
+}}
+:root[data-theme="dark"]{
+  --w-tax:#CE7A2E; --w-rent:#6A85DC; --w-live:#D9557A; --w-debt:#9A72DE; --w-save:#26A08A;
+}
+.wgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(310px,1fr));gap:26px 22px;margin:26px 0 8px}
+.wcard{border:1px solid var(--rule);border-radius:3px;padding:14px 14px 8px;background:var(--raised)}
+.wtitle{display:flex;justify-content:space-between;align-items:baseline;gap:10px;margin-bottom:10px}
+.wtitle .n{font-size:.9rem;font-weight:600}
+.wtitle .v{font-family:var(--mono);font-size:.9rem;color:var(--w-save);font-variant-numeric:tabular-nums}
+.wcard svg{display:block;width:100%;height:auto}
+.wsub{font-size:.72rem;color:var(--muted);margin-top:2px}
+.wf-conn{stroke:var(--muted);stroke-width:1;stroke-dasharray:2 2;opacity:.55}
+.wf-lab{font-family:var(--mono);font-size:8.5px;fill:var(--muted)}
+.wf-base{stroke:var(--rule);stroke-width:1}
+
+/* diverging bar: zero-centred, positive right */
+.drow{display:grid;grid-template-columns:132px 1fr 74px;gap:14px;align-items:center;margin-bottom:8px}
+.dlab{font-size:.83rem;text-align:right;color:var(--ink-2)}
+.dtrack{position:relative;height:22px;background:var(--surface);border-radius:3px}
+.dzero{position:absolute;top:-3px;bottom:-3px;width:1px;background:var(--rule)}
+.dbar{position:absolute;top:3px;height:16px;border-radius:2px}
+.ddot{position:absolute;top:50%;width:9px;height:9px;border-radius:50%;transform:translate(-50%,-50%);
+  border:2px solid var(--ground);background:var(--ink-2)}
+.dval{font-family:var(--mono);font-size:.83rem;font-variant-numeric:tabular-nums}
+.dval.neg{color:var(--warn);font-weight:500}
+/* verdict table */
+.chip{display:inline-block;font-family:var(--mono);font-size:.64rem;letter-spacing:.05em;
+  padding:2px 7px;border-radius:2px;border:1px solid currentColor}
+.chip.firm{color:var(--c-landed)} .chip.na{color:var(--muted)}
+tr.unplaced td{background:var(--surface);color:var(--ink-2)}
+#tip{position:fixed;pointer-events:none;opacity:0;transition:opacity .1s;background:var(--ink);
+  color:var(--ground);font-family:var(--mono);font-size:.73rem;padding:6px 9px;border-radius:3px;z-index:9;
+  white-space:nowrap}
+@media (prefers-reduced-motion:reduce){*{transition:none!important}}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+</style>
+
+<div id="tip"></div>
+
+<header>
+  <div class="wrap"><div class="col">
+    <div class="eyebrow">Indian diaspora · savings analysis</div>
+    <h1>Salary to Savings</h1>
+    <p class="standfirst">What happens to an Indian professional's pay between the payslip abroad
+      and the money arriving at home, whether what survives the journey still beats inflation
+      in India — and what the Indian career you left behind was doing meanwhile.</p>
+    <div class="meta">
+      <div>Basket <b>US$28,000/yr</b></div>
+      <div>Wages <b>OECD 2024, PPP</b></div>
+      <div>India prices <b>MoSPI, Jul-2026</b></div>
+      <div>Merged <b>PR #9 · cdcca9a</b></div>
+    </div>
+  </div></div>
+</header>
+
+<div class="wrap">
+
+<div class="tiles">
+  <div class="tile"><div class="k">Best landed savings</div><div class="v mono">$34,215</div>
+    <div class="n">United States, after tax, living costs and fees — and before any debt
+      service. Stage 7 is where that assumption breaks</div></div>
+  <div class="tile"><div class="k">Weakest of the seven</div><div class="v mono">$8,945</div>
+    <div class="n">Japan — a quarter of the US, on a wage 40% lower</div></div>
+  <div class="tile"><div class="k">India CPI</div><div class="v mono">4.45%</div>
+    <div class="n">The hurdle for money meant to be spent</div></div>
+  <div class="tile hot"><div class="k">India WPI</div><div class="v mono">8.30%</div>
+    <div class="n">The hurdle for money meant to buy property</div></div>
+  <div class="tile"><div class="k">Indian wage growth</div><div class="v mono">5.39%</div>
+    <div class="n">Faster than the 2&ndash;4% of the salary you left for</div></div>
+</div>
+
+<div class="col">
+  <p>A salary earned abroad passes through a series of claims before any of it is useful in
+  India. Each stage consumes what the last one left, so the order matters and the losses
+  compound. This report walks that chain for the seven countries where it can be measured on
+  comparable terms, then asks three things the chain cannot answer on its own: against what
+  you paid and gave up, was it worth it — what is the surplus already promised to — and does
+  any of it hold once rent starts moving?</p>
+  <p>Everything is in PPP-adjusted US dollars. That is not a cosmetic choice — it is what makes
+  the cost-of-living stage tractable at all, and it is explained at stage&nbsp;3.</p>
+</div>
+
+<!-- 1 -->
+<section>
+  <div class="col">
+    <div class="stagehead"><span class="stagenum">STAGE 1</span><h2>Earnings</h2></div>
+    <p class="dek">OECD average annual wages, 2024, USD at purchasing-power parity.</p>
+    <p>The spread is wider than the tax debate that usually dominates these conversations.
+    The United States pays 68% more than Japan for the average job. Before a single
+    deduction, the country you work in has already decided most of the outcome.</p>
+    <p>These are <em>national</em> averages, and that matters later: Indian migrants in the US
+    and UK earn <em>above</em> their host average — the population concentrates in technology,
+    medicine and finance — while Indian migrants in the Gulf earn far <em>below</em> theirs.
+    Only the Gulf half of that distortion has been corrected here, which makes every
+    Gulf-versus-West comparison in this report the conservative one.</p>
+  </div>
+  <div class="scroll"><table>
+    <thead><tr><th>Country</th><th>Gross wage</th><th>vs. lowest</th><th>Evidence</th></tr></thead>
+    <tbody>
+      <tr><td class="strong">United States</td><td>$82,933</td><td>1.68×</td><td><span class="grade gA">A · OECD</span></td></tr>
+      <tr><td class="strong">Netherlands</td><td>$75,370</td><td>1.52×</td><td><span class="grade gA">A · OECD</span></td></tr>
+      <tr><td class="strong">Germany</td><td>$69,433</td><td>1.40×</td><td><span class="grade gA">A · OECD</span></td></tr>
+      <tr><td class="strong">Canada</td><td>$69,417</td><td>1.40×</td><td><span class="grade gA">A · OECD</span></td></tr>
+      <tr><td class="strong">Australia</td><td>$67,000</td><td>1.35×</td><td><span class="grade gA">A · OECD</span></td></tr>
+      <tr><td class="strong">United Kingdom</td><td>$63,691</td><td>1.29×</td><td><span class="grade gA">A · OECD</span></td></tr>
+      <tr><td class="strong">Japan</td><td>$49,446</td><td>1.00×</td><td><span class="grade gA">A · OECD</span></td></tr>
+    </tbody>
+  </table></div>
+</section>
+
+<!-- 2 -->
+<section>
+  <div class="col">
+    <div class="stagehead"><span class="stagenum">STAGE 2</span><h2>Taxation</h2></div>
+    <p class="dek">Income tax plus employee social security, charged at the wage actually earned.</p>
+    <p>An earlier version of this analysis charged every country its rate at US$120,000. But no
+    average wage here reaches US$120,000, and these are progressive schedules — so the model was
+    billing incomes nobody in the sample earns. Germany was the worst case: 42.2% applied to a
+    US$69,433 salary.</p>
+    <p>The rates below interpolate between the two known points on each schedule. It reorders the
+    results. The Netherlands gains three places on this correction alone, because its rate at the
+    bottom of the schedule is 4.3% — charging it 37.9% had buried a country that taxes an average
+    wage more lightly than Canada does.</p>
+  </div>
+  <div class="scroll"><table>
+    <thead><tr><th>Country</th><th>At $30k</th><th>At $120k</th><th>Effective</th><th>Tax paid</th><th>Take-home</th></tr></thead>
+    <tbody>
+      <tr><td class="strong">Australia</td><td>9.5%</td><td>27.8%</td><td class="strong">17.02%</td><td>$11,403</td><td>$55,597</td></tr>
+      <tr><td class="strong">United Kingdom</td><td>12.1%</td><td>30.1%</td><td class="strong">18.84%</td><td>$11,999</td><td>$51,692</td></tr>
+      <tr><td class="strong">Netherlands</td><td>4.3%</td><td>37.9%</td><td class="strong">21.24%</td><td>$16,009</td><td>$59,361</td></tr>
+      <tr><td class="strong">United States</td><td>14.4%</td><td>29.4%</td><td class="strong">23.22%</td><td>$19,257</td><td>$63,676</td></tr>
+      <tr><td class="strong">Canada</td><td>18.2%</td><td>31.8%</td><td class="strong">24.16%</td><td>$16,771</td><td>$52,646</td></tr>
+      <tr><td class="strong">Japan</td><td>21.7%</td><td>34.7%</td><td class="strong">24.51%</td><td>$12,119</td><td>$37,327</td></tr>
+      <tr><td class="strong">Germany</td><td>27.2%</td><td>42.2%</td><td class="strong">33.77%</td><td>$23,448</td><td>$45,985</td></tr>
+    </tbody>
+  </table></div>
+  <div class="col"><div class="note">
+    <h3>Two assumptions worth knowing</h3>
+    <p>The US figure blends federal tax, FICA and a mid-range state. State choice moves it about
+    ten points either way — Texas and Florida levy nothing, California around nine percent — and
+    that is not modelled. Singapore's rate is income tax only, which is <em>correct</em> for this
+    population: CPF does not apply to Employment Pass holders, though a citizen or permanent
+    resident would face roughly 20%.</p>
+  </div></div>
+</section>
+
+<!-- 3 -->
+<section>
+  <div class="col">
+    <div class="stagehead"><span class="stagenum">STAGE 3</span><h2>Expenses</h2></div>
+    <p class="dek">One real basket, US$28,000 a year, identical across every country.</p>
+    <p>This looks like a shortcut and is the opposite. The obvious construction — take nominal
+    wages, subtract a cost-of-living index — double counts, because the OECD wage series is
+    <em>already</em> deflated by each host country's price level. Cost of living is inside the
+    wage number before you start.</p>
+    <p>Working in PPP dollars throughout dissolves the problem. In PPP terms a fixed real standard
+    of living costs the same everywhere by construction, so the whole cost-of-living stage
+    collapses into a single constant. The basket size is then the only free parameter, and the
+    ranking survives every value tested between US$20,000 and US$36,000 — only the margins move.</p>
+    <p>The honest limit: this is one standard of living, not a personal budget. Someone sharing a
+    flat and cooking at home clears a far smaller basket than the figure assumes; someone with
+    children in private school clears a much larger one.</p>
+  </div>
+</section>
+
+<!-- 4 -->
+<section>
+  <div class="col">
+    <div class="stagehead"><span class="stagenum">STAGE 4</span><h2>Savings repatriation</h2></div>
+    <p class="dek">What is left, minus the cost of moving it, is what actually arrives.</p>
+    <p>Transfer costs are the smallest stage and the only one that is purely friction — the UK
+    corridor charges 1.91%, Australia 6.15%, a spread worth about US$1,200 a year to an
+    Australian remitter. Four countries had no corridor figure and carry the sample mean.</p>
+  </div>
+
+  <div class="chart">
+    <div class="legend">
+      <span class="lg"><span class="sw" style="background:var(--c-tax)"></span>Tax</span>
+      <span class="lg"><span class="sw" style="background:var(--c-basket)"></span>Living costs</span>
+      <span class="lg"><span class="sw" style="background:var(--c-transfer)"></span>Transfer fees</span>
+      <span class="lg"><span class="sw" style="background:var(--c-landed)"></span>Lands in India</span>
+    </div>
+    <div id="chain"></div>
+    <div class="axis"><span></span><div class="t"><span>$0</span><span>$41k</span><span>$83k</span></div><span></span></div>
+  </div>
+
+  <div class="col"><p style="margin-top:26px">The United States ends first despite carrying the
+  fourth-heaviest effective tax burden of the seven. Australia taxes an average wage six points
+  more lightly and lands US$8,300 less. At this stage of the chain the wage has already decided
+  the outcome; tax and fees only adjust it at the margin.</p></div>
+</section>
+
+<!-- 5 -->
+<section>
+  <div class="col">
+    <div class="stagehead"><span class="stagenum">STAGE 5</span><h2>The inflation hurdle</h2></div>
+    <p class="dek">Money earned abroad is a claim on Indian goods, so the hurdle is set in India.</p>
+    <p>This is the stage the ranking above cannot see. Savings sent home are eroded at the Indian
+    rate, not the host rate — and which Indian rate depends entirely on what the money is for.
+    The bars show the nominal wage growth a remitter needs simply to stand still, against the low
+    single digits that advanced-economy wages actually deliver.</p>
+  </div>
+
+  <div class="chart" id="hurdle"></div>
+  <div class="hnote"><span class="sw" style="background:color-mix(in srgb,var(--warn) 30%,transparent);border:1px dashed var(--warn)"></span>
+    <span>Shaded band: typical advanced-economy nominal wage growth, 2–4%. Bars beyond it are not cleared.</span></div>
+
+  <div class="col"><div class="note warn">
+    <h3>The finding</h3>
+    <p>Medical support and household bills at home are comfortably cleared. Education and general
+    consumption are close to a coin toss. But <strong>property and gold — the two things
+    remittances most often accumulate toward — are cleared by no advanced-economy wage at
+    all.</strong> Someone saving abroad to buy Indian property is losing ground every year the
+    transfer is deferred, however well their destination scores on tax.</p>
+  </div></div>
+</section>
+
+
+<!-- 6 -->
+<section>
+  <div class="col">
+    <div class="stagehead"><span class="stagenum">STAGE 6</span><h2>Return on the whole thing</h2></div>
+    <p class="dek">Against what you paid to get there, and the Indian salary you stopped earning.</p>
+    <p>Everything above measures a level. Return needs two more terms: the cost of going, and
+    the counterfactual — what the career you left would have done if you had stayed.</p>
+    <p><strong>The cost.</strong> For Gulf labour migration it is measured: the KNOMAD/ILO
+    survey of returning workers puts recruitment costs at one to nine months of foreign
+    earnings — US$1,260 to US$11,342 at the Gulf blended wage, paid before the first day of
+    work. For skilled migration to the West no comparable figure was reachable, so the table
+    below runs at a US$15,000 assumption and is swept beside it.</p>
+  </div>
+
+  <div class="scroll"><table>
+    <thead><tr><th>Country</th><th>Lands per year</th><th>Payback</th><th>Net, year one</th></tr></thead>
+    <tbody>
+      <tr><td class="strong">United States</td><td>$34,215</td><td class="strong">0.44 yr</td><td>+$19,215</td></tr>
+      <tr><td class="strong">Netherlands</td><td>$30,077</td><td class="strong">0.50 yr</td><td>+$15,077</td></tr>
+      <tr><td class="strong">Australia</td><td>$25,900</td><td class="strong">0.58 yr</td><td>+$10,900</td></tr>
+      <tr><td class="strong">Canada</td><td>$23,591</td><td class="strong">0.64 yr</td><td>+$8,591</td></tr>
+      <tr><td class="strong">United Kingdom</td><td>$23,239</td><td class="strong">0.65 yr</td><td>+$8,239</td></tr>
+      <tr><td class="strong">Germany</td><td>$17,249</td><td class="strong">0.87 yr</td><td>+$2,249</td></tr>
+      <tr><td class="strong">Japan</td><td>$8,945</td><td class="strong">1.68 yr</td><td class="was">&minus;$6,055</td></tr>
+    </tbody>
+  </table></div>
+
+  <div class="col">
+    <p>Six of seven repay the entire cost of migrating inside a year. On this term the answer
+    is trivially yes — which is exactly why this term alone is not the return.</p>
+    <p><strong>The counterfactual.</strong> India's statistics ministry measures what a salaried
+    Indian earns, and how fast it is rising: ₹19,316 a month in 2022, ₹20,408 in 2023, ₹21,455
+    in 2024. That is a compound growth rate of 5.39% a year.</p>
+  </div>
+
+  <div class="chart" id="crossover"></div>
+  <div class="hnote"><span class="sw" style="background:color-mix(in srgb,var(--warn) 30%,transparent);border:1px dashed var(--warn)"></span>
+    <span>Shaded band: nominal wage growth in the advanced economies through this cycle, 2–4%.</span></div>
+
+  <div class="col"><div class="note">
+    <h3>The crossover</h3>
+    <p><strong>The Indian salary you left is growing faster in nominal terms than the foreign
+    salary you took</strong> — 5.39% against 2–4%. One side is measured and the other is a
+    cycle range, so read it as a direction rather than a decimal; but the direction is not
+    close. In real terms the same thing from the other end: an Indian salary gains roughly
+    +0.94% a year in purchasing power, while savings sent home are eroded at 4.45% — or 8.30%
+    if they are meant for property — having grown at only 2–4%.</p>
+  </div></div>
+
+  <div class="col">
+    <p>So a foreign life buys <strong>a step change in level, not a faster rate</strong>. The
+    step is large and it arrives quickly. But the rate underneath it is worse than the one
+    you left, and the erosion applies at Indian prices no matter where the money was earned.
+    Three things follow, and none of them are about tax:</p>
+    <ul>
+      <li><strong>The gain is front-loaded.</strong> It is banked in the early years, while
+      the level gap is widest — not accumulated evenly across a career.</li>
+      <li><strong>Deferring the transfer destroys it.</strong> Money held abroad to send
+      later compounds at the host rate and is spent at the Indian one.</li>
+      <li><strong>What the money is for decides whether it worked.</strong> Against
+      consumption the arithmetic holds. Against property it does not — and property is what
+      remittances most often accumulate toward.</li>
+    </ul>
+    <p>One caveat cuts in the reader's favour. The Indian benchmark is the all-India salaried
+    average, and people who migrate are not average — they skew graduate and urban. The salary
+    actually given up is therefore higher than ₹21,455, which makes the foreign premium
+    smaller than it looks here, not larger. The crossover is the conservative reading.</p>
+  </div>
+</section>
+
+
+<!-- 7 -->
+<section>
+  <div class="col">
+    <div class="stagehead"><span class="stagenum">STAGE 7</span><h2>What the surplus is already promised to</h2></div>
+    <p class="dek">Debt service comes out of the same money that funds the remittance.</p>
+    <p>Every figure so far treats the surplus above the basket as free to send home. For a
+    US-based Indian professional it usually is not: a degree was financed, a car was financed,
+    a house may be. This section is United States only, and for a precise reason — the US is
+    the base currency of the purchasing-power conversion used throughout, so its PPP dollars
+    are simply dollars, and these payments subtract with no exchange-rate step. That holds for
+    no other destination here.</p>
+    <p>The three debts are not the same kind of thing, and treating them alike is the mistake
+    worth avoiding. A student loan is a pure claim — nothing comes back. A car loan is also
+    pure cost, because the asset depreciates. <strong>A mortgage is neither.</strong> It
+    replaces rent the basket already contains, so subtracting it would count housing twice;
+    and its principal is not spending at all but saving, redirected into American property
+    instead of Indian. On an early payment only $260 of $1,930 builds equity — which is when
+    that redirection is least efficient. So no mortgage is netted below.</p>
+  </div>
+
+  <div class="chart">
+    <div id="debt"></div>
+    <div class="axis"><span></span><div class="t"><span>0%</span><span>30%</span><span>60%</span></div><span></span></div>
+  </div>
+  <div class="hnote"><span>Share of the US surplus consumed before anything is remitted.</span></div>
+
+  <div class="scroll"><table>
+    <thead><tr><th>Scenario</th><th>Debt service</th><th>Share of surplus</th><th>Lands in India</th></tr></thead>
+    <tbody>
+      <tr><td class="strong">No debt <span class="was">(the assumption above)</span></td><td>$0</td><td>0%</td><td class="strong">$34,215</td></tr>
+      <tr><td class="strong">Used car only</td><td>$6,372</td><td>17.9%</td><td>$28,104</td></tr>
+      <tr><td class="strong">US student loan, master's</td><td>$7,680</td><td>21.5%</td><td>$26,850</td></tr>
+      <tr><td class="strong">New car</td><td>$9,240</td><td>25.9%</td><td>$25,353</td></tr>
+      <tr><td class="strong">Indian education loan, ₹85L</td><td>$11,996</td><td>33.6%</td><td>$22,710</td></tr>
+      <tr><td class="strong">US student loan + used car</td><td>$14,052</td><td>39.4%</td><td>$20,738</td></tr>
+      <tr><td class="strong">Indian education loan + new car</td><td>$21,236</td><td class="strong">59.5%</td><td class="strong">$13,848</td></tr>
+    </tbody>
+  </table></div>
+
+  <div class="col"><div class="note">
+    <h3>Where a remittance is not a remittance</h3>
+    <p>An Indian who financed a US master's with an <em>Indian</em> education loan services a
+    rupee debt out of dollar income — and those payments cross into India and are counted as
+    remittances. They are not family support and they are not savings. They are loan
+    repayment. At $9,593 to $14,780 a year per borrower, this is one concrete channel by which
+    India's remittance figures measure something other than migrants sending wages home.</p>
+    <p>The sensitivity runs the opposite way to everything else here: <strong>a weaker rupee
+    makes the loan cheaper</strong> to service out of dollars. It is the only line in this
+    report where rupee depreciation helps the person who left.</p>
+  </div></div>
+
+  <div class="col"><p>One caution about the last row. It puts a debt-laden American against
+  six peers carried as debt-free, and that is not a fair fight — people who move to Germany,
+  Canada or Australia borrow too; their figures simply were not gathered. What is genuinely
+  particular to the United States is that a master's there costs ₹70–100 lakh while German
+  public universities charge no tuition at all, that car dependence is structural rather than
+  chosen in most American metros, and that the Indian education loan exists at the scale it
+  does precisely because US study is what it is most often taken out to fund.</p></div>
+</section>
+
+<!-- 8 -->
+<section>
+  <div class="col">
+    <div class="stagehead"><span class="stagenum">STAGE 8</span><h2>And rent does not stand still</h2></div>
+    <p class="dek">Non-US destinations. The basket was held constant; rent is not.</p>
+    <p>Holding living costs at a fixed $28,000 is fine for comparing countries in one year and
+    wrong for asking whether the surplus lasts. Rent is the largest and fastest-moving thing
+    in that basket — and there is a catch in how it is measured that changes the answer.</p>
+    <p><strong>Every country publishes two rent figures.</strong> The consumer price index
+    measures the rent paid across the whole rented stock, most of which is occupied by people
+    on running contracts, shielded by caps, indexation and long leases. Separately there is
+    what someone signing a fresh lease actually pays. A migrant is always in the second group.
+    They arrive; they sign at market.</p>
+    <p>So the published number — the one every cost-of-living comparison uses, including the
+    basket in this report — understates what a migrant pays, and understates it most in
+    exactly the countries whose tenant protections are strongest.</p>
+  </div>
+
+  <div class="chart" id="rent"></div>
+  <div class="hnote"><span class="sw" style="background:var(--c-transfer)"></span>
+    <span>Bar: pay minus rent on new lettings — the migrant's number. Dot: the same on the
+    published CPI basis. Right of centre is pay winning.</span></div>
+
+  <div class="col"><div class="note warn">
+    <h3>Three countries where the basis flips the sign</h3>
+    <p>In Japan, Germany and the Netherlands, a migrant is gaining ground on rent according to
+    the published series and losing it according to the one that applies to them. Japan is the
+    starkest: CPI rents rose 0.7% while new listings in Tokyo's 23 wards rose 7.82%. Over ten
+    years on the migrant's own basis, <strong>the Japanese surplus falls by 70%</strong> —
+    a thin margin becoming almost nothing.</p>
+    <p>Canada runs the other way and is the one genuinely favourable case in the set. Asking
+    rents have fallen for twenty-two consecutive months, so someone arriving now signs into a
+    falling market while wages still rise.</p>
+  </div></div>
+</section>
+
+
+<!-- waterfalls -->
+<section>
+  <div class="col">
+    <div class="stagehead"><span class="stagenum">EVERY CASE</span><h2>Where each salary goes</h2></div>
+    <p class="dek">One waterfall per case, all on the same scale, so the bars are comparable
+      across countries and not just within one.</p>
+    <p>Each chart starts at the gross salary and steps down through tax, rent, the rest of
+    living costs, debt service and the cost of the transfer, to what actually arrives in
+    India. Rent is split out of the basket at 35% — that share is an assumption, not a
+    measurement, and it is the same assumption everywhere so it shifts the rent and
+    living-cost bars together without changing where any case ends.</p>
+    <p>Debt appears only on the American cases, because they are the only ones with borrowing
+    data. The other six are drawn debt-free, which flatters them.</p>
+  </div>
+
+  <div class="legend" style="margin-top:24px">
+    <span class="lg"><span class="sw" style="background:var(--ink)"></span>Gross salary</span>
+    <span class="lg"><span class="sw" style="background:var(--w-tax)"></span>Tax</span>
+    <span class="lg"><span class="sw" style="background:var(--w-rent)"></span>Rent</span>
+    <span class="lg"><span class="sw" style="background:var(--w-live)"></span>Other living costs</span>
+    <span class="lg"><span class="sw" style="background:var(--w-debt)"></span>Debt service</span>
+    <span class="lg"><span class="sw" style="background:var(--muted)"></span>Transfer fee</span>
+    <span class="lg"><span class="sw" style="background:var(--w-save)"></span>Lands in India</span>
+  </div>
+
+  <div class="wgrid" id="waterfalls"></div>
+
+  <div class="col"><p style="margin-top:22px">Read across the three American cards and the
+  argument of this whole report is visible in one place: the tallest opening bar in the set
+  produces the smallest closing bar but one, once the borrowing that bought entry to that
+  salary is drawn in. Read down the rest and the shape barely changes — the deductions differ
+  in size but not in kind, and the ordering they produce is the ordering that survives every
+  other test in this report.</p></div>
+</section>
+
+<!-- verdict -->
+<section>
+  <div class="col">
+    <div class="stagehead"><span class="stagenum">VERDICT</span><h2>The ranking, after everything</h2></div>
+    <p class="dek">Three horizons, and the places where they agree.</p>
+    <p>There is no single weighted score here, and its absence is deliberate. Trading savings
+    against residency against a rent trajectory would need conversion rates between things
+    that do not convert, chosen by me — and the number that emerged would look more certain
+    than any of the figures inside it. Three orderings shown honestly is the better answer.</p>
+    <p>The three: what lands in year one debt-free; the same after debt; and the surplus a
+    decade out, on the rent a migrant actually signs. <strong>Across all three, nothing
+    moves.</strong> That stability is itself the finding — the ordering survives a debt
+    adjustment and ten years of divergent rent inflation. What changes is the size of the
+    gaps, not who is ahead.</p>
+  </div>
+
+  <div class="scroll"><table>
+    <thead><tr><th>#</th><th>Country</th><th>Lands per year</th><th>To permanence</th><th>Position</th></tr></thead>
+    <tbody>
+      <tr><td class="strong">1</td><td class="strong">Netherlands</td><td>$30,077</td><td>5 yr</td><td><span class="chip firm">FIRM</span></td></tr>
+      <tr><td class="strong">2</td><td class="strong">Australia</td><td>$25,900</td><td class="strong">1 yr</td><td><span class="chip firm">FIRM</span></td></tr>
+      <tr><td class="strong">3</td><td class="strong">Canada</td><td>$23,591</td><td class="strong">1 yr</td><td><span class="chip firm">FIRM</span></td></tr>
+      <tr><td class="strong">4</td><td class="strong">United Kingdom</td><td>$23,239</td><td>5 yr</td><td><span class="chip firm">FIRM</span></td></tr>
+      <tr><td class="strong">5</td><td class="strong">Germany</td><td>$17,249</td><td>3 yr</td><td><span class="chip firm">FIRM</span></td></tr>
+      <tr><td class="strong">6</td><td class="strong">Japan</td><td>$8,945</td><td>2 yr</td><td><span class="chip firm">FIRM</span></td></tr>
+      <tr class="unplaced"><td>&mdash;</td><td class="strong">United States</td><td>$34,215 &rarr; $20,738</td><td>no route</td><td><span class="chip na">NOT PLACED</span></td></tr>
+    </tbody>
+  </table></div>
+
+  <div class="col">
+    <p><strong>The United States is deliberately given no position.</strong> It tops the
+    debt-free table and falls to fifth of seven once its own borrowing is netted. It has no
+    rent series here. And it carries the longest wait for permanent status of any destination
+    in the set. Three different reasons why any single rank would be a misrepresentation.</p>
+    <p>Ranks are re-based over the countries present in all three views. The United States
+    drops out of the ten-year horizon for want of rent data, and without re-basing everyone
+    below it would shift up a place and appear to have moved when nothing had.</p>
+  </div>
+</section>
+
+<!-- caveats -->
+<section>
+  <div class="col">
+    <div class="stagehead"><span class="stagenum">LIMITS</span><h2>What this does not show</h2></div>
+
+    <p><strong>The Gulf is absent, and it is the largest bloc.</strong> Its wage figure was
+    corrected — recruitment-survey national averages overstated the Indian migrant wage by four to
+    five times, and an ILO-anchored model built on Qatar's statutory minimum puts the blended
+    figure at US$15,123. But no migrant-specific living cost exists for it. Applying this report's
+    US$28,000 basket returns negative savings, which the observed remittance flow falsifies
+    outright. Inferring the basket instead gives about US$539 a month — corroborated by Qatar's
+    minimum wage being structured as pay <em>plus</em> accommodation <em>plus</em> food in kind —
+    but that figure is derived from the remittance number, so using it would make Gulf savings
+    equal Gulf remittances by construction.</p>
+
+    <p><strong>Immigration status is a second axis, and it runs the other way.</strong> For Indian
+    nationals the US employment green-card queue runs 12–15 years or more; as of the August 2026
+    Visa Bulletin the EB-2 India cut-off is unavailable because the annual cap is exhausted. The
+    cause is the 7% per-country cap, which applies regardless of population. The same job converts
+    to permanent residence in about a year in Canada or Australia. That wait attaches to
+    nationality, not to skill or salary — a colleague born elsewhere in the identical role does not
+    face it. It does not make the money ranking wrong; it makes it one axis of two, and for many
+    people the slower axis decides.</p>
+
+    <p><strong>Also unmodelled:</strong> currency risk, investment returns, healthcare and
+    schooling quality, job availability in a given field, and whether you would want to live there.
+    Wage levels are national averages rather than Indian-migrant-specific outside the Gulf, which
+    understates the advanced economies.</p>
+  </div>
+</section>
+
+<footer><div class="col">
+  <p>Wages: OECD average annual wages 2024, USD PPP. Tax schedules: host statutory rates, single
+  filer. Transfer costs: World Bank Remittance Prices Worldwide, Q3-2025. India prices: MoSPI —
+  CPI base 2024, All-India Combined, July 2026; WPI base 2011-12, April 2026 against April 2025.
+  Gulf wages: ILO-anchored segment model. Indian salaries: MoSPI PLFS Annual, average monthly
+  earnings from regular salaried employment, All-India, 2022&ndash;2024. Migration cost:
+  KNOMAD/ILO GCC returnee survey. US household debt: NY Fed Household Debt and Credit Report
+  Q1-2026, educationdata.org, Experian State of the Automotive Finance Market Q1-2026, and
+  Indian lender published rates. Rents and wage growth: Eurostat and national statistics
+  offices, ABS, StatCan, Rentals.ca, Kiel Institute, Japan CPI and listing indices.
+  Green-card status: US Visa Bulletin, August 2026.</p>
+  <p style="margin-bottom:0">Generated from <span class="mono">research/diaspora/</span> —
+  merged in PR&nbsp;#9. Figures reproduce by running the modules in that directory.</p>
+</div></footer>
+</div>
+
+<script>
+const CHAIN=[
+ {c:"United States",gross:82933,tax:19257,basket:28000,transfer:1461,landed:34215},
+ {c:"Netherlands",gross:75370,tax:16009,basket:28000,transfer:1284,landed:30077},
+ {c:"Australia",gross:67000,tax:11403,basket:28000,transfer:1697,landed:25900},
+ {c:"Canada",gross:69417,tax:16771,basket:28000,transfer:1055,landed:23591},
+ {c:"United Kingdom",gross:63691,tax:11999,basket:28000,transfer:453,landed:23239},
+ {c:"Germany",gross:69433,tax:23448,basket:28000,transfer:736,landed:17249},
+ {c:"Japan",gross:49446,tax:12119,basket:28000,transfer:382,landed:8945}];
+const MAX=Math.max(...CHAIN.map(d=>d.gross));
+const SEGS=[["tax","Tax","--c-tax"],["basket","Living costs","--c-basket"],
+            ["transfer","Transfer fees","--c-transfer"],["landed","Lands in India","--c-landed"]];
+const usd=n=>"$"+n.toLocaleString("en-US");
+document.getElementById("chain").innerHTML=CHAIN.map(d=>`
+  <div class="row">
+    <div class="rowlab">${d.c}</div>
+    <div class="bar" style="width:${d.gross/MAX*100}%">
+      ${SEGS.map(([k,lab,v])=>`<div class="seg" style="flex:${d[k]};background:var(${v})"
+        data-tip="${d.c} · ${lab}: ${usd(d[k])}"></div>`).join("")}
+    </div>
+    <div class="rowval">${usd(d.landed)}</div>
+  </div>`).join("");
+
+const HURDLE=[
+ {l:"Gold & personal effects",v:14.77,ok:false},
+ {l:"Property & construction",v:8.30,ok:false},
+ {l:"Restaurants & lodging",v:7.72,ok:false},
+ {l:"Family consumption",v:5.24,ok:false},
+ {l:"General / mixed (CPI)",v:4.45,ok:false},
+ {l:"Education fees",v:3.64,ok:true},
+ {l:"Rent & utilities at home",v:2.16,ok:true},
+ {l:"Medical support",v:1.34,ok:true}];
+const HMAX=16, BAND=[2,4];
+document.getElementById("hurdle").innerHTML=HURDLE.map(h=>`
+  <div class="hrow">
+    <div class="hlab">${h.l}</div>
+    <div class="htrack">
+      <div class="hbar" style="width:${h.v/HMAX*100}%" data-tip="${h.l}: needs ${h.v.toFixed(2)}% wage growth"></div>
+      <div class="hband" style="left:${BAND[0]/HMAX*100}%;width:${(BAND[1]-BAND[0])/HMAX*100}%"></div>
+    </div>
+    <div class="hval ${h.ok?"":"no"}">${h.v.toFixed(2)}%</div>
+  </div>`).join("");
+
+const CROSS=[
+ {l:"India WPI (property)",v:8.30,hot:true},
+ {l:"Indian salaried wages",v:5.39,hot:false},
+ {l:"India CPI (consumption)",v:4.45,hot:true},
+ {l:"Advanced-economy wages",v:3.00,hot:false,band:true}];
+const CMAX=10;
+document.getElementById("crossover").innerHTML=CROSS.map(r=>`
+  <div class="hrow">
+    <div class="hlab">${r.l}</div>
+    <div class="htrack">
+      ${r.band?"":`<div class="hbar" style="width:${r.v/CMAX*100}%${r.hot?";background:var(--warn)":""}"
+        data-tip="${r.l}: ${r.v.toFixed(2)}%"></div>`}
+      <div class="hband" style="left:${2/CMAX*100}%;width:${2/CMAX*100}%"></div>
+    </div>
+    <div class="hval">${r.band?"2–4%":r.v.toFixed(2)+"%"}</div>
+  </div>`).join("");
+
+const DEBT=[
+ {l:"Used car only",v:17.9},
+ {l:"US student loan, master's",v:21.5},
+ {l:"New car",v:25.9},
+ {l:"Indian education loan",v:33.6},
+ {l:"Student loan + used car",v:39.4},
+ {l:"Indian loan + new car",v:59.5}];
+const DMAX=65;
+document.getElementById("debt").innerHTML=DEBT.map(d=>`
+  <div class="hrow">
+    <div class="hlab">${d.l}</div>
+    <div class="htrack">
+      <div class="hbar" style="width:${d.v/DMAX*100}%;background:var(--c-tax)"
+        data-tip="${d.l}: ${d.v}% of the surplus"></div>
+    </div>
+    <div class="hval ${d.v>50?"no":""}">${d.v.toFixed(1)}%</div>
+  </div>`).join("");
+
+const RENT=[
+ {l:"Canada",neu:6.30,sit:6.30},
+ {l:"United Kingdom",neu:0.10,sit:0.10},
+ {l:"Australia",neu:-0.30,sit:-0.30},
+ {l:"Germany",neu:-0.50,sit:0.50},
+ {l:"Netherlands",neu:-2.00,sit:0.40},
+ {l:"Japan",neu:-5.52,sit:1.60}];
+const RLIM=7;
+const pos=v=>50+(v/RLIM*50);
+document.getElementById("rent").innerHTML=RENT.map(r=>{
+  const z=50,x=pos(r.neu);
+  const left=Math.min(z,x),w=Math.abs(x-z);
+  return `<div class="drow">
+    <div class="dlab">${r.l}</div>
+    <div class="dtrack">
+      <div class="dzero" style="left:50%"></div>
+      <div class="dbar" style="left:${left}%;width:${w}%;background:var(--c-transfer)"
+        data-tip="${r.l}: ${r.neu>0?"+":""}${r.neu.toFixed(2)}pp on new lettings"></div>
+      <div class="ddot" style="left:${pos(r.sit)}%"
+        data-tip="${r.l}: ${r.sit>0?"+":""}${r.sit.toFixed(2)}pp on the published CPI"></div>
+    </div>
+    <div class="dval ${r.neu<0?"neg":""}">${r.neu>0?"+":""}${r.neu.toFixed(2)}</div>
+  </div>`;}).join("");
+
+const RENT_SHARE=0.35, BASKET=28000;
+const RENT_USD=BASKET*RENT_SHARE, LIVE_USD=BASKET-RENT_USD;
+const CASES=[
+ {c:"United States",sub:"no debt",gross:82933,tax:19257,debt:0,fee:1461,land:34215},
+ {c:"United States",sub:"student loan + used car",gross:82933,tax:19257,debt:14052,fee:886,land:20738},
+ {c:"United States",sub:"Indian education loan + new car",gross:82933,tax:19257,debt:21236,fee:592,land:13848},
+ {c:"Netherlands",sub:"no debt data",gross:75370,tax:16009,debt:0,fee:1284,land:30077},
+ {c:"Australia",sub:"no debt data",gross:67000,tax:11403,debt:0,fee:1697,land:25900},
+ {c:"Canada",sub:"no debt data",gross:69417,tax:16771,debt:0,fee:1055,land:23591},
+ {c:"United Kingdom",sub:"no debt data",gross:63691,tax:11999,debt:0,fee:453,land:23239},
+ {c:"Germany",sub:"no debt data",gross:69433,tax:23448,debt:0,fee:736,land:17249},
+ {c:"Japan",sub:"no debt data",gross:49446,tax:12119,debt:0,fee:382,land:8945}];
+const WMAX=Math.max(...CASES.map(d=>d.gross));
+const W=310,H=176,PL=6,PR=6,PT=8,PB=20;
+const money=n=>"$"+Math.round(n).toLocaleString("en-US");
+
+function waterfall(d){
+  const steps=[{k:"Gross salary",v:d.gross,fill:"var(--ink)",total:true,lab:"gross"}];
+  steps.push({k:"Tax",v:-d.tax,fill:"var(--w-tax)",lab:"tax"});
+  steps.push({k:"Rent",v:-RENT_USD,fill:"var(--w-rent)",lab:"rent"});
+  steps.push({k:"Other living costs",v:-LIVE_USD,fill:"var(--w-live)",lab:"living"});
+  if(d.debt>0) steps.push({k:"Debt service",v:-d.debt,fill:"var(--w-debt)",lab:"debt"});
+  steps.push({k:"Transfer fee",v:-d.fee,fill:"var(--muted)",lab:"fee"});
+  steps.push({k:"Lands in India",v:d.land,fill:"var(--w-save)",total:true,lab:"lands"});
+
+  const n=steps.length, iw=W-PL-PR, ih=H-PT-PB;
+  const bw=Math.min(30,(iw/n)*0.62), gap=iw/n;
+  const y=v=>PT+ih-(v/WMAX)*ih;
+  let run=0,out="",prevX=null,prevY=null;
+  steps.forEach((st,i)=>{
+    const cx=PL+gap*i+gap/2, x=cx-bw/2;
+    let top,bot;
+    if(st.total){ top=y(st.v); bot=y(0); run=st.v; }
+    else { const from=run, to=run+st.v; top=y(Math.max(from,to)); bot=y(Math.min(from,to)); run=to; }
+    const h=Math.max(1.5,bot-top);
+    out+=`<rect x="${x.toFixed(1)}" y="${top.toFixed(1)}" width="${bw.toFixed(1)}" height="${h.toFixed(1)}"
+      rx="2" fill="${st.fill}" data-tip="${d.c} — ${st.k}: ${st.v<0?"−":""}${money(Math.abs(st.v))}"></rect>`;
+    if(prevX!==null) out=`<line class="wf-conn" x1="${prevX.toFixed(1)}" y1="${prevY.toFixed(1)}"
+      x2="${x.toFixed(1)}" y2="${prevY.toFixed(1)}"></line>`+out;
+    prevX=x+bw; prevY=st.total&&i===0?y(st.v):y(run);
+    out+=`<text class="wf-lab" x="${cx.toFixed(1)}" y="${H-7}" text-anchor="middle">${st.lab}</text>`;
+  });
+  return `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Waterfall for ${d.c}, ${d.sub}">
+    <line class="wf-base" x1="${PL}" y1="${(PT+ih).toFixed(1)}" x2="${W-PR}" y2="${(PT+ih).toFixed(1)}"></line>
+    ${out}</svg>`;
+}
+document.getElementById("waterfalls").innerHTML=CASES.map(d=>`
+  <div class="wcard">
+    <div class="wtitle"><span class="n">${d.c}</span><span class="v">${money(d.land)}</span></div>
+    <div class="wsub">${d.sub}</div>
+    ${waterfall(d)}
+  </div>`).join("");
+
+const tip=document.getElementById("tip");
+document.addEventListener("pointerover",e=>{
+  const t=e.target.closest("[data-tip]"); if(!t)return;
+  tip.textContent=t.dataset.tip; tip.style.opacity="1";});
+document.addEventListener("pointermove",e=>{
+  if(tip.style.opacity!=="1")return;
+  const p=12,w=tip.offsetWidth;
+  tip.style.left=Math.min(e.clientX+p,innerWidth-w-8)+"px";
+  tip.style.top=(e.clientY+p)+"px";});
+document.addEventListener("pointerout",e=>{
+  if(e.target.closest("[data-tip]"))tip.style.opacity="0";});
+</script>

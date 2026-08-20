@@ -952,3 +952,46 @@ as movement that did not happen.
 3. **Migrant-specific wages outside the Gulf.** Indian migrants to the US and UK
    earn above the national averages used here; correcting that widens the lead
    of the countries already at the top.
+
+
+---
+
+# The published report — `report/salary-to-savings.html`
+
+The reader-facing version of everything in this directory, published as an
+Artifact:
+**https://claude.ai/code/artifact/acd3b99c-c0a2-452d-86e9-eb0814f26c36**
+(private to the owner's account until shared from the page's share menu).
+
+Eight stages plus a verdict: earnings, taxation, expenses, savings
+repatriation, the India inflation hurdle, return on the whole thing, what the
+surplus is already promised to, rent against wages — and nine waterfall charts,
+one per case, all on a shared scale.
+
+## It is a static page, and that is a maintenance hazard
+
+The figures are **hardcoded literals**, not a template rendered at build time.
+Change a parameter in a module and the report keeps showing the old numbers
+while looking exactly as authoritative as before.
+
+`tests/test_report_matches_modules.py` exists to make that failure loud. It
+parses the figures back out of the HTML and checks them against what the modules
+produce today:
+
+- every waterfall reconciles exactly — `gross − tax − basket − debt − fee = lands`
+- gross and tax match `real_savings_ranking.build_frame()`
+- debt-free cases match the landed-savings figures
+- the US debt cases match `us_debt_service.scenarios()`
+- headline figures quoted in the prose match the model, so text and charts
+  cannot disagree
+- the India CPI and WPI figures match MoSPI
+- the page is self-contained — no external hosts beyond Google Fonts, which is
+  the one the Artifact CSP admits
+
+**If these fail, regenerate the report — do not relax the test.**
+
+## To update it
+
+Edit the HTML, then republish to the same URL. Re-run
+`python -m pytest tests/test_report_matches_modules.py` first; it is faster than
+noticing a stale number after publishing.
