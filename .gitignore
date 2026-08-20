@@ -134,6 +134,11 @@ market-pipeline/code/python_files/watchlist_full.html
 market-pipeline/code/python_files/data/benchmark_holdings/
 market-pipeline/code/python_files/data/nse_equity_list.csv
 market-pipeline/code/python_files/data/nse_symbolchange.csv
+# Derived from daily_mailer_*.log, which are themselves gitignored (line 98).
+# Rebuilt idempotently with `mailer_roster.py --rebuild`, so committing it would
+# ship a snapshot no fresh clone could reproduce.
+market-pipeline/code/python_files/data/mailer_roster.duckdb
+
 
 # ── run detritus (added 2026-07-29) ──────────────────────────────────────────
 # These were already TRACKED when this block was added, so ignoring them alone
