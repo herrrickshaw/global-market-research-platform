@@ -618,3 +618,75 @@ def test_used_car_is_cheaper_than_new_and_masters_only_cheaper_than_with_undergr
     assert AUTO["monthly_used"] < AUTO["monthly_new"]
     assert STUDENT_LOAN["monthly_masters_only"] < STUDENT_LOAN["monthly_incl_undergrad"]
     assert INDIA_EDU_LOAN["cost_lakh_low"] < INDIA_EDU_LOAN["cost_lakh_high"]
+
+
+# ===========================================================================
+# Rent vs wages (non-US)
+# ===========================================================================
+from rent_vs_wages import PANEL, surplus_path  # noqa: E402
+from rent_vs_wages import table as rent_table  # noqa: E402
+
+
+def test_the_us_is_excluded_from_the_rent_panel():
+    """The US is handled in us_debt_service.py on its own terms."""
+    assert "United States" not in PANEL
+
+
+def test_gap_is_wage_growth_minus_rent_growth():
+    t = rent_table(0.35).set_index("country")
+    for c, (w, r_sit, r_new, _n) in PANEL.items():
+        assert t.loc[c, "gap_sitting_pp"] == pytest.approx(w - r_sit, abs=0.01)
+        if r_new is not None:
+            assert t.loc[c, "gap_new_pp"] == pytest.approx(w - r_new, abs=0.01)
+
+
+def test_new_letting_rent_is_never_below_sitting_except_where_rents_are_falling():
+    """Tenant protections hold sitting rents down, so new lettings normally run
+    hotter. Canada is the exception because the whole market is falling."""
+    for c, (_w, r_sit, r_new, _n) in PANEL.items():
+        if r_new is None:
+            continue
+        if r_sit >= 0:
+            assert r_new >= r_sit, c
+
+
+def test_the_basis_flips_the_sign_where_protection_is_strongest():
+    t = rent_table(0.35).set_index("country")
+    flipped = set(t[t.basis_flips_sign].index)
+    assert {"Japan", "Germany", "Netherlands"} <= flipped
+    # And Japan is the widest gap of the panel.
+    gaps = {c: v[2] - v[1] for c, v in PANEL.items() if v[2] is not None}
+    assert max(gaps, key=gaps.get) == "Japan"
+
+
+def test_new_letting_basis_is_never_kinder_than_sitting_where_they_differ():
+    a = surplus_path(0.35, 10, False).set_index("country").change_pct
+    b = surplus_path(0.35, 10, True).set_index("country").change_pct
+    for c in a.index:
+        r_sit, r_new = PANEL[c][1], PANEL[c][2]
+        if r_new is not None and r_new > r_sit:
+            assert b[c] < a[c], c
+
+
+def test_a_bigger_rent_share_hurts_where_rent_outruns_wages():
+    small = surplus_path(0.25, 10, True).set_index("country").change_pct
+    large = surplus_path(0.45, 10, True).set_index("country").change_pct
+    # Japan: rent growth far exceeds wage growth, so more rent exposure is worse.
+    assert large["Japan"] < small["Japan"]
+    # Canada: rents are falling, so more rent exposure is better.
+    assert large["Canada"] > small["Canada"]
+
+
+def test_japan_surplus_collapses_on_the_migrants_own_rent_basis():
+    """The module's headline. Pinned so a data revision surfaces it."""
+    sp = surplus_path(0.35, 10, True).set_index("country")
+    assert sp.loc["Japan", "change_pct"] < -50
+    assert (sp.drop(index="Japan").change_pct > 0).all()
+
+
+def test_the_savings_ordering_survives_a_decade_of_rent_divergence():
+    """Also a real result: what moves is the size of the gaps, not the order."""
+    sp = surplus_path(0.35, 10, True)
+    now = sp.sort_values("surplus_now_usd", ascending=False).country.tolist()
+    later = sp.sort_values("surplus_yr10_usd", ascending=False).country.tolist()
+    assert now == later

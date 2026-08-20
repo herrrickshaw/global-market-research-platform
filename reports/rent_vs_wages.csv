@@ -1,0 +1,7 @@
+country,wage_growth_pct,rent_sitting_pct,gap_sitting_pp,rent_new_pct,gap_new_pp,basis_flips_sign
+Canada,2.3,-4.0,6.3,-4.0,6.3,False
+Japan,2.3,0.7,1.6,7.82,-5.52,True
+Germany,3.5,3.0,0.5,4.0,-0.5,True
+Netherlands,4.5,4.1,0.4,6.5,-2.0,True
+United Kingdom,3.4,3.3,0.1,,,False
+Australia,3.3,3.6,-0.3,,,False
