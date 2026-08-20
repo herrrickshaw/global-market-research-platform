@@ -1,0 +1,17 @@
+occupation,country,local_amount,currency,usd_market,multiple_of_india,source_note
+software engineer,United States,151136,USD,151136,16.0,Glassdoor 2026 national average
+software engineer,Australia,120000,AUD,85040,9.0,Glassdoor 2026 national average
+software engineer,Canada,104196,CAD,75110,8.0,Glassdoor 2026 national average
+software engineer,United Kingdom,56086,GBP,75975,8.1,Glassdoor 2026 national average
+software engineer,India,900000,INR,9431,1.0,Glassdoor 2026 national average
+registered nurse,United States,101420,USD,101420,10.2,2026 national average
+registered nurse,Canada,90118,CAD,64962,6.5,2026 national average
+registered nurse,Australia,88000,AUD,62363,6.3,2026 national median
+registered nurse,Germany,37143,EUR,42985,4.3,2026 national average
+registered nurse,United Kingdom,31273,GBP,42363,4.3,2026 national average
+registered nurse,India,950000,INR,9955,1.0,2026 national median
+accountant,United States,89870,USD,89870,21.7,"BLS OEWS May-2025 mean, accountants and auditors"
+accountant,United Kingdom,55000,GBP,74504,18.0,"chartered accountant, mid-level"
+accountant,India,396000,INR,4150,1.0,mid-level
+civil engineer,United States,80680,USD,80680,,2026 national average
+civil engineer,Australia,107215,AUD,75980,,2026 national average
