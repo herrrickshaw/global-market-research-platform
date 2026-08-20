@@ -53,13 +53,15 @@ EUROPE IS A COMPOSITE. `europe_broad_list` spans 17 exchanges closing between
 16:30 London and 17:30 CET. The expected session uses the LATEST-closing venue,
 so "Europe is current" means every constituent venue has closed and published.
 
-HOLIDAYS. NSE's real holiday list comes from `market_calendar.get_holidays()`.
-The other markets fall back to weekends-only, which over-states the expected
-session on their local holidays. That is handled at the verdict layer, not here:
-`data_state.py` grades a one-session gap as CHECK rather than STALE, so an
-unknown holiday is visible without being an alarm. Widening this to real
-per-exchange calendars is the clean follow-up; guessing here would silently
-suppress genuine staleness, which is the failure mode this file exists to end.
+HOLIDAYS come from `exchange_calendars` — real per-venue calendars for all six
+markets (XBOM, XNYS, XTKS, XKRX, XETR, XSHG), with India's live NSE list unioned
+on top so a newly-announced holiday is honoured before the package ships it. See
+`_is_session` for how that was validated and what it fixed.
+
+Until 2026-08-20 only NSE had a real list and the rest were weekends-only, so a
+one-session gap had to be graded CHECK rather than STALE to avoid alarming on an
+unknown holiday. With real calendars that hedge is no longer load-bearing — a
+gap on a genuine trading day now means what it says.
 """
 
 from __future__ import annotations
@@ -69,6 +71,7 @@ import datetime as dt
 import json
 import sys
 from dataclasses import dataclass, field
+from functools import lru_cache
 from typing import Callable, Iterable
 from zoneinfo import ZoneInfo
 
@@ -86,6 +89,7 @@ class Market:
     publish_lag: dt.timedelta   # close -> our source serves the EOD bar
     source: str           # the credible attribution shown to the reader
     holidays: Callable[[], set[str]] | None = field(default=None, compare=False)
+    cal: str = ""         # exchange_calendars code, "" = weekends-only fallback
 
     @property
     def zone(self) -> ZoneInfo:
@@ -108,39 +112,109 @@ MARKETS: dict[str, Market] = {
         # Bhavcopy lands ~18:00 IST; 2.5h clears the tail of late-file days.
         dt.timedelta(hours=2, minutes=30),
         "NSE/BSE official bhavcopy", _nse_holidays,
+        cal="XBOM",
     ),
     "US": Market(
         "US", "United States", "NYSE/NASDAQ", "America/New_York", dt.time(16, 0),
         # yfinance's daily bar settles within ~1h of the bell; 1.5h is margin.
         dt.timedelta(hours=1, minutes=30),
         "NASDAQ/NYSE consolidated close (yfinance)",
+        cal="XNYS",
     ),
     "JP": Market(
         "JP", "Japan", "TSE", "Asia/Tokyo", dt.time(15, 30),
         dt.timedelta(hours=2), "Tokyo Stock Exchange close (yfinance)",
+        cal="XTKS",
     ),
     "KR": Market(
         "KR", "Korea", "KRX", "Asia/Seoul", dt.time(15, 30),
         dt.timedelta(hours=2), "KRX KOSPI/KOSDAQ close (yfinance)",
+        cal="XKRX",
     ),
     "EU": Market(
         # Latest-closing venue in the 17-exchange set (Xetra/Euronext 17:30 CET).
         "EU", "Europe", "Xetra/Euronext (latest of 17)", "Europe/Berlin",
         dt.time(17, 30), dt.timedelta(hours=2),
         "European exchange closes (yfinance)",
+        # Xetra stands in for the 17-venue composite. Not exact — Euronext and
+        # the LSE keep their own holidays — but it is the latest-closing venue
+        # and a real calendar beats weekends-only. A per-venue split would need
+        # the universe keyed by exchange, which it is not.
+        cal="XETR",
     ),
     "CN": Market(
         "CN", "China", "SSE/SZSE", "Asia/Shanghai", dt.time(15, 0),
         dt.timedelta(hours=2), "SSE/SZSE close (akshare)",
+        cal="XSHG",
     ),
 }
 
 
 # ── the clock ─────────────────────────────────────────────────────────────────
+# ── real exchange calendars ───────────────────────────────────────────────────
+# 🔴 2026-08-20. Until now only NSE had a real holiday list and every other venue
+# fell back to weekends-only, which over-states the expected session on local
+# holidays. That was not theoretical — measured over 1 Jul to 20 Aug it got FOUR
+# days wrong:
+#
+#     US 2026-07-03  Independence Day (observed)
+#     JP 2026-07-20  Marine Day
+#     JP 2026-08-11  Mountain Day
+#     KR 2026-08-17  Liberation Day (observed)
+#
+# and two of those are exactly the "missing sessions" price_quality had been
+# reporting against the JP and KR panels. The gap check was crying wolf on public
+# holidays — the precise failure this codebase keeps warning about, where a metric
+# that fires on healthy data teaches the operator to stop reading it.
+#
+# `exchange_calendars` supplies all six venues. It was validated against the one
+# source here already trusted — the live NSE list — and agreed on EVERY weekday
+# of 2026, 0 disagreements. A packaged calendar can still lag a newly-announced
+# holiday, so for India the live list is UNIONED on top rather than replaced.
+#
+# Absent the package the old weekends-only behaviour returns, because a session
+# clock that raises on import would take the whole brief down with it.
+# Closures the packaged calendar does not know about yet. A release ships on its
+# own cadence and legislatures do not consult it, so this is the seam for the lag
+# — evidence required, never a guess.
+#
+#   KR 2026-07-17  Constitution Day (제헌절). Removed as a public holiday in 2008
+#                  and REINSTATED for 2026; exchange_calendars 4.13.2 still has
+#                  XKRX trading. Two independent sources say otherwise: our own
+#                  KR panel has no bar, and yfinance returns nothing for either
+#                  005930.KS or 000660.KS — the two largest listings — while
+#                  serving 07-16 and 07-20 normally.
+#
+# Corrections go here rather than being tolerated at the verdict layer, because
+# a known-wrong session date produces a gap warning every run until someone
+# rechecks it, and a warning that is always there stops being read.
+_EXTRA_CLOSURES: dict[str, frozenset] = {
+    "XKRX": frozenset({dt.date(2026, 7, 17)}),
+}
+
+
+@lru_cache(maxsize=8)
+def _sessions_for(cal_code: str, year: int) -> frozenset:
+    try:
+        import exchange_calendars as _xc
+
+        c = _xc.get_calendar(cal_code)
+        sess = {d.date() for d in c.sessions_in_range(f"{year}-01-01", f"{year}-12-31")}
+        return frozenset(sess - _EXTRA_CLOSURES.get(cal_code, frozenset()))
+    except Exception:
+        return frozenset()
+
+
 def _is_session(m: Market, d: dt.date, hols: set[str]) -> bool:
     if d.weekday() >= 5:
         return False
-    return d.isoformat() not in hols
+    if d.isoformat() in hols:          # live list (India), always authoritative
+        return False
+    if m.cal:
+        known = _sessions_for(m.cal, d.year)
+        if known:                      # empty = package absent, fall through
+            return d in known
+    return True
 
 
 def close_utc(mkt: str, d: dt.date) -> dt.datetime:
