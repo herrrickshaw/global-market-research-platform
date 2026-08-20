@@ -13,6 +13,7 @@ from jobsearch.connections import load_connections
 from jobsearch.dedupe import find_ambiguous_clusters, find_name_collisions, refresh_stats
 from jobsearch.network import build_company_index, network_strength, top_companies
 from jobsearch.pipeline import load_network, run
+from jobsearch.targets import best_contacts, rank_targets
 from jobsearch.report import to_csv, to_html, to_markdown
 
 
@@ -69,6 +70,46 @@ def cmd_dedupe(args) -> int:
     return 0
 
 
+def cmd_targets(args) -> int:
+    """Offline: rank companies in the network as targets, no job feed needed."""
+    cfg = load_config(args.config)
+    paths = args.connections or cfg.connections_files
+    _, index, stats = load_network(paths)
+    targets = rank_targets(index, cfg.profile, limit=args.top,
+                           min_connections=args.min_connections)
+
+    print(f"network: {stats['output_rows']:,} connections across {stats['companies']:,} companies")
+    print(f"\nTop {len(targets)} target companies (sector fit x network x function density):\n")
+    for i, t in enumerate(targets, 1):
+        print(f"{i:3d}. {t.score:.3f}  {t.network.display_name}")
+        print(f"       sector {t.sector_fit:.2f} · network {t.strength:.2f} · "
+              f"function {t.function_density:.2f}  ({', '.join(t.reasons)})")
+        for c in best_contacts(t.network):
+            tag = "TALENT" if c in t.network.hiring_contacts else (
+                  "SENIOR" if c in t.network.senior_contacts else "      ")
+            print(f"       {tag}  {c.name[:30]:32s} {(c.position or '')[:44]:46s} {c.url}")
+        print()
+
+    if args.out:
+        import csv as _csv
+        Path(args.out).parent.mkdir(parents=True, exist_ok=True)
+        with open(args.out, "w", encoding="utf-8", newline="") as fh:
+            w = _csv.writer(fh)
+            w.writerow(["rank", "score", "sector_fit", "network", "function_density",
+                        "company", "connections", "hiring_contacts", "senior_contacts",
+                        "contact_name", "contact_title", "contact_url", "contact_type"])
+            for i, t in enumerate(targets, 1):
+                for c in best_contacts(t.network, limit=5):
+                    ctype = ("talent" if c in t.network.hiring_contacts else
+                             "senior" if c in t.network.senior_contacts else "peer")
+                    w.writerow([i, t.score, t.sector_fit, t.strength, t.function_density,
+                                t.network.display_name, t.network.size,
+                                len(t.network.hiring_contacts), len(t.network.senior_contacts),
+                                c.name, c.position, c.url, ctype])
+        print(f"wrote {args.out}")
+    return 0
+
+
 def cmd_scan(args) -> int:
     cfg = load_config(args.config)
     if args.connections:
@@ -110,6 +151,13 @@ def main(argv=None) -> int:
     d.add_argument("--top", type=int, default=20)
     d.add_argument("--out", help="write a JSON report here")
     d.set_defaults(func=cmd_dedupe)
+
+    t = sub.add_parser("targets", help="rank companies to work, offline (no job feed)")
+    t.add_argument("--connections", nargs="*", help="export files, OLDEST FIRST")
+    t.add_argument("--top", type=int, default=40)
+    t.add_argument("--min-connections", type=int, default=2)
+    t.add_argument("--out", help="write a CSV here")
+    t.set_defaults(func=cmd_targets)
 
     s = sub.add_parser("scan", help="fetch jobs and rank them against your network")
     s.add_argument("--connections", nargs="*", help="export files, OLDEST FIRST")
