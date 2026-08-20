@@ -9,8 +9,12 @@ config.yaml
 .secrets
 *.env
 
-# Outputs (contain the same personal data, joined to job matches)
+# Outputs (contain the same personal data, joined to job matches).
+# Glob, not a fixed name: a run with --out or a different out_dir creates
+# out_1month/, out_eu_in/ etc, and a fixed "out/" rule silently misses them.
 out/
+out_*/
+*/out/
 reports/
 
 __pycache__/

@@ -93,6 +93,18 @@ class TargetProfile:
         "category manager": 0.7,
         "procurement manager": 0.6,
         "market intelligence": 0.7,
+        # Commodity/market research titles. These never say "business
+        # development" but are exactly the Shell Category Analyst work
+        # (market-intelligence analysis for rigs, offshore vessels, fabrication
+        # yards) and the Invest India oil & gas benchmarking work. Without
+        # them "Senior Market Analyst, Gas and LNG" scored zero.
+        "market analyst": 0.85,
+        "commodity analyst": 0.85,
+        "energy analyst": 0.85,
+        "oil market": 0.8,
+        "gas market": 0.8,
+        "market research": 0.7,
+        "price reporter": 0.6,
         "research analyst": 0.6,
         "business analyst": 0.5,
         "transformation": 0.6,

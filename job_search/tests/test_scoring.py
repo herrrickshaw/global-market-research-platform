@@ -85,3 +85,26 @@ def test_capability_centre_titles_are_matched():
                   "Global Capability Centre Lead",
                   "Director, Shared Services Transformation"]:
         assert role_fit(_job(title), P)[0] > 0.4, title
+
+
+def test_commodity_market_analyst_titles_are_matched():
+    """Regression: "Senior Market Analyst, Gas and LNG" scored zero because no
+    title keyword covered commodity/market research. That work is directly on
+    the CV (Shell Category Analyst market intelligence; Invest India oil & gas
+    benchmarking), so it must rank, not vanish."""
+    score, reasons = role_fit(
+        _job("Senior Market Analyst, Gas and LNG", company="Rystad Energy",
+             location="Houston, Texas, United States"), P)
+    assert score > 0.3, reasons
+    assert "no role keyword match" not in reasons
+
+    oil, _ = role_fit(_job("Senior Regional Oil Market Analyst",
+                           location="Houston, Texas, United States"), P)
+    assert oil > 0.3
+
+
+def test_account_management_still_excluded_from_market_analyst_change():
+    """Widening analyst coverage must not drag in pure sales titles."""
+    score, _ = role_fit(_job("Senior Account Manager - Financials",
+                             location="London, United Kingdom"), P)
+    assert score == 0.0
