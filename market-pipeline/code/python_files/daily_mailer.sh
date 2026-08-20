@@ -272,8 +272,14 @@ FAILURES=()
   # that decides whether a brief is fit to send.
   if [ "$RUN_SEND" = "1" ] && [ "$RUN_DATA" = "0" ]; then
     step "[ENSURE-FRESH] bring data up to the latest published session before building"
+    # -u because cap() kills with SIGTERM/SIGKILL. Block-buffered stdout dies in
+    # the buffer, so a killed step logs its start line, then nothing, then the
+    # TIMEOUT — with no record of what it was doing. Measured 2026-08-20: this
+    # step was killed at 2400s having printed nothing at all, and the reason
+    # (the Mac slept for 2,396 of those 2,400 seconds) had to be reconstructed
+    # from pmset rather than read out of the log.
     cap $CAP_ENSURE_FRESH "[ENSURE-FRESH] refresh to current session" \
-      $PY ensure_fresh.py --require IN US --max-minutes 35 \
+      $PY -u ensure_fresh.py --require IN US --max-minutes 35 \
       || echo "  ensure_fresh could not close every gap — self-heal below is the fallback"
   fi
 
@@ -317,14 +323,19 @@ FAILURES=()
 
   if [ "$RUN_DATA" = "1" ]; then
   # ── 2. India ───────────────────────────────────────────────────────────────
+  # -u on the three long steps for the same reason as [ENSURE-FRESH] above:
+  # cap() kills with SIGTERM/SIGKILL and block-buffered stdout dies unflushed,
+  # so a timeout leaves no record of how far the step got. These three carry the
+  # most wall-clock and so the most exposure — and their caps are calibrated
+  # against observed maxima that assume an awake machine, which this one is not.
   step "[3/13] India EOD refresh (official bhavcopy, incremental)"
   cap $CAP_BHAVCOPY "[3/13] India EOD refresh" \
-    $PY bhavcopy_history.py 400 \
+    $PY -u bhavcopy_history.py 400 \
     || { echo "  bhavcopy refresh failed (will use cache)"; FAILURES+=("India: bhavcopy refresh"); }
 
   step "[4/13] India full screener scan"
   cap $CAP_SCAN_IN "[4/13] India full screener scan" \
-    $PY scan_bhavcopy.py \
+    $PY -u scan_bhavcopy.py \
     || { echo "  scan failed (will use latest cache)"; FAILURES+=("India: full screener scan"); }
 
   step "[5/13] India combined report (fundamentals + street talk)"
@@ -343,7 +354,7 @@ FAILURES=()
   # ── 3. US ──────────────────────────────────────────────────────────────────
   step "[7/13] US full market scan (NASDAQ+NYSE, min-price \$2)"
   cap $CAP_SCAN_US "[7/13] US full market scan" \
-    $PY full_us_market_scan.py --workers 10 --min-price 2 \
+    $PY -u full_us_market_scan.py --workers 10 --min-price 2 \
     || { echo "  US full market scan failed (continuing)"; FAILURES+=("US: full market scan"); }
 
   step "[8/13] US combined report (reuses the fresh US scan)"
