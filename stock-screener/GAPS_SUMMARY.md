@@ -459,7 +459,7 @@ Net realistic:                  10-14% annually
 
 **Risk Metrics**:
 - Sharpe (1966): "Mutual fund performance"
-- Calmar (1991): Risk-adjusted performance measurement
+- Young (1991): Risk-adjusted performance measurement
 
 **Multi-Period Validation**:
 - Harvey, Liu & Zhu (2016): "...and the cross-section of expected returns" (meta-analysis of 316 factors)
