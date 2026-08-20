@@ -1052,3 +1052,95 @@ not the same as knowing it.
 Sources: IOM World Migration Report and COVID-19 Analytical Snapshot #16;
 Lucas & Stark (1985) and the subsequent remittance-decay literature; Eurostat
 housing cost overburden (Dec-2024); KNOMAD/ILO GCC returnee survey.
+
+
+---
+
+# Salaried vs business-owner migrants — `salaried_vs_business.py`
+
+```bash
+python3 research/diaspora/salaried_vs_business.py
+```
+
+## Everything else here is a salaried-worker model
+
+Worth stating at the top rather than as a footnote. The savings chain takes a
+wage, applies a tax rate, subtracts a basket, and calls what remains remittable.
+All three steps assume an **employee**:
+
+- income is a **wage**, so it has a ceiling
+- tax is set **at source** by a published schedule
+- remittance is bounded by what's left after living
+
+**None of the three holds for someone who owns the business.**
+
+| | Salaried migrant | Business-owner migrant |
+|---|---|---|
+| Income basis | Wage — has a ceiling | Profit — no wage ceiling |
+| Tax rate | Set at source | **Partly elective** — entity, salary/distribution split, timing |
+| Payroll tax (US) | 7.65% employee share | **15.3%** both halves — unless structured around |
+| Pre-tax retention | None | Profit can stay in the company |
+| Remittance ceiling | Wage − tax − living *(what this repo models)* | Profit + trade proceeds + capital |
+| Timing | Monthly, tracks the payslip | Lumpy — deals and capital events |
+| **Enters India as** | **NRE, freely repatriable** | **NRE, freely repatriable — IDENTICAL** |
+
+## Why the statistics cannot separate them
+
+Under FEMA, foreign income of *every* kind — salary, business income, accumulated
+savings — enters India through the **NRE account** and is freely repatriable. A
+salaried migrant's monthly transfer and a trading company owner's profit
+repatriation arrive through the same channel, into the same account type, under
+the same rules.
+
+**They are counted identically.** The remittance series has no field that
+distinguishes them — which is why no amount of care with the published numbers
+separates the two populations.
+
+## Worse off, then better off
+
+**Worse:** US self-employment tax is **15.3%** against an employee's 7.65% —
+roughly double the payroll cost on the same income. But above ~$80,000 an S-corp
+election splits income into salary and distributions, and the rate stops being a
+fixed cost and becomes a planning decision. *That* is the real difference: for
+an employee the rate is imposed; for an owner it is chosen within limits.
+
+**Better:** Indian-run businesses in the US show an ownership propensity of 50
+per 1,000 and average entrepreneur income of **$84,080** against $52,086 for all
+US business owners — a **61% premium**, and above the $82,933 US average wage
+this repo models. In the UK, Indian-run companies turn over **£36.84bn**, employ
+174,000, and pay £1bn in corporation tax.
+
+## It closes the Gulf gap
+
+The estimator puts Gulf flow at **$8,659 per remitter**, and the ILO-anchored
+wage arithmetic only worked at the top of every band. If a small minority are
+business owners, what must they remit?
+
+| Owner share | Salaried rate | Implied business remittance | × wage |
+|---|---|---|---|
+| 3% | 40% | $93,043 | 6.2× |
+| **5%** | **40%** | **$58,245** | **3.9×** |
+| 10% | 40% | $32,147 | 2.1× |
+
+Every cell is ordinary for someone running a Gulf trading or retail business. At
+a 5% owner share and a 40% salaried remit rate — both unremarkable — the implied
+figure is a few times the blended wage, not a fantastical number.
+
+**So the gap needs no heroic wage-remittance rates.** It needs a modest
+business-owner minority moving amounts that are ordinary for business owners and
+impossible for employees.
+
+## What this means for the rest of the directory
+
+1. **The savings rankings are salaried-worker rankings.** Not wrong — they answer
+   a question about employees, and should be read that way.
+2. **The estimator's per-head figures average over a mixed population.** A
+   per-*salaried*-remitter figure would be lower, and a per-business-owner figure
+   much higher, than the blended number reported.
+3. **The recurring finding now has its mechanism.** That the remittance series
+   measures more than migrants sending wages home is not a measurement error. It
+   is two populations sharing one channel.
+
+Sources: IRS Schedule SE; RAND and Immigration Research Initiative on US
+business ownership; Grant Thornton "India in the UK"; FEMA NRE/NRO repatriation
+rules. Gulf: LuLu Group, Landmark, Jashanmal, Ajmal, Jumbo Electronics, Aster DM.
