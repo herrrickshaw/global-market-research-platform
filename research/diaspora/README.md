@@ -784,3 +784,84 @@ Sources: NY Fed Household Debt and Credit Report Q1 2026 (mortgage $13.19tn,
 auto $1.69tn, student $1.66tn, cards $1.25tn, total $18.8tn); educationdata.org
 2026; Experian State of the Automotive Finance Market Q1 2026; SBI Global
 Ed-Vantage, HDFC Credila, Credila, Prodigy Finance.
+
+
+---
+
+# Do wages keep up with rent? — `rent_vs_wages.py`
+
+```bash
+python3 research/diaspora/rent_vs_wages.py
+python3 research/diaspora/rent_vs_wages.py --rent-share 0.45 --years 10
+```
+
+Non-US destinations. The savings chain holds the basket at a constant $28,000 —
+fine for ranking countries in one year, wrong for asking whether the surplus
+survives. Rent is the largest and fastest-moving item in it.
+
+## The measurement problem, which is the point
+
+There are **two** rent inflation numbers per country and they are not close:
+
+- **Sitting-tenant rent** — what the CPI housing component measures. It averages
+  over the whole rented stock, most of it occupied by people on running
+  contracts protected by caps, indexation and long leases.
+- **New-listing rent** — what someone signing a fresh lease actually pays.
+
+**A migrant is always a new tenant.** They arrive and sign at market. So the CPI
+figure — the one every cost-of-living comparison uses, *including this repo's own
+$28,000 basket* — systematically understates a migrant's housing cost, and
+understates it **most where tenant protections are strongest**, because that is
+where the two series diverge.
+
+| Country | Wage growth | Rent (sitting) | Gap | Rent (new) | Gap |
+|---|---|---|---|---|---|
+| Canada | 2.3% | **−4.0%** | **+6.30pp** | −4.0% | **+6.30pp** |
+| Japan | 2.3% | 0.7% | +1.60pp | **7.82%** | **−5.52pp** |
+| Germany | 3.5% | 3.0% | +0.50pp | 4.0% | −0.50pp |
+| Netherlands | 4.5% | 4.1% | +0.40pp | 6.5% | −2.00pp |
+| United Kingdom | 3.4% | 3.3% | +0.10pp | — | — |
+| Australia | 3.3% | 3.6% | −0.30pp | — | — |
+
+**The basis flips the sign for Japan, Germany and the Netherlands.** On the
+published CPI a migrant to Japan is gaining ground on rent; on Tokyo listings
+they are losing more than five points a year. The gap is widest exactly where
+protection is strongest — Japan +7.12pp, Netherlands +2.40pp, Germany +1.00pp.
+
+## What it does to the surplus over 10 years
+
+Rent at 35% of the basket, other items at 2.5%:
+
+| Country | New-letting basis | Surplus in 10 yrs |
+|---|---|---|
+| Netherlands | +61.0% | $50,492 |
+| Germany | +50.5% | $27,062 |
+| United Kingdom | +49.2% | $35,359 |
+| Canada | +47.2% | $36,275 |
+| Australia | +43.7% | $39,667 |
+| **Japan** | **−70.5%** | **$2,753** |
+
+## Two findings, one of them negative
+
+**The ordering survives.** Netherlands > Australia > Canada > UK > Germany >
+Japan, both today and in ten years. That is a real result worth stating plainly:
+the savings ranking is robust to a decade of divergent rent inflation. What moves
+is the size of the gaps, not who is ahead.
+
+**Japan is the exception, and not a small one** — the surplus falls 70% over ten
+years on the migrant's own rent basis, turning a thin surplus into almost none.
+It already ranked last; this widens the gap.
+
+**Canada is the one genuinely favourable case.** Asking rents have fallen for 22
+consecutive months — the only negative rent figure in the panel — so a migrant
+arriving now signs into a *falling* market while wages still rise. It improves
+Canada's position without changing its rank, because the countries above start
+far enough ahead.
+
+The general lesson is the one this directory keeps arriving at from different
+directions: **the published series measures a population the migrant is not in.**
+
+Sources: Eurostat and national statistics offices, ABS, StatCan, Rentals.ca,
+Kiel Institute, Japan CPI and listing indices, Indeed Hiring Lab and OECD wage
+bulletins, 2026 vintages. Rent share of the basket is a swept parameter, not a
+measurement.
