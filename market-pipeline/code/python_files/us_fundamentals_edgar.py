@@ -254,6 +254,35 @@ def _annual_series(fact_units: dict, instant: bool) -> tuple[dict, str | None]:
     return out, unit_seen
 
 
+def _filed_dates(doc: dict) -> dict[str, str]:
+    """{fy_end: EARLIEST filing date carrying that fiscal year}.
+
+    🔴 WITHOUT THIS THERE IS NO POINT-IN-TIME. `_annual_series` already reads
+    `filed` — it uses it to prefer the latest restatement — and then discards
+    it, so the store knew only `fy_end`. A backtest that ranks on a fiscal year
+    from the day it ENDED is look-ahead: the 10-K lands weeks to months later,
+    and until it does nobody could have traded on the number.
+    METHODOLOGY.md assumption 1 allows FYE+90d as a fallback, but EDGAR gives
+    the real date for free and a fixed 90 days is wrong in both directions —
+    large accelerated filers have 60, and a late filer can take far longer.
+
+    EARLIEST, not latest: the question is when the figure first became public,
+    not when it was last restated. Using the restatement date would push the
+    signal forward and understate the edge.
+    """
+    out: dict[str, str] = {}
+    for ns in ("us-gaap", "ifrs-full"):
+        for tag in doc.get("facts", {}).get(ns, {}).values():
+            for entries in tag.get("units", {}).values():
+                for e in entries:
+                    if not str(e.get("form", "")).startswith(("10-K", "20-F", "40-F")):
+                        continue
+                    end, filed = e.get("end"), e.get("filed")
+                    if end and filed and (end not in out or filed < out[end]):
+                        out[end] = filed
+    return out
+
+
 def parse_companyfacts(doc: dict) -> list[dict]:
     """companyfacts JSON -> list of per-FY rows in the India-store shape.
 
@@ -265,6 +294,7 @@ def parse_companyfacts(doc: dict) -> list[dict]:
     """
     facts = doc.get("facts", {})
     dei = facts.get("dei", {})
+    filed_by_fy = _filed_dates(doc)
 
     def harvest(ns: str, mapping: dict) -> tuple[dict, str | None]:
         """Merge tags PER FISCAL YEAR, in priority order — not first-tag-wins.
@@ -386,7 +416,10 @@ def parse_companyfacts(doc: dict) -> list[dict]:
         # whose figures are TWD must be distinguishable from a USD row before
         # anything divides a price by it.
         row = {"fy_end": end, "source": "edgar",
-               "framework": framework, "currency": unit}
+               "framework": framework, "currency": unit,
+               # the date this fiscal year first became public — the only
+               # honest timestamp to lag a backtest signal to
+               "filed": filed_by_fy.get(end)}
         for field in GAAP_MAP:                # union key set — IFRS_MAP matches it
             row[field] = per_field.get(field, {}).get(end)
         # capex is reported as cash PAID (positive); store it negative to match
