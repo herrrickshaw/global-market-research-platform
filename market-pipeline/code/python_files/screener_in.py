@@ -48,17 +48,28 @@ CCC_SCREEN = "https://www.screener.in/screens/228040/cash-conversion-cycle/"
 # attempts every run is telling you something.
 try:
     from tenacity import (retry, retry_if_exception_type, stop_after_attempt,
-                          wait_exponential)
+                          stop_after_delay, wait_exponential)
 
     def _log_retry(state):
         print(f"    screener.in: {type(state.outcome.exception()).__name__} — "
               f"retry {state.attempt_number}/3 in {state.next_action.sleep:.0f}s")
 
+    # 🔴 BOUND THE TOTAL, NOT JUST THE ATTEMPTS. Attempts alone let a slow host
+    # multiply latency without limit: 3 tries x 25s + backoff is ~81s PER PAGE,
+    # and `fetch_screen` paginates up to 40 pages. Worse, step [6/13] runs the
+    # whole fetch TWICE — once to refresh the cache, once as the scrape test,
+    # which calls the same ccc_screen(). On 2026-08-21 that step took 29 minutes
+    # and the test was killed by CAP_CCC at 600s, so the brief showed CCC as n/a
+    # even though the refresh had already succeeded.
+    #
+    # stop_after_delay caps the wall-clock a single request may spend retrying.
+    # Riding out a blip needs a few seconds; anything past 60s is an outage, and
+    # failing fast then is what lets the cached parquet serve the section.
     _retry_transport = retry(
         retry=retry_if_exception_type(
             (requests.Timeout, requests.ConnectionError)),
         wait=wait_exponential(multiplier=2, min=2, max=30),
-        stop=stop_after_attempt(3),
+        stop=(stop_after_attempt(3) | stop_after_delay(60)),
         before_sleep=_log_retry,
         reraise=True,
     )
