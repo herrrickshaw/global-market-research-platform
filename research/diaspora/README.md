@@ -995,3 +995,60 @@ produce today:
 Edit the HTML, then republish to the same URL. Re-run
 `python -m pytest tests/test_report_matches_modules.py` first; it is faster than
 noticing a stale number after publishing.
+
+
+---
+
+# Validating the assumptions — `literature_validation.py`
+
+```bash
+python3 research/diaspora/literature_validation.py
+```
+
+These modules separate sourced figures from judgement parameters and sweep the
+latter. Better than hiding them — but a swept parameter is still a guess with
+error bars. This checks each guess against published research and records the
+verdict, **including where the verdict is "still unsupported"**.
+
+**4 supported · 3 directional · 1 structural · 2 unsupported**
+
+| Parameter | Verdict | Evidence |
+|---|---|---|
+| AE remittance rate band (3–15%) | **SUPPORTED** | IOM: migrants send home ~15% of earnings on average |
+| Remit propensity falls with tenure | **SUPPORTED** | Lucas & Stark (1985), remittance decay hypothesis |
+| AE propensity below Gulf | **SUPPORTED** | Migrants remit less once joined by immediate family |
+| AE wage growth band | **SUPPORTED** | Now derived from this repo's measured panel |
+| Gulf remittance band (25–55%) | DIRECTIONAL | Above the 15% global mean — right side, unpinned width |
+| PIO propensity (0.08–0.25) | DIRECTIONAL | Decay implies low; magnitude unmeasured |
+| Rent share (35%) | DIRECTIONAL | Eurostat overburden line is 40% |
+| Gulf PIO propensity = 0 | STRUCTURAL | No naturalisation path — law, not behaviour |
+| **Hub-routing weights (h)** | **UNSUPPORTED** | Mechanism documented, weights are mine |
+| **AE migration cost** | **UNSUPPORTED** | Gulf cost is measured; no Western equivalent |
+
+## What the exercise changed
+
+**1. It found a real inconsistency.** The ROI module hardcoded an
+advanced-economy wage-growth band of 2.0–4.0% — which **contradicted this
+repo's own measured panel**, where the Netherlands runs at 4.50%. The band now
+derives from that panel (2.3–4.5%) and a test pins them together. The crossover
+finding survives: Indian wage growth of 5.39% still clears the widened top.
+
+**2. An assertion became a finding.** That advanced-economy migrants remit less
+*because families join them* was structural reasoning here. It is a documented
+result in the remittance-behaviour literature.
+
+**3. Two facts that belong next to each other.** The Netherlands finishes first
+on savings — and has the **EU's highest housing cost overburden rate** (43.9% of
+market-rate tenants above the 40% line, against Germany's 13.8%).
+
+## What it did not fix
+
+Two parameters remain unsupported and **both are load-bearing**: the hub-routing
+weights that drive the remittance reattribution, and the advanced-economy
+migration cost that sets the ROI payback. Both are swept end-to-end rather than
+reported as points — the correct handling of a number nobody has measured, but
+not the same as knowing it.
+
+Sources: IOM World Migration Report and COVID-19 Analytical Snapshot #16;
+Lucas & Stark (1985) and the subsequent remittance-decay literature; Eurostat
+housing cost overburden (Dec-2024); KNOMAD/ILO GCC returnee survey.
