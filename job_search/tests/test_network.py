@@ -45,3 +45,67 @@ def test_recruiter_outweighs_headcount():
 
 def test_empty_network_scores_zero():
     assert network_strength(CompanyNetwork("X", "x", [], [], [])) == 0.0
+
+
+# ---------------------------------------------------------------- recency
+from datetime import date, timedelta  # noqa: E402
+
+from jobsearch.network import (  # noqa: E402
+    RECENCY_FLOOR,
+    network_strength,
+    recency_factor,
+)
+from jobsearch.models import CompanyNetwork, Connection  # noqa: E402
+
+
+def _net(*years_ago, hiring=0, senior=0, size=None):
+    today = date(2026, 8, 20)
+    conns = [
+        Connection(first_name="A", last_name=str(i), url="", email="",
+                   company="X", position="Engineer",
+                   connected_on=today - timedelta(days=int(y * 365.25)))
+        for i, y in enumerate(years_ago)
+    ]
+    return CompanyNetwork(
+        display_name="X", normalized="x", connections=conns,
+        hiring_contacts=conns[:hiring], senior_contacts=conns[:senior],
+    )
+
+
+def test_a_fresh_connection_is_not_decayed():
+    assert recency_factor(_net(0.0), today=date(2026, 8, 20)) == 1.0
+
+
+def test_an_old_connection_decays_to_the_floor():
+    assert recency_factor(_net(12.0), today=date(2026, 8, 20)) == RECENCY_FLOOR
+
+
+def test_decay_is_monotone_in_age():
+    today = date(2026, 8, 20)
+    factors = [recency_factor(_net(y), today=today) for y in (0, 2, 5, 8, 10)]
+    assert factors == sorted(factors, reverse=True)
+
+
+def test_the_most_recent_connection_sets_the_factor_not_the_oldest():
+    """One recent contact keeps the path warm even beside ancient ones."""
+    today = date(2026, 8, 20)
+    assert recency_factor(_net(9.0, 0.5), today=today) > recency_factor(_net(9.0), today=today)
+
+
+def test_missing_dates_are_not_penalised():
+    """A missing date is missing information, not evidence of staleness."""
+    conns = [Connection(first_name="A", last_name="B", url="", email="",
+                        company="X", position="Engineer", connected_on=None)]
+    net = CompanyNetwork(display_name="X", normalized="x", connections=conns)
+    assert recency_factor(net, today=date(2026, 8, 20)) == 1.0
+
+
+def test_recency_discounts_strength_but_cannot_create_it():
+    """A stale company scores below an identical fresh one, and an empty
+    network stays at zero however recent it is."""
+    today = date(2026, 8, 20)
+    fresh = network_strength(_net(0.2, 0.3, hiring=1), today=today)
+    stale = network_strength(_net(9.0, 9.5, hiring=1), today=today)
+    assert 0 < stale < fresh
+    empty = CompanyNetwork(display_name="X", normalized="x", connections=[])
+    assert network_strength(empty, today=today) == 0.0
