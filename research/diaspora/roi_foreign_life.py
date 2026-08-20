@@ -66,9 +66,21 @@ PLFS_SOURCE = "MoSPI PLFS Annual, indicator 6, All India, person, rural+urban"
 GULF_RECRUITMENT_MONTHS = (1, 9)
 GULF_RECRUITMENT_SOURCE = "KNOMAD/ILO GCC returnee survey — recruitment cost 1-9 months of foreign earnings"
 
-# SOURCED — host nominal wage growth. Not a single series; the advanced-economy
-# range through this cycle, used as a band rather than a point.
-HOST_WAGE_GROWTH_BAND = (2.0, 4.0)
+# SOURCED — host nominal wage growth, as a band rather than a point.
+#
+# Derived from this repo's own panel rather than asserted: rent_vs_wages.PANEL
+# carries a measured wage-growth figure per destination, and the band is their
+# observed min and max. An earlier version hardcoded (2.0, 4.0), which excluded
+# the Netherlands at 4.50% — the band contradicted data sitting in the next
+# module along. A test now pins the two together so they cannot drift apart
+# again.
+def _host_band() -> tuple[float, float]:
+    from rent_vs_wages import PANEL
+    w = [v[0] for v in PANEL.values()]
+    return (min(w), max(w))
+
+
+HOST_WAGE_GROWTH_BAND = _host_band()
 
 # PARAM — up-front cost of skilled migration to an advanced economy: visa fees,
 # relocation, credential recognition, the unpaid job search. No measured figure
@@ -145,19 +157,19 @@ def main() -> int:
     print("\n=== THE CROSSOVER ===")
     band = HOST_WAGE_GROWTH_BAND
     print(f"  Indian salaried wages, nominal      {g['cagr_pct']:>6.2f}%   (PLFS, measured)")
-    print(f"  Advanced-economy wages, nominal     {band[0]:>6.1f}-{band[1]:.1f}%   (cycle range)")
+    print(f"  Advanced-economy wages, nominal   {band[0]:>6.1f}-{band[1]:.1f}%   (min/max of the measured panel)")
     print(f"  India CPI                           {INDIA_CPI['CPI (General)']:>6.2f}%   (MoSPI)")
     print(f"  India WPI                           {INDIA_WPI_YOY:>6.2f}%   (MoSPI)")
     faster = g["cagr_pct"] > band[1]
     print(f"\n  The Indian salary you left is growing faster in nominal terms than the")
-    print(f"  foreign salary you took: {g['cagr_pct']:.2f}% against {band[0]:.0f}-{band[1]:.0f}%. That is measured on the")
+    print(f"  foreign salary you took: {g['cagr_pct']:.2f}% against {band[0]:.1f}-{band[1]:.1f}%. That is measured on the")
     print(f"  India side and a cycle range on the other, so treat it as a direction rather")
     print(f"  than a decimal — but the direction is not close: {'confirmed' if faster else 'NOT confirmed'}.")
     print(f"\n  Real terms tells the same story from the other end. An Indian salary at")
     print(f"  {g['cagr_pct']:.2f}% against CPI of {INDIA_CPI['CPI (General)']:.2f}% gains about "
           f"{g['cagr_pct'] - INDIA_CPI['CPI (General)']:+.2f}% a year in purchasing")
     print(f"  power. Foreign savings, once landed, are eroded at that same {INDIA_CPI['CPI (General)']:.2f}% — or at")
-    print(f"  {INDIA_WPI_YOY:.2f}% if they are destined for property — while growing at only {band[0]:.0f}-{band[1]:.0f}%.")
+    print(f"  {INDIA_WPI_YOY:.2f}% if they are destined for property — while growing at only {band[0]:.1f}-{band[1]:.1f}%.")
 
     print("\n=== WHAT THE ROI ACTUALLY IS ===")
     print("  A foreign life buys a step change in level, not a faster rate. The step is")
