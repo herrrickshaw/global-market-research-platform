@@ -1,0 +1,37 @@
+# Copy to config.yaml and edit. config.yaml is gitignored.
+
+# LinkedIn exports, OLDEST FIRST. The newest wins on every field, so a job
+# change since the older export is picked up automatically.
+connections_files:
+  - data/Connections.csv              # 2026-02-22
+  - data/Connections_2026-07-07.csv   # 2026-07-07
+
+out_dir: out
+top_n: 200
+
+# Probe Greenhouse/Lever/Ashby boards for the N strongest-network companies.
+ats_probe_top_n: 40
+
+sources:
+  arbeitnow: true      # free, no auth, strong Germany/EU coverage
+  remotive: true       # free, no auth, remote roles
+  adzuna:
+    enabled: false     # register at https://developer.adzuna.com/
+    app_id: ""
+    app_key: ""
+    countries: [de, gb, in]
+    queries: ["business development", "investment", "strategy", "partnerships"]
+
+# Opt-in per company. Brittle by nature - only add pages you care about.
+careers_pages: {}
+#  Invest India: https://www.investindia.gov.in/careers
+
+# Everything below is optional; omit to use the defaults in jobsearch/profile.py
+# profile:
+#   min_score: 0.25
+#   remote_ok: true
+#   locations: [berlin, germany, london, singapore, india, remote]
+#   title_keywords:
+#     business development: 1.0
+#     investment promotion: 1.0
+#   exclude_keywords: [intern, working student, software engineer]

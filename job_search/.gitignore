@@ -1,0 +1,18 @@
+# Personal data - NEVER commit.
+# Blanket-ignore every CSV under data/: the LinkedIn export carries names,
+# employers, titles and emails for thousands of real people.
+data/*.csv
+data/*.zip
+data/*.json
+data/cv/
+config.yaml
+.secrets
+*.env
+
+# Outputs (contain the same personal data, joined to job matches)
+out/
+reports/
+
+__pycache__/
+*.pyc
+.pytest_cache/
