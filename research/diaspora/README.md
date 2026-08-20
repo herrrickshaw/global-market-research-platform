@@ -865,3 +865,90 @@ Sources: Eurostat and national statistics offices, ABS, StatCan, Rentals.ca,
 Kiel Institute, Japan CPI and listing indices, Indeed Hiring Lab and OECD wage
 bulletins, 2026 vintages. Rent share of the basket is a swept parameter, not a
 measurement.
+
+
+---
+
+# Verification pass, 2026-08-20
+
+## What checked out
+
+- **US average wage $82,933 confirmed exactly** against OECD. It is the single
+  most load-bearing figure in the stack and it is right.
+- **Aggregate tax sanity passes.** The mean effective rate across the ranked set
+  is **23.3%**, against an OECD-wide **25.1%** net personal average tax rate for
+  a single worker at average earnings, 2025. Right neighbourhood.
+
+## What was corrected
+
+**Switzerland's wage was wrong** — carried at ~$83,000, actually **$87,468**
+(OECD 2024). Switzerland is unranked for want of a tax datum, so no result
+moved, but the figure is fixed.
+
+## What could *not* be verified, and why it matters
+
+**Country-level tax rates remain the weakest input in the stack.** The OECD
+publishes net income at the average wage in USD and those figures were
+retrieved — Switzerland $87,303, Netherlands $67,017, UK $63,277, Canada
+$60,811, Australia $60,275 (single, average wage, 2025). They **cannot be
+reconciled** with the average-wage series used here:
+
+| Country | OECD net | Our gross | Implied rate |
+|---|---|---|---|
+| Switzerland | $87,303 | $87,468 | **0.19%** |
+| United Kingdom | $63,277 | $63,691 | **0.65%** |
+| Netherlands | $67,017 | $75,370 | 11.08% |
+| Canada | $60,811 | $69,417 | 12.40% |
+| Australia | $60,275 | $67,000 | 10.04% |
+
+**No country taxes an average wage at 0.19%.** The two series are published on
+different conversion bases, so dividing one by the other produces nonsense. They
+are carried in `OECD_NET_INCOME_AT_AW_USD_2025` **flagged as unusable for that
+purpose**, and the ingest slot stays empty — filling it from figures that cannot
+be reconciled would be worse than the gap it leaves. A test enforces both.
+
+---
+
+# The ranking, after everything — `consolidated_ranking.py`
+
+```bash
+python3 research/diaspora/consolidated_ranking.py
+```
+
+Puts the three orderings side by side and reports where they agree. **No
+weighted composite** — weighting savings against residency against rent
+trajectory needs exchange rates between incommensurable things, chosen by me,
+and the output would look more authoritative than any of its inputs.
+
+| # | Country | Lands/yr | Permanence | Confidence |
+|---|---|---|---|---|
+| 1 | **Netherlands** | $30,077 | 5 yr | firm |
+| 2 | Australia | $25,900 | **1 yr** | firm |
+| 3 | Canada | $23,591 | **1 yr** | firm |
+| 4 | United Kingdom | $23,239 | 5 yr | firm |
+| 5 | Germany | $17,249 | 3 yr | firm |
+| 6 | Japan | $8,945 | 2 yr | firm |
+| — | *United States* | *$34,215 debt-free · $20,738 debt-loaded* | *no route* | **not placed** |
+
+**Nothing moves.** Across a debt adjustment and a decade of divergent rent
+inflation, the ordering of those six is unchanged — a stronger result than any
+single ordering on its own, and pinned by a test.
+
+**The US is deliberately not placed.** It tops the one-year debt-free table,
+falls to fifth of seven once its own debt is netted, has no rent series here,
+and carries the longest green-card queue in the set. Three reasons no single
+position would be honest.
+
+Ranks are re-based over the countries present in all three orderings — the US
+dropping out of the ten-year view would otherwise shift everyone up one and read
+as movement that did not happen.
+
+## What would change it
+
+1. **Borrowing data for the six non-US destinations.** The US is the only row
+   carrying a debt figure and it is the row most exposed. Give the others their
+   real debt and the gap narrows, probably a lot.
+2. **Country-level tax rates** — see the verification pass above.
+3. **Migrant-specific wages outside the Gulf.** Indian migrants to the US and UK
+   earn above the national averages used here; correcting that widens the lead
+   of the countries already at the top.

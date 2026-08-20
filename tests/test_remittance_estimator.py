@@ -690,3 +690,84 @@ def test_the_savings_ordering_survives_a_decade_of_rent_divergence():
     now = sp.sort_values("surplus_now_usd", ascending=False).country.tolist()
     later = sp.sort_values("surplus_yr10_usd", ascending=False).country.tolist()
     assert now == later
+
+
+# ===========================================================================
+# Consolidated ranking
+# ===========================================================================
+from consolidated_ranking import assemble, rank_of  # noqa: E402
+
+
+def test_the_us_is_the_only_row_carrying_a_debt_adjustment():
+    d = assemble().set_index("country")
+    assert d.loc["United States", "yr1_debtloaded_usd"] < d.loc["United States", "yr1_debtfree_usd"]
+    others = d.drop(index="United States")
+    assert (others.yr1_debtloaded_usd == others.yr1_debtfree_usd).all()
+    assert (others.debt_data == "none gathered").all()
+
+
+def test_the_us_has_no_ten_year_figure_and_is_not_ranked_on_it():
+    """rent_vs_wages is non-US by design, so the US cannot be placed on that
+    horizon. It must be absent rather than silently defaulted."""
+    d = assemble()
+    us = d[d.country == "United States"].iloc[0]
+    assert pd.isna(us.yr10_rentadj_usd)
+    assert "United States" not in rank_of(d, "yr10_rentadj_usd")
+
+
+def test_ranks_are_dense_and_start_at_one():
+    d = assemble()
+    for col in ("yr1_debtfree_usd", "yr1_debtloaded_usd", "yr10_rentadj_usd"):
+        r = rank_of(d, col)
+        assert sorted(r.values()) == list(range(1, len(r) + 1))
+
+
+def test_ranking_is_by_descending_value():
+    d = assemble()
+    r = rank_of(d, "yr1_debtfree_usd")
+    s = d.set_index("country").yr1_debtfree_usd
+    best = min(r, key=r.get)
+    assert s[best] == s.max()
+
+
+def test_the_ordering_is_stable_across_all_three_horizons():
+    """The module's central claim: over the countries present in all three,
+    nothing moves. If a data revision breaks that, the write-up is stale."""
+    d = assemble()
+    r1, r2, r3 = (rank_of(d, c) for c in
+                  ("yr1_debtfree_usd", "yr1_debtloaded_usd", "yr10_rentadj_usd"))
+    common = [c for c in d.country if c in r3]
+    assert len(common) == 6
+    reb = [{c: i + 1 for i, c in enumerate(sorted(common, key=lambda x: r[x]))}
+           for r in (r1, r2, r3)]
+    for c in common:
+        assert reb[0][c] == reb[1][c] == reb[2][c], c
+
+
+def test_permanence_is_reported_but_not_folded_into_any_score():
+    """It is in the table and deliberately out of the ordering — no savings
+    figure prices a green-card queue."""
+    d = assemble()
+    assert "years_to_permanence" in d.columns
+    r = rank_of(d, "yr1_debtfree_usd")
+    byrank = sorted(r, key=r.get)
+    perm = d.set_index("country").years_to_permanence
+    # If permanence were in the score the ordering would track it; it does not.
+    assert byrank != sorted(byrank, key=lambda c: (perm[c] if pd.notna(perm[c]) else 99))
+
+
+def test_the_oecd_net_income_figures_are_carried_but_flagged_unusable():
+    from real_savings_ranking import (
+        OECD_NET_INCOME_AT_AW_USD_2025,
+        OECD_NET_INCOME_NOTE,
+        OECD_NPATR_AT_AVERAGE_WAGE,
+        WAGE_PPP_USD_2024,
+    )
+
+    assert OECD_NPATR_AT_AVERAGE_WAGE == {}, "slot must stay empty until reconcilable"
+    assert "different conversion basis" in OECD_NET_INCOME_NOTE
+    # The proof they are unusable: dividing them by our gross wage series yields
+    # tax rates no country levies. Nobody taxes an average wage at under 5%.
+    for c in ("United Kingdom", "Switzerland"):
+        implied = (1 - OECD_NET_INCOME_AT_AW_USD_2025[c] / WAGE_PPP_USD_2024[c]) * 100
+        assert implied < 5, f"{c} implies {implied:.2f}% — absurd, hence the basis mismatch"
