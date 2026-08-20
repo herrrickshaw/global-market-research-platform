@@ -38,3 +38,22 @@ def test_normalize_title_strips_gender_tags_and_req_ids():
 
 def test_normalize_person_name_folds_accents_and_suffixes():
     assert normalize_person_name("José Álvarez, PMP") == "jose alvarez"
+
+
+def test_credentials_are_redacted_before_logging():
+    """Adzuna authenticates via query string, so raw URLs must never be logged
+    or embedded in an exception -- the key would leak into every error line."""
+    from jobsearch.sources.base import redact
+    url = ("https://api.adzuna.com/v1/api/jobs/in/search/1"
+           "?app_id=abc123&app_key=deadbeefcafe&what=business+development")
+    out = redact(url)
+    assert "deadbeefcafe" not in out and "abc123" not in out
+    assert "app_key=***" in out and "app_id=***" in out
+    assert "what=business+development" in out, "non-secret params must survive"
+
+
+def test_redact_is_safe_on_urls_without_secrets():
+    from jobsearch.sources.base import redact
+    plain = "https://boards-api.greenhouse.io/v1/boards/x/jobs?content=true"
+    assert redact(plain) == plain
+    assert redact("") == ""

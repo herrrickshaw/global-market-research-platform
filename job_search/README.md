@@ -121,7 +121,9 @@ total = 0.50 x role_fit  +  0.35 x network  +  0.15 x freshness
 - **role_fit** — weighted title keywords, sector lift, seniority lift, location
   penalty. Description-only matches are discounted to 35%. A hard-negative in
   the title (`intern`, `software engineer`, `warehouse`) zeroes the score, and
-  **no amount of network can rescue a zero fit**.
+  **no amount of network can rescue a zero fit**. An entry-rung title carrying
+  no seniority marker is damped to 45%, so "Research Analyst" ranks below
+  "Senior Research Analyst" instead of beside it.
 - **network** — `0.35 x breadth + 0.40 x talent-contacts + 0.25 x senior-contacts`.
   Breadth is `log1p`-damped: the 1st connection is transformative, the 40th
   adds nothing.
@@ -140,6 +142,28 @@ Targeting lives in `jobsearch/profile.py` as plain data and is overridable from
 | Remotive | none | Remote roles. |
 | Adzuna | free key | Good India + UK + DE coverage. Set `ADZUNA_APP_ID` / `ADZUNA_APP_KEY`. |
 | Careers pages | none | schema.org JSON-LD, with a link-scrape fallback. Brittle — opt-in per company. |
+| Apollo.io | API key | `ApolloSource` pages the organization job-postings endpoint (1 credit/page). `ApolloDumpSource` replays postings saved from an Apollo MCP session — no key, no credits. |
+
+Apollo needs an organization id, which comes from enriching a domain; ids are
+never guessed. Large employers advertise at real scale (Siemens Energy returned
+**1,817 postings across 19 pages**) and the endpoint sorts by recency, not
+relevance — so `ApolloSource.fetch` pages through rather than assuming page 1
+holds anything useful, and a dump that only captured part of a company is
+flagged with a `_caveat` that is logged as a warning instead of quietly reading
+as full coverage.
+
+### Credentials never reach the logs
+
+Adzuna authenticates via query string, so a raw request URL contains the API
+key. `sources/base.redact()` masks `app_key`, `app_id`, `api_key`, `token` and
+friends before any URL is logged or embedded in an exception. Covered by
+`test_credentials_are_redacted_before_logging`.
+
+### A failing source is not an empty one
+
+If page 1 of a source fails, the error propagates instead of returning `[]`. An
+unreachable host and "no matching jobs" produce identical output otherwise,
+which silently understates coverage in every report downstream.
 
 Postings are deduped across sources on (company, title, location), preferring a
 dated record and the canonical ATS link over an aggregator's copy. Any source
@@ -173,4 +197,4 @@ titles, and any shared emails. It is gitignored along with `config.yaml` and
 python -m pytest
 ```
 
-41 tests, no network access required — sources are exercised through fixtures.
+53 tests, no network access required — sources are exercised through fixtures.

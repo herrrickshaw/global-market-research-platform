@@ -42,6 +42,12 @@ class AdzunaSource(JobSource):
             try:
                 data = http_get_json(ENDPOINT.format(country=country, page=page), params=params)
             except SourceError:
+                # A failure on page 1 means the source is unreachable or the
+                # credentials are bad -- propagate it. Returning [] here would
+                # make a blocked host indistinguishable from "no matching jobs",
+                # which silently understates coverage in every report.
+                if page == 1:
+                    raise
                 break
             batch = data.get("results", [])
             if not batch:

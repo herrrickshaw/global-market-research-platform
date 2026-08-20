@@ -154,6 +154,14 @@ class TargetProfile:
         "remote", "hybrid",
     ])
 
+    # Titles that signal an individual-contributor entry rung. Penalised (not
+    # excluded) when the title carries no seniority marker: "Research Analyst"
+    # is junior, "Senior Research Analyst" is not.
+    junior_keywords: list[str] = field(default_factory=lambda: [
+        "analyst", "associate", "assistant", "coordinator", "executive",
+        "officer", "specialist", "engineer", "consultant",
+    ])
+
     remote_ok: bool = True
     min_score: float = 0.25
 

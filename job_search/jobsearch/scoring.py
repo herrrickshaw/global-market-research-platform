@@ -63,6 +63,12 @@ def role_fit(job: JobPosting, profile: TargetProfile) -> tuple[float, list[str]]
                     default=0.0)
     if seniority:
         score = min(1.0, score + seniority * 0.12)
+    elif profile.junior_keywords and any(_contains(title, kw) for kw in profile.junior_keywords):
+        # Explicitly junior title with no seniority marker: a 10+ year candidate
+        # applying here reads as overqualified, so it should rank below a
+        # same-topic role pitched at the right level rather than beside it.
+        score *= 0.45
+        reasons.append("below target seniority")
 
     loc = (job.location or "").lower()
     if profile.locations:

@@ -18,6 +18,8 @@ class ArbeitnowSource(JobSource):
             try:
                 data = http_get_json(ENDPOINT, params={"page": page})
             except SourceError:
+                if page == 1:
+                    raise      # unreachable source, not an empty result set
                 break
             batch = data.get("data", [])
             if not batch:
