@@ -128,6 +128,22 @@ YF_MAP = {
     "total_debt":          ["Total Debt"],
     "cash":                ["Cash And Cash Equivalents",
                             "Cash Cash Equivalents And Short Term Investments"],
+    # ── cash conversion cycle inputs (added 2026-08-21) ──────────────────────
+    # CCC = DSO + DIO - DPO. Collected so the cycle can be COMPUTED from the
+    # fundamentals store rather than scraped from screener.in, which was its
+    # only source and took out step [6/13] twice in three days on a timeout.
+    #
+    # yfinance label variants verified 2026-08-21 on NSE names: GILLETTE.NS
+    # carries "Accounts Receivable" / "Inventory" / "Accounts Payable" /
+    # "Cost Of Revenue"; NESTLEIND.NS reports the broader "Payables" instead of
+    # "Accounts Payable". Order matters — the narrower trade-only label is
+    # preferred, since "Payables" can include accruals and would overstate DPO.
+    "receivables":         ["Accounts Receivable", "Receivables",
+                            "Gross Accounts Receivable"],
+    "inventory":           ["Inventory", "Finished Goods"],
+    "payables":            ["Accounts Payable", "Payables",
+                            "Payables And Accrued Expenses"],
+    "cost_of_revenue":     ["Cost Of Revenue", "Reconciled Cost Of Revenue"],
 }
 
 # Which statement each field lives in. Explicit, so adding a field to YF_MAP
@@ -140,6 +156,10 @@ STATEMENT = {
     "current_liabilities": "bs", "stockholders_equity": "bs", "shares": "bs",
     "total_debt": "bs", "cash": "bs",
     "cfo": "cf", "free_cash_flow": "cf", "capex": "cf",
+    # receivables/inventory/payables are balance-sheet STOCKS;
+    # cost_of_revenue is an income-statement FLOW.
+    "receivables": "bs", "inventory": "bs", "payables": "bs",
+    "cost_of_revenue": "is",
 }
 assert set(STATEMENT) == set(YF_MAP), (
     "every YF_MAP field must be classified in STATEMENT: "

@@ -270,6 +270,72 @@ def _():
                              tried=1) == (None, None)
 
 
+@check("ccc: computed from filings, and NaN when an input is genuinely absent")
+def _():
+    try:
+        import pandas as pd
+        import cash_conversion_cycle as C
+    except Exception as e:
+        raise _Skip(f"module unavailable ({type(e).__name__})")
+    # Apple's FY2025 filings give -71.1 days; Walmart's +2.8. Both are
+    # well-known figures, which is what makes them a usable check on the
+    # arithmetic rather than on our own store.
+    df = pd.DataFrame({
+        "ticker": ["AAPL", "XOM"],
+        "fy_end": ["2025-09-27", "2025-12-31"],
+        "receivables": [66_243_000_000, 40_000_000_000],
+        "inventory": [6_446_000_000, None],          # XOM files no generic
+        "payables": [79_000_000_000, 60_000_000_000],  # inventory or COGS tag
+        "cost_of_revenue": [204_000_000_000, None],
+        "revenue": [416_161_000_000, 332_238_000_000],
+    })
+    # A real temp parquet, so this exercises the actual read path rather than a
+    # mock of it — Path.exists cannot be patched on an instance anyway.
+    with tempfile.TemporaryDirectory() as d:
+        tmp = Path(d) / "US_current.parquet"
+        df.to_parquet(tmp, index=False)
+        orig = C.STORE["US"]
+        C.STORE["US"] = tmp
+        try:
+            out = C.from_filings("US")
+        finally:
+            C.STORE["US"] = orig
+    got = dict(zip(out["ticker"], out["ccc"]))
+    assert "AAPL" in got, out
+    assert abs(got["AAPL"] - (-71.1)) < 2.0, got["AAPL"]
+    # XOM must be DROPPED, not imputed: substituting total expenses for a
+    # missing COGS produces a confident number with no meaning.
+    assert "XOM" not in got, "a filer with no COGS/inventory was given a CCC"
+
+
+@check("ccc: screener.in only fills tickers the filings could not")
+def _():
+    try:
+        import pandas as pd
+        import cash_conversion_cycle as C
+    except Exception as e:
+        raise _Skip(f"module unavailable ({type(e).__name__})")
+    import unittest.mock as mock
+    prim = pd.DataFrame({"ticker": ["A"], "fy_end": ["2025-03-31"], "dso": [1.0],
+                         "dio": [1.0], "dpo": [1.0], "ccc": [1.0],
+                         "source": ["filings"]})
+    fb = pd.DataFrame({"ticker": ["A", "B"], "fy_end": [pd.NaT, pd.NaT],
+                       "dso": [float("nan")] * 2, "dio": [float("nan")] * 2,
+                       "dpo": [float("nan")] * 2, "ccc": [99.0, 5.0],
+                       "source": ["screener.in"] * 2})
+    with mock.patch.object(C, "from_filings", return_value=prim), \
+         mock.patch.object(C, "from_screener", return_value=fb):
+        out = C.ccc("IN")
+    by = dict(zip(out["ticker"], out["source"]))
+    # A is covered by filings, so the scrape must NOT override it — otherwise a
+    # third-party number silently wins over our own computation.
+    assert by["A"] == "filings", by
+    assert by["B"] == "screener.in", by
+    with mock.patch.object(C, "from_filings", return_value=prim), \
+         mock.patch.object(C, "from_screener", return_value=fb):
+        assert set(C.ccc("IN", allow_fallback=False)["ticker"]) == {"A"}
+
+
 @check("catalog: a report depends on its scan, so a refresh rebuilds both")
 def _():
     try:

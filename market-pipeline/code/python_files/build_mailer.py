@@ -343,18 +343,30 @@ def _ccc_rows(top: int = 12):
     negative CCC = collects from customers before paying suppliers (strong
     working-capital efficiency). Live-scrapes each run (refreshing the local
     cache); falls back to the cached parquet if the live fetch fails."""
+    # 🔴 2026-08-21: THE SCRAPE IS NO LONGER THE SOURCE. CCC used to be fetched
+    # whole from screener.in on every build, with a silent fall back to a cached
+    # parquet of unstated vintage — so a stale cache and a fresh scrape rendered
+    # identically. That single endpoint took out step [6/13] twice in three days.
+    #
+    # It is now COMPUTED from filings (cash_conversion_cycle.py: EDGAR for US,
+    # the yfinance store for India), and screener.in only fills tickers the
+    # filings cannot. No network call is made here at all — a section of the
+    # brief should not depend on a third-party host answering at build time.
     cdf = pd.DataFrame()
     try:
-        import screener_in as sin
+        import cash_conversion_cycle as ccc_mod
 
-        cdf = sin.ccc_screen()
-        if not cdf.empty:
-            cdf.to_parquet("cache_seed/india_ccc_screen.parquet", index=False)
+        c = ccc_mod.ccc("IN")
+        if not c.empty:
+            cdf = pd.DataFrame({"Symbol": c["ticker"],
+                                "Cash_Cycle": c["ccc"],
+                                "_src": c["source"]})
     except Exception:
         pass
     if cdf.empty:
         try:
             cdf = pd.read_parquet("cache_seed/india_ccc_screen.parquet")
+            cdf["_src"] = "screener.in (cache)"
         except Exception:
             return []
     if cdf.empty or "Cash_Cycle" not in cdf.columns:
@@ -371,7 +383,12 @@ def _ccc_rows(top: int = 12):
             f"<tr><td style='padding:4px 8px'><b>{r.Symbol}</b></td>"
             f"<td>{r.get('Name', '')}</td><td>{r.Cash_Cycle:.1f}</td>"
             f"<td>{r.get('ROCE', '')}</td>"
-            f"<td style='color:{_COL.get(r.Liquidity, '#777')};font-weight:600'>{r.Liquidity}</td></tr>"
+            f"<td style='color:{_COL.get(r.Liquidity, '#777')};font-weight:600'>{r.Liquidity}</td>"
+            # The source is RENDERED, not just recorded. The old code fell back
+            # to a cached scrape inside `except Exception: pass`, so a stale
+            # cache and a live fetch produced identical output and a reader had
+            # no way to tell which they were looking at.
+            f"<td style='color:#888;font-size:10.5px'>{r.get('_src', '')}</td></tr>"
         )
     return rows
 

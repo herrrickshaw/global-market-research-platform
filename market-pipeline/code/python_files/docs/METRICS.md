@@ -87,12 +87,42 @@ approximated ROCE that looks like a real one is worse than a gap.
 ### Cash Conversion Cycle (CCC)
 
 ```
-CCC = DSO + DIO − DPO        (days sales outstanding + inventory − payables)
+DSO = receivables / revenue          × 365     days sales outstanding
+DIO = inventory   / cost_of_revenue  × 365     days inventory outstanding
+DPO = payables    / cost_of_revenue  × 365     days payables outstanding
+
+CCC = DSO + DIO − DPO
 ```
 
-Taken **as published by screener.in** (screen `228040`), not recomputed. A *negative*
-CCC means the business collects from customers before paying suppliers — structurally
-strong working capital. Cached to `cache_seed/india_ccc_screen.parquet`.
+Days between paying for inputs and collecting for output. **Negative is strong** —
+the business is funded by its suppliers and customers rather than by capital.
+
+**Computed from filings**, not scraped ([`cash_conversion_cycle.py`](../cash_conversion_cycle.py)):
+
+| precedence | source |
+|---|---|
+| 1 | **filings** — SEC EDGAR `companyfacts` (US), the yfinance fundamentals store (India) |
+| 2 | screener.in screen `228040` — **fallback only**, and only for tickers filings cannot cover |
+
+Every row carries the source that produced it, and the brief renders it, so a
+scraped number is never indistinguishable from a computed one.
+
+*Validation:* Apple computes to **−71.1 days** on FY2025 filings and Walmart to
+**+2.8** — both match their well-known figures. The decomposition is reported too
+(AAPL: DSO 34.9, DIO 9.4, DPO 115.4), which the scraped total never gave.
+
+🔴 **NaN is a result.** Some filers have no conventional cost-of-goods line —
+Exxon reports `CostsAndExpenses` and sector-specific `EnergyRelatedInventory*`,
+with no generic inventory or COGS tag. Substituting total expenses would yield a
+confidently wrong DIO and DPO. A missing CCC is visibly missing; an invented one
+is not. Cycles beyond ±3 years are nulled as accounting artefacts.
+
+*Why this changed (2026-08-21):* CCC was previously taken whole from a single
+screener.in page, with a silent fallback to a cached parquet of unstated vintage.
+That one endpoint broke step `[6/13]` of the daily run twice in three days — once
+on a 25s timeout, once by running 29 minutes and hitting its cap. A source that
+must answer at 03:00 for a section to render is a source that decides whether the
+section renders.
 
 ---
 

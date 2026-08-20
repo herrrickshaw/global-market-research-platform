@@ -107,6 +107,28 @@ GAAP_MAP = {
                             "LongTermDebt", "LongTermDebtNoncurrent"],
     "cash":                ["CashAndCashEquivalentsAtCarryingValue",
                             "CashCashEquivalentsRestrictedCashAndRestrictedCashEquivalents"],
+    # ── cash conversion cycle inputs (added 2026-08-21) ──────────────────────
+    # CCC = DSO + DIO - DPO, so it needs receivables, inventory, payables and
+    # COGS. Collected here so the cycle can be COMPUTED from filings instead of
+    # scraped: screener.in was the only source for it, and a single 25s timeout
+    # to that host took out the whole step twice in three days.
+    #
+    # Tags genuinely vary by filer — verified 2026-08-21: AAPL uses
+    # AccountsReceivableNetCurrent + CostOfGoodsAndServicesSold, WMT uses
+    # ReceivablesNetCurrent + CostOfRevenue, XOM uses
+    # AccountsPayableAndAccruedLiabilitiesCurrent and reports NO COGS tag at
+    # all. The last case is why CCC must be allowed to come out NaN: an oil
+    # major has no cost-of-goods line, and inventing one from total expenses
+    # would produce a confident number with no meaning.
+    "receivables":         ["AccountsReceivableNetCurrent",
+                            "ReceivablesNetCurrent",
+                            "AccountsNotesAndLoansReceivableNetCurrent"],
+    "inventory":           ["InventoryNet", "InventoryGross"],
+    "payables":            ["AccountsPayableCurrent",
+                            "AccountsPayableTradeCurrent",
+                            "AccountsPayableAndAccruedLiabilitiesCurrent"],
+    "cost_of_revenue":     ["CostOfRevenue", "CostOfGoodsAndServicesSold",
+                            "CostOfGoodsSold"],
 }
 # FOREIGN PRIVATE ISSUERS FILE IFRS, NOT US-GAAP (added 2026-08-19).
 # `_annual_series` already accepted 20-F and 40-F forms, but `parse_companyfacts`
@@ -134,12 +156,26 @@ IFRS_MAP = {
     "capex":               ["PurchaseOfPropertyPlantAndEquipmentClassifiedAsInvestingActivities"],
     "total_debt":          ["LongtermBorrowings"],
     "cash":                ["CashAndCashEquivalents"],
+    # CCC inputs, IFRS side. Tag names verified against the ifrs-full
+    # taxonomy; a filer missing any of them yields NaN for that field
+    # rather than an approximation.
+    "receivables":         ["TradeAndOtherCurrentReceivables",
+                            "CurrentTradeReceivables"],
+    "inventory":           ["Inventories"],
+    "payables":            ["TradeAndOtherCurrentPayables",
+                            "CurrentTradePayables"],
+    "cost_of_revenue":     ["CostOfSales"],
 }
 
 # balance-sheet tags are instants (end only); flows must span ~a fiscal year,
 # or the comparative quarterly rows inside a 10-K leak in as annual figures.
+# Balance-sheet tags are INSTANTS (a point-in-time stock); flows must span a
+# fiscal year. receivables/inventory/payables are stocks, cost_of_revenue is a
+# flow — getting this wrong lets a comparative quarterly figure inside a 10-K
+# through as an annual one.
 INSTANT = {"total_assets", "long_term_debt", "current_assets",
-           "current_liabilities", "stockholders_equity", "total_debt", "cash"}
+           "current_liabilities", "stockholders_equity", "total_debt", "cash",
+           "receivables", "inventory", "payables"}
 ANNUAL_DAYS = (330, 380)
 
 # IFRS reporters state amounts in their own presentation currency. USD is kept

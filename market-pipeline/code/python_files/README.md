@@ -56,6 +56,7 @@ source it is taken from: **[docs/METRICS.md](docs/METRICS.md)**.
 | **Piotroski F-Score** | 9 binary signals; signal 4 is the accrual test in level form (`CFO > net income`) | Piotroski (2000), *J. Accounting Research* 38:1–41 |
 | **Darvas Box** | `box_top` = unbeaten high; `box_bottom` = lowest low *after* it; breakout = close above `box_top`. Current bar excluded from formation | Darvas (1960), *How I Made $2,000,000 in the Stock Market* |
 | **Liquidity** | floors are **absolute** ($10k structural, ₹1cr India policy); tiers are **percentile within market** — one USD constant is four different filters across five markets | Amihud (2002), *J. Financial Markets* 5:31–56 |
+| **CCC** | `DSO + DIO − DPO` from filings — EDGAR (US) / yfinance store (India); screener.in is a **fallback only**, and the source is rendered per row | validated: AAPL −71.1d, WMT +2.8d |
 | **Freshness** | graded by the trading **session the data contains**, never mtime/filename/row-count; median symbol, not maximum | see METRICS.md §5 |
 
 Deviations from a canonical definition are stated rather than glossed — e.g. Piotroski
