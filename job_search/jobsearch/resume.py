@@ -22,17 +22,72 @@ class ResumeError(RuntimeError):
     """The resume could not be read. Always names the reason and the fix."""
 
 
-def _read_pdf(path: Path) -> str:
+def _import_pdf_reader():
+    """Import pypdf, working around a broken `cryptography` install.
+
+    pypdf pulls in a crypt provider at import time, which imports
+    `cryptography`, whose Rust bindings fail on some systems (this container
+    among them: `ModuleNotFoundError: _cffi_backend`, then a pyo3 panic). That
+    failure has nothing to do with reading text -- it only gates *encrypted*
+    PDFs -- yet it makes every PDF unreadable.
+
+    So a failure that names the crypt chain is retried with the provider
+    stubbed out. An encrypted PDF then fails later with a clear message, which
+    is the correct trade: an unencrypted CV, which is nearly all of them, reads
+    fine instead of being rejected for a dependency it never needed.
+    """
     try:
         from pypdf import PdfReader
-    except Exception as exc:  # ImportError, or a broken native dependency
+        return PdfReader
+    except ImportError as exc:
         raise ResumeError(
-            f"cannot read {path.name}: PDF support needs pypdf "
-            f"(`pip install pypdf`) and it failed to load: {exc}. "
+            f"PDF support needs pypdf (`pip install pypdf`): {exc}. "
             f"Export the CV to .docx or .txt to avoid the dependency."
         ) from exc
+    except BaseException as exc:
+        # pyo3 raises PanicException, which inherits from BaseException, not
+        # Exception -- so a plain `except Exception` never sees the very
+        # failure this function exists to survive. Genuine interrupts are
+        # re-raised untouched.
+        if isinstance(exc, (KeyboardInterrupt, SystemExit)):
+            raise
+        # The panic's message is just "Python API call failed" and its class
+        # is "PanicException" -- neither names the culprit. The MODULE does
+        # (pyo3_runtime), so it has to be part of the check.
+        blame = (f"{type(exc).__module__}.{type(exc).__name__}: {exc}").lower()
+        if not any(k in blame for k in ("cryptography", "_rust", "_cffi",
+                                        "pyo3", "panic")):
+            raise ResumeError(f"PDF support failed to load: {exc}") from exc
+        import sys
+        import types
+        log.warning("pypdf's crypt provider is broken (%s); stubbing it out. "
+                    "Encrypted PDFs will not open, plain ones read normally.",
+                    type(exc).__name__)
+        sys.modules.setdefault("pypdf._crypt_providers._cryptography",
+                               types.ModuleType("pypdf._crypt_providers._cryptography"))
+        try:
+            from pypdf import PdfReader
+            return PdfReader
+        except BaseException as retry_exc:
+            if isinstance(retry_exc, (KeyboardInterrupt, SystemExit)):
+                raise
+            raise ResumeError(
+                f"PDF support could not be loaded even with the crypt provider "
+                f"stubbed: {retry_exc}. Export the CV to .docx or .txt."
+            ) from retry_exc
+
+
+def _read_pdf(path: Path) -> str:
+    PdfReader = _import_pdf_reader()
     try:
-        pages = [(p.extract_text() or "") for p in PdfReader(str(path)).pages]
+        reader = PdfReader(str(path))
+        if getattr(reader, "is_encrypted", False):
+            raise ResumeError(
+                f"{path.name} is encrypted. Remove the password, or export "
+                f"the CV to .docx or .txt.")
+        pages = [(p.extract_text() or "") for p in reader.pages]
+    except ResumeError:
+        raise
     except Exception as exc:
         raise ResumeError(f"cannot read {path.name}: {exc}") from exc
     return "\n".join(pages)

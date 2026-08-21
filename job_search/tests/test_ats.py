@@ -230,3 +230,70 @@ def test_a_scanned_pdf_extracting_nothing_is_an_error_not_a_zero_score(tmp_path)
 def test_normalize_repairs_pdf_extraction_artefacts():
     assert "development" in normalize("develop-\nment")
     assert normalize("a  b") == "a b"
+
+
+# --------------------------------------------------------------------------
+# PDF loading survives a broken cryptography install
+# --------------------------------------------------------------------------
+
+def test_pdf_import_survives_a_pyo3_panic(monkeypatch):
+    """pypdf imports a crypt provider that pulls in `cryptography`, whose Rust
+    bindings panic on some installs. That gates ENCRYPTED PDFs only, yet it
+    made every PDF unreadable.
+
+    Two things make this easy to get wrong, and both are pinned here: the
+    panic inherits from BaseException so `except Exception` never sees it, and
+    neither its message ("Python API call failed") nor its class name mentions
+    the culprit -- only its module does.
+    """
+    from jobsearch import resume as R
+
+    class PanicException(BaseException):
+        pass
+    PanicException.__module__ = "pyo3_runtime"
+
+    calls = {"n": 0}
+
+    import builtins
+    real_import = builtins.__import__
+
+    def fake_import(name, *a, **k):
+        if name == "pypdf" and calls["n"] == 0:
+            calls["n"] += 1
+            raise PanicException("Python API call failed")
+        return real_import(name, *a, **k)
+
+    monkeypatch.setattr(builtins, "__import__", fake_import)
+    reader = R._import_pdf_reader()          # must not raise
+    assert reader is not None
+    assert calls["n"] == 1
+
+
+def test_a_genuine_interrupt_is_not_swallowed(monkeypatch):
+    from jobsearch import resume as R
+    import builtins
+    real_import = builtins.__import__
+
+    def fake_import(name, *a, **k):
+        if name == "pypdf":
+            raise KeyboardInterrupt
+        return real_import(name, *a, **k)
+
+    monkeypatch.setattr(builtins, "__import__", fake_import)
+    with pytest.raises(KeyboardInterrupt):
+        R._import_pdf_reader()
+
+
+def test_an_unrelated_import_failure_still_reports_the_fix(monkeypatch):
+    from jobsearch import resume as R
+    import builtins
+    real_import = builtins.__import__
+
+    def fake_import(name, *a, **k):
+        if name == "pypdf":
+            raise ImportError("No module named 'pypdf'")
+        return real_import(name, *a, **k)
+
+    monkeypatch.setattr(builtins, "__import__", fake_import)
+    with pytest.raises(ResumeError, match="pip install pypdf"):
+        R._import_pdf_reader()
