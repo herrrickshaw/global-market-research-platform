@@ -111,6 +111,38 @@ scraped number is never indistinguishable from a computed one.
 **+2.8** — both match their well-known figures. The decomposition is reported too
 (AAPL: DSO 34.9, DIO 9.4, DPO 115.4), which the scraped total never gave.
 
+**Is CCC priced? No — tested 2026-08-21, and the answer is null.**
+
+2,039 US tickers, 8,267 fiscal years, 99% dated by their real SEC filing date,
+median 178 names ranked per month over 116 month-ends
+([`backtest_ccc.py`](../backtest_ccc.py)). Sector-demeaned against SEC SIC codes
+covering 2,038 of 2,039 names:
+
+| horizon | Q1−Q5 | t | mean IC | hit rate | n | verdict |
+|---|---|---|---|---|---|---|
+| 1M | −0.18% | −0.31 | −0.0095 | 55% | 64 | cannot reject null |
+| 3M | −0.60% | −0.60 | −0.0167 | 58% | 21 | cannot reject null |
+| 6M | −1.96% | −0.76 | −0.0164 | 68% | 10 | **underpowered** (n<15) |
+
+Quintiles are non-monotonic (Q2 is the best bucket at every horizon). Every mean
+IC is below the 0.03 usability floor, so even a real effect this size would not
+survive costs. **CCC is kept as a descriptive quality metric, not as a signal.**
+
+🔴 **The IC and the quintile spread disagree in sign, and that is not a
+contradiction.** Month-by-month the two correlate +0.47 — same data, same months.
+Spearman is rank-based and outlier-robust; a Q1−Q5 spread is a difference of
+means and is not. With the spread's standard deviation running ~10× its mean,
+which way the *average* leans is decided by a handful of months. Both are
+hypothesis-consistent in 56% of months. The disagreement is a symptom of noise,
+not a second finding — and reading either mean sign as directional would be
+reading the noise.
+
+**Structural limit on the 6M row.** `N_YEARS = 5` in the EDGAR collector caps CCC
+history at ~5 fiscal years regardless of the 116-month price panel, so
+non-overlapping 6M observations top out at n=10 against the ≥15 gate. That row
+cannot reach significance either way without raising `N_YEARS`; it is reported as
+underpowered rather than quietly included.
+
 🔴 **NaN is a result.** Some filers have no conventional cost-of-goods line —
 Exxon reports `CostsAndExpenses` and sector-specific `EnergyRelatedInventory*`,
 with no generic inventory or COGS tag. Substituting total expenses would yield a

@@ -48,7 +48,7 @@ from __future__ import annotations
 
 import argparse
 import glob
-import os
+from pathlib import Path
 import sys
 
 import numpy as np
@@ -154,12 +154,22 @@ def sector_demean(panel: pd.DataFrame, sectors: dict, min_names: int) -> pd.Data
     Without this a CCC quintile is close to a sector bet: software carries no
     inventory and is structurally negative, heavy industry is structurally long.
     """
-    if not sectors:
-        return panel
+    # 🔴 NEVER SILENTLY RETURN THE RAW PANEL. The first version of this bailed
+    # out and returned `panel` unchanged when the sector map was empty, so
+    # `--sector-relative` printed the RAW quintiles under a heading that said
+    # "sector-relative CCC". The map in this repo is Europe-only (955 entries,
+    # keyed "EU:TICKER") and covered 0 of 2,039 US tickers, so every number
+    # under that heading was mislabelled. A test that quietly becomes a
+    # different test is worse than one that fails.
     sec = pd.Series({c: sectors.get(c) for c in panel.columns})
     keep = sec.dropna()
-    if keep.empty:
-        return panel
+    cover = len(keep) / max(len(panel.columns), 1)
+    if cover < 0.60:      # the METHODOLOGY coverage gate, applied here too
+        raise SystemExit(
+            f"sector-relative requested but the sector map covers only "
+            f"{len(keep):,}/{len(panel.columns):,} tickers ({cover:.0%}, gate 60%).\n"
+            f"Refusing to print raw quintiles under a sector-relative heading.\n"
+            f"Populate a US sector map first: collect_us_sic.py")
     out = panel.copy()
     for s, cols in keep.groupby(keep).groups.items():
         cols = [c for c in cols if c in out.columns]
@@ -171,16 +181,22 @@ def sector_demean(panel: pd.DataFrame, sectors: dict, min_names: int) -> pd.Data
 
 
 def load_sectors() -> dict:
-    for p in ("market_cache/symbol_master.parquet",):
-        try:
-            d = pd.read_parquet(os.path.expanduser(f"~/market-pipeline/{p}"))
-            col = next((c for c in d.columns if c.lower() == "sector"), None)
-            sym = next((c for c in d.columns if c.lower() in ("symbol", "ticker")), None)
-            if col and sym:
-                return dict(zip(d[sym].astype(str), d[col]))
-        except Exception:
-            continue
-    return {}
+    """{ticker: sector} from SEC SIC codes (collect_us_sic.py).
+
+    NOT market_cache/sector_map.json — that file is Europe-only, keyed
+    "EU:TICKER", 955 entries, and covered 0 of 2,039 US tickers. Reading it here
+    is what made the first --sector-relative run a raw run in disguise.
+    """
+    try:
+        import cash_conversion_cycle as C
+
+        p = Path(C.STORE["US"]).with_name("us_sic.parquet")
+        if not p.exists():
+            return {}
+        d = pd.read_parquet(p).dropna(subset=["sector"])
+        return dict(zip(d["ticker"].astype(str), d["sector"]))
+    except Exception:
+        return {}
 
 
 def main() -> int:
@@ -227,13 +243,19 @@ def main() -> int:
           f"{'Q1-Q5':>9}{'t':>7}{'n':>5}  verdict")
 
     verdicts = []
+    ics: dict[int, pd.Series] = {}
     for h in (1, 3, 6):
-        rows, spreads = [], []
+        rows, spreads, ic = [], [], []
         for dtm in panel.index:
             x, r = panel.loc[dtm].dropna(), fwd[h].loc[dtm]
             x = x[x.index.isin(r.dropna().index)]
             if len(x) < a.min_names:
                 continue
+            # Rank correlation across the whole cross-section, not just its
+            # tails. A quintile spread throws away the middle 60% and can read
+            # flat while a monotone relationship exists underneath — or, as
+            # here, confirm that there is nothing underneath to throw away.
+            ic.append(x.corr(r[x.index], method="spearman"))
             try:
                 qs = pd.qcut(x, Q, labels=False, duplicates="drop")
             except ValueError:
@@ -243,6 +265,7 @@ def main() -> int:
             m = [r[qs[qs == q].index].mean() for q in range(Q)]
             rows.append(m)
             spreads.append(m[0] - m[Q - 1])
+        ics[h] = pd.Series(ic, dtype=float)
         if not rows:
             print(f"  {h:>2}  — too few ranked months")
             continue
@@ -261,6 +284,37 @@ def main() -> int:
         print(f"  {h:>2}M {mean_q[0]:>7.2f}%{mean_q[1]:>7.2f}%{mean_q[2]:>7.2f}%"
               f"{mean_q[3]:>7.2f}%{mean_q[4]:>7.2f}%{sp.mean() * 100:>8.2f}%"
               f"{t:>7.2f}{n_ind:>5}  {v_txt}")
+
+    # ── the correlation itself, stated directly ───────────────────────────────
+    print(f"\n=== {label} rank correlation with forward return ===")
+    print(f"  {'H':>2}  {'mean IC':>9}{'t':>7}{'n':>5}{'hit':>6}  {'|IC|>0.03':>10}  verdict")
+    for h in (1, 3, 6):
+        s = ics[h].dropna()
+        if s.empty:
+            continue
+        t = nonoverlap_t(s, h)
+        n_ind = len(s.iloc[::h])
+        # Hit rate = share of months with the hypothesised sign. Reported
+        # because the MEAN of either measure is dominated by a few extreme
+        # months — the spread's sd runs ~10x its mean — so a mean sign is not
+        # evidence of anything. A hit rate near 50% is the honest summary.
+        hit = float((s < 0).mean())
+        # 0.03 is the conventional floor for a *weak but usable* equity IC.
+        # Below it, even a true effect is too small to survive costs.
+        big = "yes" if abs(s.mean()) > 0.03 else "no"
+        v = (f"underpowered (n={n_ind}<15)" if n_ind < 15
+             else "signal" if abs(t) >= 2 else "cannot reject null")
+        print(f"  {h:>2}M {s.mean():>9.4f}{t:>7.2f}{n_ind:>5}{hit:>6.0%}  {big:>10}  {v}")
+    print("  IC is spearman(CCC, forward return) per month, then averaged.")
+    print("  A NEGATIVE IC would mean shorter cycle -> higher return, i.e. the")
+    print("  hypothesis. Sign matters as much as magnitude here.")
+    print("  'hit' is the share of months with that sign — 50% is a coin flip.")
+    print("  🔴 The IC and the Q1-Q5 spread can disagree in SIGN. They are not")
+    print("     contradictory measures: month-by-month they correlate +0.47.")
+    print("     Spearman is rank-based and outlier-robust; the spread is a")
+    print("     difference of means and is not. When sd/mean is ~10, which way")
+    print("     the average leans is decided by a handful of months. The")
+    print("     disagreement is a symptom of noise, not a second finding.")
 
     print("\n  Q1-Q5 is the SPREAD; levels are survivorship-biased and not the result.")
     print("  t is on NON-OVERLAPPING observations (every h-th month), so it is not")
