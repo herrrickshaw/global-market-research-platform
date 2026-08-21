@@ -143,7 +143,7 @@ Targeting lives in `jobsearch/profile.py` as plain data and is overridable from
 | Arbeitnow | none | Strong Germany/EU coverage. |
 | Remotive | none | Remote roles. |
 | Adzuna | free key | Good India + UK + DE coverage. Set `ADZUNA_APP_ID` / `ADZUNA_APP_KEY`. |
-| Careers pages | none | schema.org JSON-LD, with a link-scrape fallback. Brittle — opt-in per company. |
+| Careers pages | none, or a Zyte key | schema.org JSON-LD, with a link-scrape fallback. Brittle — opt-in per company. A Zyte key renders JS-only sites so the same parser can read them. |
 | Apollo.io | API key | `ApolloSource` pages the organization job-postings endpoint (1 credit/page). `ApolloDumpSource` replays postings saved from an Apollo MCP session — no key, no credits. |
 | JSearch | RapidAPI **or** OpenWebNinja key | One query across LinkedIn, Indeed, Glassdoor and ZipRecruiter. Two front doors sell the same index; when both keys are set the direct one is preferred. |
 | LinkedIn feeds | RapidAPI key | `linkedin-job-search-api` and `linkedin-jobs-api2`. Also exposes `count()` — size a query for one call before paging it. |
@@ -264,6 +264,28 @@ and assuming it is silently drops entire countries:
 Two lessons worth encoding: try the **country domain first** (`pwc.in` beat
 `pwc.com`), and never read an empty country result as "not hiring" until you have
 confirmed the feed covers that country at all.
+
+## The line on scraping, enforced in code
+
+`sources/zyte.py` can render any page, which makes it exactly the tool for
+quietly doing what this project has declined to do throughout. It is wired to
+one job — turning the JS-only **own-domain** careers sites (Siemens Energy, S&P
+Global, TotalEnergies) from empty shells into readable HTML, which the existing
+schema.org parser then handles unchanged.
+
+It will not fetch **LinkedIn, Naukri, iimjobs, Hirist, Instahyre, Foundit,
+Glassdoor or Indeed**. Putting a vendor in front of a scrape does not change
+what the scrape is: those terms forbid it, and the account at risk is the one
+being job-hunted with.
+
+That refusal lives in `DENIED_HOSTS` and is checked on every call, *before* the
+credential check, so a denied host is refused even with no key — otherwise the
+refusal would read as a configuration problem a key would fix. No config
+setting disables it, so a later edit pointing `careers_pages` at a LinkedIn URL
+raises rather than silently scraping. Matching is on domain boundaries, so
+subdomains (`in.linkedin.com`) are caught while unrelated hosts
+(`notlinkedin.com`) are not. A README paragraph is not a control; the tests in
+`test_zyte_policy.py` are.
 
 ## Portals this tool does not read
 

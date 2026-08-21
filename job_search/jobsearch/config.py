@@ -48,6 +48,9 @@ class Config:
     # tenants from URLs already present in the Apollo dump.
     workday_tenants: dict = field(default_factory=dict)
     workday_autodiscover: bool = True
+    # Optional renderer for JS-rendered own-domain careers pages. Never used
+    # for the portals in zyte.DENIED_HOSTS -- that list is not configurable.
+    zyte_api_key: str = ""
     jooble_key: str = ""
     careerjet_affid: str = ""
     careerjet_locale: str = "en_IN"
@@ -96,6 +99,9 @@ def load_config(path: str | Path | None) -> Config:
             cfg.portal_days = rapid.get("days", cfg.portal_days)
             cfg.indeed_top_n = rapid.get("indeed_top_n", cfg.indeed_top_n)
             cfg.indeed_locality = rapid.get("indeed_locality", cfg.indeed_locality)
+        zyt = src.get("zyte", {}) or {}
+        if zyt:
+            cfg.zyte_api_key = zyt.get("api_key", "")
         joo = src.get("jooble", {}) or {}
         if joo:
             cfg.jooble_key = joo.get("api_key", "")
@@ -134,6 +140,7 @@ def load_config(path: str | Path | None) -> Config:
     cfg.serpapi_key = cfg.serpapi_key or os.getenv("SERPAPI_KEY", "")
     if cfg.serpapi_key:
         cfg.enable_google_jobs = True
+    cfg.zyte_api_key = cfg.zyte_api_key or os.getenv("ZYTE_API_KEY", "")
     cfg.jooble_key = cfg.jooble_key or os.getenv("JOOBLE_KEY", "")
     cfg.careerjet_affid = cfg.careerjet_affid or os.getenv("CAREERJET_AFFID", "")
     cfg.adzuna_app_id = cfg.adzuna_app_id or os.getenv("ADZUNA_APP_ID", "")

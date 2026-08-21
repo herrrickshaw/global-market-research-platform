@@ -73,6 +73,14 @@ sources:
   # Adzuna is strong in the UK and Germany but thin in India; these two are
   # the other way round, which is why both are here. Neither replaces iimjobs
   # or Naukri, but together they widen the free tier well past Adzuna alone.
+  # Renders JS-only careers pages so the schema.org parser can read them.
+  # It is a fetch backend for `careers_pages` below, not a source of its own.
+  # It will NOT fetch LinkedIn, Naukri, iimjobs, Hirist, Instahyre, Foundit,
+  # Glassdoor or Indeed: those hosts are refused in code (zyte.DENIED_HOSTS)
+  # and no config setting can turn that off.
+  zyte:
+    api_key: ""            # https://www.zyte.com/ -> or ZYTE_API_KEY
+
   jooble:
     api_key: ""            # https://jooble.org/api/about -> or JOOBLE_KEY
   careerjet:
@@ -80,7 +88,12 @@ sources:
     locale: en_IN          # en_GB, de_DE, en_IN ... scopes the whole search
 
 # Opt-in per company. Brittle by nature - only add pages you care about.
+# Employers with no readable ATS live here. These three render their listings
+# in JavaScript, so they need the Zyte backend above to return anything.
 careers_pages: {}
+#  Siemens Energy: https://jobs.siemens-energy.com/en_US/jobs/SearchJobs
+#  S&P Global: https://careers.spglobal.com/jobs
+#  TotalEnergies: https://jobs.totalenergies.com/en_US/careers/SearchJobs
 #  Invest India: https://www.investindia.gov.in/careers
 
 # Everything below is optional; omit to use the defaults in jobsearch/profile.py

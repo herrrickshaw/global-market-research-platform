@@ -83,11 +83,17 @@ def _walk_for_jobpostings(node, out: list[dict]) -> None:
 class CareersPageSource(JobSource):
     name = "careers_page"
 
+    def __init__(self, fetcher=None):
+        # An optional renderer (see sources/zyte.py). Supplying one is what
+        # makes JS-rendered careers sites readable; the parsing below is
+        # identical either way, so there is one schema.org implementation.
+        self.fetcher = fetcher
+
     def fetch(self, url: str, company: str | None = None) -> list[JobPosting]:
-        try:
+        if self.fetcher is not None:
+            html = self.fetcher.fetch_html(url)
+        else:
             html = http_get_text(url)
-        except SourceError:
-            raise
         jobs = self._from_jsonld(html, url, company)
         if not jobs:
             jobs = self._from_links(html, url, company)

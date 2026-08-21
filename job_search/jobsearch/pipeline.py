@@ -268,8 +268,14 @@ def collect_ats_jobs(cfg: Config, index: dict) -> list[JobPosting]:
 
 
 def collect_careers_pages(cfg: Config) -> list[JobPosting]:
+    from .sources import ZyteFetcher
+
+    # A renderer turns the JS-only careers sites (Siemens Energy, S&P Global,
+    # TotalEnergies) from empty shells into readable pages. Without a key the
+    # source behaves exactly as before.
+    fetcher = ZyteFetcher(cfg.zyte_api_key) if cfg.zyte_api_key else None
     jobs: list[JobPosting] = []
-    src = CareersPageSource()
+    src = CareersPageSource(fetcher=fetcher)
     for company, url in (cfg.careers_pages or {}).items():
         try:
             batch = src.fetch(url, company=company)
