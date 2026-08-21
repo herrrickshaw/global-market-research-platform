@@ -616,3 +616,22 @@ def test_both_profiles_produce_a_shortlist_on_the_india_defaults():
     b2b, _ = _run(kws, profile_name="b2b", country="IN")
     assert b2c, "B2C shortlist empty on India defaults"
     assert b2b, "B2B shortlist empty on India defaults"
+
+
+def test_the_default_keywords_demonstrate_both_profiles_on_the_default_market():
+    """UX regression guard. The first command in the README is a bare
+    --dry-run. When IN became the default marketplace the default keywords
+    were still the USD-priced named fixtures, so B2B came back '0 of 4'
+    against a rupee floor — a correct pipeline that reads as broken to anyone
+    running it for the first time."""
+    kws = ["giloy juice", "aloe vera gel", "chyawanprash", "moringa oil"]
+    b2c, _ = _run(kws, profile_name="b2c", country=DEFAULT_COUNTRY)
+    b2b, _ = _run(kws, profile_name="b2b", country=DEFAULT_COUNTRY)
+    assert b2c, "default dry-run shows an empty B2C shortlist"
+    assert b2b, "default dry-run shows an empty B2B shortlist"
+
+    only_b2c = {r["keyword"] for r in b2c} - {r["keyword"] for r in b2b}
+    only_b2b = {r["keyword"] for r in b2b} - {r["keyword"] for r in b2c}
+    assert only_b2c and only_b2b, (
+        "the defaults should show a term on each side alone — that divergence "
+        "is the reason two profiles exist")

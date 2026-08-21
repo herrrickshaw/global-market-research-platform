@@ -512,7 +512,12 @@ def run_profile(name: str, keywords: list[str], args, trend_key, comp_key,
 
 def main() -> int:
     ap = argparse.ArgumentParser(description="Rank Amazon product candidates.")
-    ap.add_argument("--keywords", default="moringa oil,honey,mouth tape,sleep gummies")
+    # India-relevant by default, since IN is the default marketplace, and
+    # chosen so a bare --dry-run demonstrates the divergence that is the
+    # point of running two profiles: one term shortlisted in both, one
+    # consumer-only, one bulk-only, one rejected outright.
+    ap.add_argument("--keywords",
+                    default="giloy juice,aloe vera gel,chyawanprash,moringa oil")
     ap.add_argument("--keywords-file")
     ap.add_argument("--profile", default="both", choices=["b2c", "b2b", "both"],
                     help="B2C and B2B are separate analyses; 'both' runs each "
