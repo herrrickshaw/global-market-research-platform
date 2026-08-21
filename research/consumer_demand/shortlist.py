@@ -44,7 +44,6 @@ from __future__ import annotations
 
 import argparse
 import csv
-import json
 import math
 import os
 import sys
@@ -257,7 +256,7 @@ def write_markdown(path: Path, shortlist: list[dict], rejected: list[dict],
         "",
         "## How the ranking works",
         "",
-        f"Weights: " + ", ".join(f"`{k}` {v:.0%}" for k, v in WEIGHTS.items()) + ".",
+        "Weights: " + ", ".join(f"`{k}` {v:.0%}" for k, v in WEIGHTS.items()) + ".",
         "",
         "- **growth** — trend slope, fitted on log volume so it is a rate.",
         "- **demand** — latest volume, also logged: 500→5,000 matters more than "
