@@ -297,3 +297,32 @@ def test_an_unrelated_import_failure_still_reports_the_fix(monkeypatch):
     monkeypatch.setattr(builtins, "__import__", fake_import)
     with pytest.raises(ResumeError, match="pip install pypdf"):
         R._import_pdf_reader()
+
+
+def test_hyphenated_compounds_match_their_spaced_form():
+    """CVs hyphenate far more than JDs do.
+
+    "market-intelligence" is a single token, so it could never match a JD
+    asking for "market intelligence" -- a silent, systematic understatement of
+    exactly the terms a CV is most likely to hyphenate.
+    """
+    cv = phrases("Led market-intelligence analysis and front-end design work.")
+    assert "market intelligence" in cv
+    assert "front end design" in cv          # spaced form joins n-gram building
+    assert "market-intelligence" in cv       # original spelling still counts
+
+
+def test_hyphen_expansion_keeps_stopword_bearing_compounds():
+    """"go-to-market" is one term its author hyphenated, not a sentence slice,
+    so the interior-stopword rule must not delete it."""
+    assert "go to market" in phrases("Owned go-to-market strategy.")
+
+
+def test_a_hyphenated_jd_term_matches_a_spaced_resume():
+    """The mismatch runs both ways."""
+    m = score_resume("Market intelligence and competitor analysis.",
+                     "Requirements\n- market-intelligence expertise")
+    assert "market intelligence" in m.matched
+    # The hyphenated spelling must not be reported as a gap: telling the
+    # candidate to add a term they already say is worse than saying nothing.
+    assert "market-intelligence" not in m.missing

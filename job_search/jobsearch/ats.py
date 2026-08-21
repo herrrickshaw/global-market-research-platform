@@ -157,6 +157,32 @@ def phrase_counts(text: str, max_n: int = 3) -> "Counter[str]":
     for segment in _SEGMENT.split(text or ""):
         words = _all_tokens(segment)
         counts.update(w for w in words if w not in STOPWORDS)
+        # A hyphenated compound is one token, so "market-intelligence" in a CV
+        # could never match "market intelligence" in a JD -- and CVs hyphenate
+        # far more than JDs do. Emitting the spaced form as well makes the two
+        # spellings equivalent, which is what a screen does. The stopword-
+        # interior rule is deliberately skipped here: the hyphen is the
+        # author's own signal that this is one term ("go-to-market"), so it is
+        # not a sentence slice even though "to" sits inside it.
+        for w in words:
+            if "-" in w and len(w) > 3:
+                spaced = w.replace("-", " ").strip()
+                if spaced and spaced != w:
+                    counts[spaced] += 1
+        # The spaced form must also take part in n-gram building, not merely
+        # stand alone: "front-end design" is one hyphenated token plus one
+        # plain one, so the trigram "front end design" that a JD writes only
+        # appears if the compound is split first.
+        expanded = [part for w in words
+                    for part in (w.split("-") if "-" in w and len(w) > 3 else [w])
+                    if part]
+        if expanded != words:
+            for n in range(2, max_n + 1):
+                for i in range(len(expanded) - n + 1):
+                    gram = expanded[i:i + n]
+                    if any(g in STOPWORDS for g in gram):
+                        continue
+                    counts[" ".join(gram)] += 1
         for n in range(2, max_n + 1):
             for i in range(len(words) - n + 1):
                 gram = words[i:i + n]
@@ -325,7 +351,13 @@ def score_resume(resume: str, jd: str, *, top_missing: int = 15) -> AtsMatch:
     def credit(term: str) -> float:
         if term in have:
             return 1.0
-        parts = term.split()
+        # Symmetry: a JD writing "market-intelligence" must credit a resume
+        # that writes "market intelligence". Without this the term is scored
+        # as missing and lands on the edit list, telling the candidate to add
+        # something they already say -- advice that is worse than silence.
+        if "-" in term and term.replace("-", " ") in have:
+            return 1.0
+        parts = term.replace("-", " ").split()
         if len(parts) > 1 and all(p in have_tokens for p in parts):
             return PARTIAL_CREDIT
         return 0.0
