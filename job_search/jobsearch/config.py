@@ -42,6 +42,15 @@ class Config:
     portal_days: int = 30
     indeed_top_n: int = 10
     indeed_locality: str = "in"
+    # Workday cannot be probed by slug (the host carries a data-centre
+    # number), so it is listed per company. Values may be a myworkdayjobs URL
+    # or an explicit {tenant, site, wd} mapping; `scan` also auto-discovers
+    # tenants from URLs already present in the Apollo dump.
+    workday_tenants: dict = field(default_factory=dict)
+    workday_autodiscover: bool = True
+    jooble_key: str = ""
+    careerjet_affid: str = ""
+    careerjet_locale: str = "en_IN"
     ats_probe_top_n: int = 40
     apollo_dump: str = ""
     apollo_countries: list = field(default_factory=list)
@@ -60,8 +69,8 @@ def load_config(path: str | Path | None) -> Config:
         import yaml
         raw = yaml.safe_load(p.read_text(encoding="utf-8")) or {}
         for key in ("connections_files", "out_dir", "top_n", "ats_probe_top_n",
-                    "careers_pages", "apollo_dump",
-                    "apollo_countries", "apollo_days"):
+                    "careers_pages", "apollo_dump", "workday_tenants",
+                    "workday_autodiscover", "apollo_countries", "apollo_days"):
             if key in raw:
                 setattr(cfg, key, raw[key])
         src = raw.get("sources", {}) or {}
@@ -87,6 +96,13 @@ def load_config(path: str | Path | None) -> Config:
             cfg.portal_days = rapid.get("days", cfg.portal_days)
             cfg.indeed_top_n = rapid.get("indeed_top_n", cfg.indeed_top_n)
             cfg.indeed_locality = rapid.get("indeed_locality", cfg.indeed_locality)
+        joo = src.get("jooble", {}) or {}
+        if joo:
+            cfg.jooble_key = joo.get("api_key", "")
+        cjt = src.get("careerjet", {}) or {}
+        if cjt:
+            cfg.careerjet_affid = cjt.get("affid", "")
+            cfg.careerjet_locale = cjt.get("locale", cfg.careerjet_locale)
         own = src.get("openwebninja", {}) or {}
         if own:
             cfg.openwebninja_key = own.get("api_key", "")
@@ -118,6 +134,8 @@ def load_config(path: str | Path | None) -> Config:
     cfg.serpapi_key = cfg.serpapi_key or os.getenv("SERPAPI_KEY", "")
     if cfg.serpapi_key:
         cfg.enable_google_jobs = True
+    cfg.jooble_key = cfg.jooble_key or os.getenv("JOOBLE_KEY", "")
+    cfg.careerjet_affid = cfg.careerjet_affid or os.getenv("CAREERJET_AFFID", "")
     cfg.adzuna_app_id = cfg.adzuna_app_id or os.getenv("ADZUNA_APP_ID", "")
     cfg.adzuna_app_key = cfg.adzuna_app_key or os.getenv("ADZUNA_APP_KEY", "")
     if cfg.adzuna_app_id and cfg.adzuna_app_key:

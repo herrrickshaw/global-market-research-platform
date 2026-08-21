@@ -82,6 +82,40 @@ def http_get_text(url: str, params: dict | None = None) -> str:
     return _request(url, params=params).text
 
 
+def _post(url: str, *, json_body: dict, headers: dict | None = None,
+          retries: int = 2, timeout: int = DEFAULT_TIMEOUT) -> requests.Response:
+    last: Exception | None = None
+    for attempt in range(retries + 1):
+        try:
+            resp = _get_session().post(url, json=json_body, headers=headers,
+                                       timeout=timeout)
+            if resp.status_code == 404:
+                raise SourceError(f"404 {redact(url)}")
+            if resp.status_code == 429:
+                wait = 2 ** attempt
+                log.warning("rate limited on %s, sleeping %ss", redact(url), wait)
+                time.sleep(wait)
+                continue
+            resp.raise_for_status()
+            return resp
+        except SourceError:
+            raise
+        except Exception as exc:
+            last = exc
+            if attempt < retries:
+                time.sleep(2 ** attempt)
+    raise SourceError(f"POST {redact(url)} failed: {redact(str(last))}")
+
+
+def http_post_json(url: str, json_body: dict, headers: dict | None = None) -> Any:
+    """Workday and Jooble are POST-only; a GET returns nothing useful."""
+    resp = _post(url, json_body=json_body, headers=headers)
+    try:
+        return resp.json()
+    except ValueError as exc:
+        raise SourceError(f"non-JSON response from {redact(url)}: {exc}") from exc
+
+
 class JobSource:
     """Base class. Subclasses implement fetch() and return list[JobPosting]."""
 

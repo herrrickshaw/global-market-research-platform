@@ -138,6 +138,8 @@ Targeting lives in `jobsearch/profile.py` as plain data and is overridable from
 | Source | Auth | Notes |
 |---|---|---|
 | Greenhouse / Lever / Ashby | none | Public board APIs. Slugs are probed and cached per company. |
+| SmartRecruiters / Workable / Personio | none | Same slug-probe path, three more ATS families. Personio's feed is XML and covers the German-speaking mid-market, which the JSON-first sources reach worst. |
+| **Workday** | none | **Shell and Wood Mackenzie run on it.** POST-only, `limit` capped at 20, pages to an explicit `total` — so no coverage caveat. Configured per company, or discovered automatically (below). |
 | Arbeitnow | none | Strong Germany/EU coverage. |
 | Remotive | none | Remote roles. |
 | Adzuna | free key | Good India + UK + DE coverage. Set `ADZUNA_APP_ID` / `ADZUNA_APP_KEY`. |
@@ -148,6 +150,8 @@ Targeting lives in `jobsearch/profile.py` as plain data and is overridable from
 | Active-ATS | RapidAPI key | `active-jobs-db`: postings read off company ATSes across many employers. |
 | Indeed | RapidAPI key | `indeed12`. Company-scoped, so it is driven by the network ranking rather than a keyword sweep. |
 | Google Jobs | SerpApi key | The only source here that carries **iimjobs, Naukri, Foundit and Hirist**. |
+| Jooble | free key | 60+ countries. Covers India far better than Adzuna. |
+| Careerjet | free affid | 80+ countries; indexes Indian boards no ATS-first source reaches. |
 
 Apollo needs an organization id, which comes from enriching a domain; ids are
 never guessed. Large employers advertise at real scale (Siemens Energy returned
@@ -156,6 +160,39 @@ relevance — so `ApolloSource.fetch` pages through rather than assuming page 1
 holds anything useful, and a dump that only captured part of a company is
 flagged with a `_caveat` that is logged as a warning instead of quietly reading
 as full coverage.
+
+### Workday: the free feed the paid one was standing in for
+
+Every Shell posting collected through Apollo carries a
+`shell.wd3.myworkdayjobs.com` URL — Shell publishes to Workday, and Workday has
+a public JSON endpoint. Closing Shell's 30-day window through Apollo took five
+credit-charged pages and still needed a caveat recording what was not fetched;
+Workday pages to an explicit `total`, for nothing, with no caveat.
+
+Because the tenant, data-centre number and site all sit inside a posting URL —
+and none of them is guessable from a company name — `scan` derives its Workday
+config from URLs it already has:
+
+```
+144 stored posting URLs -> 2 Workday tenants derived
+  shell     site=shellcareers     wd3
+  woodmac   site=woodmaccareers   wd3
+```
+
+The same pass finds `apply.workable.com/rystad-energy`, so **Rystad Energy**
+becomes readable through the Workable adapter. No configuration needed for any
+of the three.
+
+Two traps in the Workday endpoint: a **GET returns nothing useful** (it is
+POST-only), and **`limit` is capped at 20** — asking for more returns an empty
+`jobPostings` array rather than an error, which reads exactly like an employer
+with no openings. The cap is enforced in the adapter rather than trusted to the
+caller.
+
+**Assume nothing about an employer's ATS.** The same check found Siemens Energy
+on `jobs.siemens-energy.com`, S&P Global on `careers.spglobal.com` and
+TotalEnergies on `jobs.totalenergies.com` — own-domain career sites, not
+Workday. Read the host off a posting URL rather than guessing.
 
 ### Reading LinkedIn and Indeed without scraping them
 
@@ -175,6 +212,11 @@ Three things these feeds punish if you take them at face value:
   `test_linkedin_window_is_the_one_actually_fetched`.
 - **A 200 can be a failure.** SerpApi reports a bad key or an exhausted quota as
   HTTP 200 with an `error` body, which otherwise reads as "no jobs found".
+- **Well-formed XML is not a jobs feed.** Personio returns HTML error pages
+  that parse cleanly as XML, contain no `<position>`, and yield `[]` —
+  indistinguishable from a company with nothing open. Caught by checking the
+  root element, not by catching a parse error. (Found because a test written to
+  assert the parse-error path *failed*: the error page parsed fine.)
 - **Field names drift.** The same value ships as `organization` or
   `company_name`, `date_posted` or `datePosted`; locations arrive as a string, a
   list, or a list of dicts; rows come bare or wrapped in `data`/`jobs`. Every

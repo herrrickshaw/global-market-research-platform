@@ -76,6 +76,8 @@ def collect_feed_jobs(cfg: Config) -> list[JobPosting]:
                 except SourceError as exc:
                     log.warning("adzuna %s/%s failed: %s", country, query, exc)
     jobs += collect_portal_jobs(cfg)
+    jobs += collect_workday_jobs(cfg)
+    jobs += collect_aggregator_jobs(cfg)
     return jobs
 
 
@@ -158,6 +160,89 @@ def collect_indeed_jobs(cfg: Config, index: dict) -> list[JobPosting]:
             jobs += batch
         except SourceError as exc:
             log.warning("indeed %s failed: %s", net.display_name, exc)
+    return jobs
+
+
+def collect_workday_jobs(cfg: Config) -> list[JobPosting]:
+    """Workday boards, configured per company or discovered from stored URLs.
+
+    Auto-discovery is the point: the Apollo dump already carries a
+    myworkdayjobs URL for every Workday employer in it, and those URLs hold the
+    tenant, data-centre number and site -- none of which is guessable. So a
+    company that cost credits to page through Apollo becomes free to read in
+    full, with no coverage caveat, without anyone configuring anything.
+    """
+    from .sources import WorkdaySource, tenants_from_urls
+
+    tenants: dict[str, dict] = {}
+    for name, value in (cfg.workday_tenants or {}).items():
+        if isinstance(value, str):
+            try:
+                src = WorkdaySource.from_url(value)
+            except ValueError as exc:
+                log.warning("workday %s: %s", name, exc)
+                continue
+            tenants[name] = {"tenant": src.tenant, "site": src.site,
+                             "wd": src.wd, "locale": src.locale, "company": name}
+        elif isinstance(value, dict):
+            tenants[name] = {**value, "company": value.get("company", name)}
+
+    if cfg.workday_autodiscover and cfg.apollo_dump:
+        try:
+            import json
+            from pathlib import Path
+            doc = json.loads(Path(cfg.apollo_dump).read_text())
+            urls = [j.get("url", "") for v in doc.values() if isinstance(v, dict)
+                    for j in v.get("jobs", [])]
+            for tenant, found in tenants_from_urls(urls).items():
+                tenants.setdefault(tenant, {**found, "company": None})
+        except (OSError, ValueError) as exc:
+            log.warning("workday autodiscovery from %s failed: %s", cfg.apollo_dump, exc)
+
+    jobs: list[JobPosting] = []
+    for name, cfg_ in tenants.items():
+        try:
+            src = WorkdaySource(tenant=cfg_["tenant"], site=cfg_["site"],
+                                wd=cfg_.get("wd", "wd3"),
+                                locale=cfg_.get("locale", "en-US"))
+            batch = src.fetch(company=cfg_.get("company"))
+            log.info("workday %s: %d postings", name, len(batch))
+            jobs += batch
+        except (SourceError, KeyError, ValueError) as exc:
+            log.warning("workday %s failed: %s", name, exc)
+    return jobs
+
+
+def collect_aggregator_jobs(cfg: Config) -> list[JobPosting]:
+    """Jooble and Careerjet: the free-key sources that actually reach India."""
+    from .sources import CareerjetSource, JoobleSource
+
+    jobs: list[JobPosting] = []
+    queries = cfg.portal_queries or []
+    locations = cfg.portal_locations or [""]
+
+    if cfg.jooble_key:
+        src = JoobleSource(cfg.jooble_key)
+        for query in queries:
+            for loc in locations:
+                try:
+                    batch = src.fetch(query, loc, max_pages=1)
+                    log.info("jooble %r/%r: %d postings", query, loc, len(batch))
+                    jobs += batch
+                except SourceError as exc:
+                    log.warning("jooble %r/%r failed: %s", query, loc, exc)
+
+    if cfg.careerjet_affid:
+        src = CareerjetSource(cfg.careerjet_affid)
+        for query in queries:
+            for loc in locations:
+                try:
+                    batch = src.fetch(query, loc, locale=cfg.careerjet_locale,
+                                      max_pages=1)
+                    log.info("careerjet %r/%r: %d postings", query, loc, len(batch))
+                    jobs += batch
+                except SourceError as exc:
+                    log.warning("careerjet %r/%r failed: %s", query, loc, exc)
     return jobs
 
 
