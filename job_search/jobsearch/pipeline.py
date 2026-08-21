@@ -16,6 +16,7 @@ from .sources import (ActiveJobsDBSource, AdzunaSource, ApolloDumpSource,
                       JSearchSource, LinkedInJobSearchSource, RemotiveSource,
                       SerpApiJobsSource)
 from .sources.base import SourceError
+from .sources.jsearch import country_code
 from .discovery import SlugCache, resolve_board
 from .sources import ATS_SOURCES
 
@@ -77,6 +78,7 @@ def collect_feed_jobs(cfg: Config) -> list[JobPosting]:
                     log.warning("adzuna %s/%s failed: %s", country, query, exc)
     jobs += collect_portal_jobs(cfg)
     jobs += collect_workday_jobs(cfg)
+    jobs += collect_successfactors_jobs(cfg)
     jobs += collect_aggregator_jobs(cfg)
     return jobs
 
@@ -102,7 +104,8 @@ def collect_portal_jobs(cfg: Config) -> list[JobPosting]:
             for loc in locations:
                 q = f"{query} in {loc}" if loc else query
                 try:
-                    batch = src.fetch(q, days=cfg.portal_days, max_pages=1)
+                    batch = src.fetch(q, days=cfg.portal_days, max_pages=1,
+                                      country=country_code(loc))
                     log.info("jsearch %r: %d postings", q, len(batch))
                     jobs += batch
                 except SourceError as exc:
@@ -213,6 +216,27 @@ def collect_workday_jobs(cfg: Config) -> list[JobPosting]:
     return jobs
 
 
+def collect_successfactors_jobs(cfg: Config) -> list[JobPosting]:
+    """SuccessFactors career sites, one per employer.
+
+    Configured rather than probed: the host is an employer's own choice
+    (careers.ey.com, southasiacareers.deloitte.com) and is not derivable from
+    the company name. A failure here is logged per site, so one dead career
+    site never hides the others.
+    """
+    from .sources import SuccessFactorsSource
+
+    jobs: list[JobPosting] = []
+    for company, host in (cfg.successfactors_sites or {}).items():
+        try:
+            batch = SuccessFactorsSource(host).fetch(company=company)
+            log.info("successfactors %s (%s): %d postings", company, host, len(batch))
+            jobs += batch
+        except (SourceError, ValueError) as exc:
+            log.warning("successfactors %s (%s) failed: %s", company, host, exc)
+    return jobs
+
+
 def collect_aggregator_jobs(cfg: Config) -> list[JobPosting]:
     """Jooble and Careerjet: the free-key sources that actually reach India."""
     from .sources import CareerjetSource, JoobleSource
@@ -296,7 +320,8 @@ def dedupe_jobs(jobs: list[JobPosting]) -> list[JobPosting]:
         # Prefer a posting that has a date, then a description, then the ATS
         # record over an aggregator's copy (ATS links are canonical).
         rank_fn=lambda j: (j.posted_at is not None, len(j.description or ""),
-                           j.source in ("greenhouse", "lever", "ashby")),
+                           j.source in ("greenhouse", "lever", "ashby",
+                                        "workday", "successfactors")),
     )
 
 

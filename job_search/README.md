@@ -204,6 +204,7 @@ Targeting lives in `jobsearch/profile.py` as plain data and is overridable from
 | Greenhouse / Lever / Ashby | none | Public board APIs. Slugs are probed and cached per company. |
 | SmartRecruiters / Workable / Personio | none | Same slug-probe path, three more ATS families. Personio's feed is XML and covers the German-speaking mid-market, which the JSON-first sources reach worst. |
 | **Workday** | none | **Shell and Wood Mackenzie run on it.** POST-only, `limit` capped at 20, pages to an explicit `total` — so no coverage caveat. Configured per company, or discovered automatically (below). |
+| **SuccessFactors** | none | **Where Deloitte India and EY India actually post.** Two feeds per site: `/sitemal.xml` (SAP's own typo) is uncapped and tried first; the keyword feed returns at most 20 and is labelled a SAMPLE when it hits that. Configured per employer — the host is not derivable from the company name. |
 | Arbeitnow | none | Strong Germany/EU coverage. |
 | Remotive | none | Remote roles. |
 | Adzuna | free key | Good India + UK + DE coverage. Set `ADZUNA_APP_ID` / `ADZUNA_APP_KEY`. |
@@ -257,6 +258,48 @@ caller.
 on `jobs.siemens-energy.com`, S&P Global on `careers.spglobal.com` and
 TotalEnergies on `jobs.totalenergies.com` — own-domain career sites, not
 Workday. Read the host off a posting URL rather than guessing.
+
+### SuccessFactors: closing the hole the Apollo feeds could not see
+
+The India table below records that Deloitte's feed returned 4,709 postings with
+page 1 100% US, and EY's 3,198 with zero India. Both firms hire heavily in
+India. The postings were never missing — they are on separate career sites:
+
+```
+careers.ey.com                    EY, incl. EY India GPS (Gurgaon/Delhi)
+southasiacareers.deloitte.com     Deloitte India
+```
+
+Both run SAP SuccessFactors, which exposes two XML feeds, and the difference
+between them is the whole reason this source needed care:
+
+| Path | Query | Complete? |
+|---|---|---|
+| `/sitemal.xml` | none | **yes** — every job on the instance |
+| `/services/rss/job/?keywords=…` | keyword | no — **20 jobs, always** |
+
+`sitemal.xml` is spelled that way by SAP, on every instance, and appears in
+none of their documentation. It is tried first precisely because it is the one
+that cannot lie about its own completeness. The keyword feed is the fallback,
+and a result that comes back at exactly 20 is logged as a `SAMPLE`, never as a
+board.
+
+The two feeds are different RSS versions, which matters more than it sounds.
+RSS 1.0 namespaces every element; RSS 2.0 namespaces none of them. Matching
+`item` literally finds every posting in the capped feed and **none** in the
+complete one — an empty parse that would fall through to the truncated
+fallback without a word. Element lookup here matches on local name and
+discards the namespace.
+
+Career-site descriptions are also HTML escaped *inside* XML, so the parser
+hands back one decoded layer with `<p>` and `&amp;` still in it. Stripping
+tags once leaves the entities as literal text and the ATS scorer scores `amp`
+and `nbsp` as CV keywords; unescaping repeats until the text stops changing.
+
+These endpoint shapes have **not been exercised against a live host** — this
+development environment 403s every career site — so a run that matches no
+endpoint raises instead of returning `[]`. An empty list here would reproduce
+exactly the bug the source exists to fix.
 
 ### Reading LinkedIn and Indeed without scraping them
 
@@ -340,8 +383,8 @@ and assuming it is silently drops entire countries:
 | Accenture | yes, heavy | but volume is BPO/tech; the fit is Strategy & Consulting Global Network |
 | KPMG | yes | `kpmg.com` is the global org, and its feed still carries India |
 | Shell, Wood Mackenzie, S&P Global | yes | ordinary global ATS |
-| **Deloitte** | **no** | 4,709 postings, page 1 100% US. India lives on `southasiacareers.deloitte.com` |
-| **EY** | **no** | 3,198 postings, page 1 100% US/EU. EY India / GDS absent |
+| **Deloitte** | **no** | 4,709 postings, page 1 100% US. India lives on `southasiacareers.deloitte.com` — now read directly, see SuccessFactors above |
+| **EY** | **no** | 3,198 postings, page 1 100% US/EU. EY India / GDS absent — now read directly from `careers.ey.com` |
 | TotalEnergies | no India in window | France/US/Africa/Gulf heavy |
 
 Two lessons worth encoding: try the **country domain first** (`pwc.in` beat

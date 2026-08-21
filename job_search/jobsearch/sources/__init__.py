@@ -17,6 +17,7 @@ from .ats_public import (PersonioSource, SmartRecruitersSource,  # noqa: F401
 from .workday import WorkdaySource, tenants_from_urls  # noqa: F401
 from .aggregators import CareerjetSource, JoobleSource  # noqa: F401
 from .zyte import DeniedByPolicy, ZyteFetcher, is_denied  # noqa: F401
+from .successfactors import SuccessFactorsSource  # noqa: F401
 
 # Slug-addressed public boards, probed by discovery.resolve_board(). Ordered
 # by how often a probe hits: the big three first, then the long tail.

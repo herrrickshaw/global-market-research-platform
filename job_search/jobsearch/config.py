@@ -48,6 +48,10 @@ class Config:
     # tenants from URLs already present in the Apollo dump.
     workday_tenants: dict = field(default_factory=dict)
     workday_autodiscover: bool = True
+    # SuccessFactors career sites, keyed by employer. This is where the India
+    # arms of the Big Four live -- their parent-company feeds report zero India
+    # roles, which is a domain artefact, not an absence of hiring.
+    successfactors_sites: dict = field(default_factory=dict)
     # Optional renderer for JS-rendered own-domain careers pages. Never used
     # for the portals in zyte.DENIED_HOSTS -- that list is not configurable.
     zyte_api_key: str = ""
@@ -79,7 +83,8 @@ def load_config(path: str | Path | None) -> Config:
         raw = yaml.safe_load(p.read_text(encoding="utf-8")) or {}
         for key in ("connections_files", "out_dir", "top_n", "ats_probe_top_n",
                     "careers_pages", "apollo_dump", "workday_tenants",
-                    "workday_autodiscover", "resume_path", "resume_dir",
+                    "workday_autodiscover", "successfactors_sites",
+                    "resume_path", "resume_dir",
                     "min_ats", "sort_by_ats", "apollo_countries", "apollo_days"):
             if key in raw:
                 setattr(cfg, key, raw[key])

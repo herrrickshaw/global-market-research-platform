@@ -300,3 +300,72 @@ def test_linkedin_window_is_the_one_actually_fetched(monkeypatch):
     rapidapi_jobs.LinkedInJobSearchSource(api_key="k").fetch(
         title="analyst", time_frame="30d")
     assert seen["url"].endswith("/active-jb-30d")
+
+
+# --------------------------------------------------------------------------
+# JSearch country routing
+# --------------------------------------------------------------------------
+
+def test_jsearch_country_is_derived_from_the_location():
+    """`country` picks the Google domain, it does not filter the results.
+
+    Every European query in a seven-country run was going to google.co.in,
+    which answers with India-weighted listings and no error at all -- so the
+    Europe half of an "India and Europe" search was never actually searched.
+    """
+    from jobsearch.sources.jsearch import country_code
+
+    assert country_code("Germany") == "de"
+    assert country_code("United Kingdom") == "gb"
+    assert country_code("Netherlands") == "nl"
+    assert country_code("India") == "in"
+
+
+def test_a_city_resolves_to_its_country():
+    from jobsearch.sources.jsearch import country_code
+
+    assert country_code("Rotterdam") == "nl"
+    assert country_code("Bengaluru") == "in"
+
+
+def test_a_country_wins_over_a_city_in_the_same_string():
+    """"Rotterdam, Netherlands" must not resolve on whichever token is
+    checked first."""
+    from jobsearch.sources.jsearch import country_code
+
+    assert country_code("Rotterdam, Netherlands") == "nl"
+    assert country_code("Milan, Italy") == "it"
+
+
+def test_an_unknown_location_falls_back_rather_than_guessing():
+    from jobsearch.sources.jsearch import DEFAULT_COUNTRY, country_code
+
+    assert country_code("Atlantis") == DEFAULT_COUNTRY
+    assert country_code("") == DEFAULT_COUNTRY
+    assert country_code("Atlantis", default="gb") == "gb"
+
+
+def test_the_pipeline_passes_the_derived_country_through(monkeypatch):
+    """The bug was in the caller, not the source: `fetch` had a sensible
+    `country=` parameter that nothing ever passed."""
+    from jobsearch import pipeline as P
+
+    seen = []
+
+    class FakeJSearch:
+        def __init__(self, *a, **k):
+            pass
+
+        def fetch(self, query, **kw):
+            seen.append((query, kw.get("country")))
+            return []
+
+    monkeypatch.setattr(P, "JSearchSource", FakeJSearch)
+    cfg = P.Config()
+    cfg.enable_jsearch = True
+    cfg.openwebninja_key = "x"
+    cfg.portal_queries = ["strategy consultant"]
+    cfg.portal_locations = ["India", "Germany"]
+    P.collect_portal_jobs(cfg)
+    assert ("strategy consultant in India", "in") in seen
+    assert ("strategy consultant in Germany", "de") in seen
