@@ -149,7 +149,10 @@ class SuccessFactorsSource(JobSource):
             try:
                 text = http_get_text(url)
             except SourceError as exc:
-                errors.append(f"{feed.path}: {exc}")
+                # Report the URL actually requested, not the template -- an
+                # error naming `keywords={q}` sends the reader looking for a
+                # formatting bug that isn't there.
+                errors.append(f"{url}: {exc}")
                 continue
             jobs = self._parse(text, company)
             if jobs:
@@ -163,7 +166,7 @@ class SuccessFactorsSource(JobSource):
                         "to reach different roles.",
                         self.host, len(jobs), FEEDS[0].path)
                 return jobs
-            errors.append(f"{feed.path}: parsed 0 postings")
+            errors.append(f"{url}: parsed 0 postings")
 
         # Every endpoint failed or parsed empty. That is a broken integration,
         # not an employer with nothing open, and saying so is the whole point.
