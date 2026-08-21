@@ -310,6 +310,25 @@ Postings are deduped across sources on (company, title, location), preferring a
 dated record and the canonical ATS link over an aggregator's copy. Any source
 that fails is logged and skipped; one dead feed never kills a run.
 
+## Employer coverage, and what "empty" means for each
+
+Which employers have been pulled, how completely, and what was deliberately
+skipped. Recorded here because the alternative is re-spending credits to
+rediscover it, and because a partial pull that is not labelled as partial reads
+as a complete one:
+
+| Employer | Coverage | Note |
+|---|---|---|
+| Uniper | **complete** (103 of 103) | page 2 held 3 rows, none in-window. Board is dominated by German apprenticeship and plant-technician roles; the commercial roles are a small minority |
+| Argus Media | **complete** (60 of 60) | price-reporting agency for energy commodities — closest institutional match to the Shell Category Analyst work. India (Mumbai) is analyst-grade; senior commercial sits in London/Houston/Singapore |
+| Aurora Energy Research | **complete** (84 of 84) | sector-perfect, grade-wrong: overwhelmingly analyst/associate. India (Gurugram) is payroll, IT and billing |
+| Rystad Energy, Invest India | complete (12 of 12, 13 of 13) | Invest India is contracting (−8.8% 12mo); Rystad is the inverse (+9%) |
+| Shell | pages 1–5 of 7 | full 30-day window. Feed repeats each requisition per `?source=` variant, so a page advances only ~3–6 days |
+| S&P Global | pages 1–2 of 5 | full 30-day window |
+| **Siemens** | **page 1 of 26** | 2,518 postings, ~95% software/building-automation on page 1, yielding one relevant role. Pages 2–26 **not fetched** — the yield did not justify 25 credits. A gap, not an absence |
+| Deloitte, EY | page 1 only | both **carry no India at all** — see below |
+| Accenture, KPMG, PwC India, TotalEnergies | page 1 | see below |
+
 ## Where a company's India roles actually live
 
 Measured across 11 employers. A global feed is not the same as a global company,
