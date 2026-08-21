@@ -143,6 +143,11 @@ Targeting lives in `jobsearch/profile.py` as plain data and is overridable from
 | Adzuna | free key | Good India + UK + DE coverage. Set `ADZUNA_APP_ID` / `ADZUNA_APP_KEY`. |
 | Careers pages | none | schema.org JSON-LD, with a link-scrape fallback. Brittle — opt-in per company. |
 | Apollo.io | API key | `ApolloSource` pages the organization job-postings endpoint (1 credit/page). `ApolloDumpSource` replays postings saved from an Apollo MCP session — no key, no credits. |
+| JSearch | RapidAPI **or** OpenWebNinja key | One query across LinkedIn, Indeed, Glassdoor and ZipRecruiter. Two front doors sell the same index; when both keys are set the direct one is preferred. |
+| LinkedIn feeds | RapidAPI key | `linkedin-job-search-api` and `linkedin-jobs-api2`. Also exposes `count()` — size a query for one call before paging it. |
+| Active-ATS | RapidAPI key | `active-jobs-db`: postings read off company ATSes across many employers. |
+| Indeed | RapidAPI key | `indeed12`. Company-scoped, so it is driven by the network ranking rather than a keyword sweep. |
+| Google Jobs | SerpApi key | The only source here that carries **iimjobs, Naukri, Foundit and Hirist**. |
 
 Apollo needs an organization id, which comes from enriching a domain; ids are
 never guessed. Large employers advertise at real scale (Siemens Energy returned
@@ -152,12 +157,42 @@ holds anything useful, and a dump that only captured part of a company is
 flagged with a `_caveat` that is logged as a warning instead of quietly reading
 as full coverage.
 
+### Reading LinkedIn and Indeed without scraping them
+
+Neither offers a jobs API to an individual developer, and both forbid scraping.
+The aggregators above license an index instead, so postings arrive without any
+automation pointed at the account you are job-hunting with. Every posting keeps
+the portal it came from in its `source` (`jsearch:LinkedIn`,
+`google_jobs:Naukri.com`), so a report can show how much of its coverage is
+LinkedIn versus elsewhere rather than implying it read the site directly.
+
+Three things these feeds punish if you take them at face value:
+
+- **The window can be in the path, not the parameter.** `/active-jb-7d` with
+  `time_frame=30d` returns seven days for a thirty-day question, succeeds, and
+  says nothing. The path is now built from `time_frame`; an unsupported window
+  404s, which is the better failure. Pinned by
+  `test_linkedin_window_is_the_one_actually_fetched`.
+- **A 200 can be a failure.** SerpApi reports a bad key or an exhausted quota as
+  HTTP 200 with an `error` body, which otherwise reads as "no jobs found".
+- **Field names drift.** The same value ships as `organization` or
+  `company_name`, `date_posted` or `datePosted`; locations arrive as a string, a
+  list, or a list of dicts; rows come bare or wrapped in `data`/`jobs`. Every
+  field is read through a list of accepted names, and unrecognised keys are
+  logged so drift surfaces as a log line instead of a blank column.
+
+Cost is a query × location fan-out against a metered quota, so trim those lists
+before widening the window. Google Jobs gives only a relative date ("3 days
+ago"); anything unparseable becomes `None` rather than an invented date, which
+would otherwise feed straight into the freshness term of the score.
+
 ### Credentials never reach the logs
 
-Adzuna authenticates via query string, so a raw request URL contains the API
-key. `sources/base.redact()` masks `app_key`, `app_id`, `api_key`, `token` and
-friends before any URL is logged or embedded in an exception. Covered by
-`test_credentials_are_redacted_before_logging`.
+Adzuna and SerpApi authenticate via query string, so a raw request URL contains
+the API key. `sources/base.redact()` masks `app_key`, `app_id`, `api_key`,
+`token` and friends before any URL is logged or embedded in an exception. The
+RapidAPI family authenticates by header instead, which keeps the key out of the
+URL entirely — asserted by `test_rapidapi_key_travels_in_headers_not_the_url`.
 
 ### A failing source is not an empty one
 
@@ -196,6 +231,12 @@ feed: **iimjobs** (the main one for BD / strategy / consulting at 8+ years),
 hand -- iimjobs in particular carries roles that never reach a company ATS, and
 lists experience bands (e.g. "6-8 yrs") that make grade mismatches obvious
 before you apply. Scraping them is against their terms and is not attempted here.
+
+The partial way in is **SerpApi Google Jobs**: Google indexes iimjobs, Naukri
+and Foundit, so their postings arrive through a licensed index rather than a
+scraper. Coverage is whatever Google chose to index, not the portal's full
+inventory — treat it as a supplement to searching them by hand, not a
+replacement.
 
 ## Layout
 

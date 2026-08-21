@@ -41,12 +41,12 @@ def _get_session() -> requests.Session:
     return _session
 
 
-def _request(url: str, *, params: dict | None = None, retries: int = 2,
-             timeout: int = DEFAULT_TIMEOUT) -> requests.Response:
+def _request(url: str, *, params: dict | None = None, headers: dict | None = None,
+             retries: int = 2, timeout: int = DEFAULT_TIMEOUT) -> requests.Response:
     last: Exception | None = None
     for attempt in range(retries + 1):
         try:
-            resp = _get_session().get(url, params=params, timeout=timeout)
+            resp = _get_session().get(url, params=params, headers=headers, timeout=timeout)
             # 404 means "no board here" - a normal answer when probing slugs,
             # not a transient failure worth retrying.
             if resp.status_code == 404:
@@ -67,8 +67,11 @@ def _request(url: str, *, params: dict | None = None, retries: int = 2,
     raise SourceError(f"GET {redact(url)} failed: {redact(str(last))}")
 
 
-def http_get_json(url: str, params: dict | None = None) -> Any:
-    resp = _request(url, params=params)
+def http_get_json(url: str, params: dict | None = None,
+                  headers: dict | None = None) -> Any:
+    # Header-authenticated sources (RapidAPI) pass their key here rather than in
+    # the query string. Headers are never logged; redact() only sees the URL.
+    resp = _request(url, params=params, headers=headers)
     try:
         return resp.json()
     except ValueError as exc:

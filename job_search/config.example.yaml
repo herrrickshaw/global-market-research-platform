@@ -22,6 +22,40 @@ sources:
     countries: [de, gb, in]
     queries: ["business development", "investment", "strategy", "partnerships"]
 
+  # --- Licensed portal aggregators -------------------------------------
+  # These are how you read LinkedIn and Indeed postings legitimately. Neither
+  # offers a jobs API to an individual developer and both forbid scraping;
+  # these vendors license an aggregated index instead, so nothing here touches
+  # the account you are job-hunting with.
+  #
+  # One RapidAPI key unlocks all four rapidapi hosts. Cost is a query x
+  # location fan-out, so trim `queries` and `locations` before widening
+  # `time_frame`.
+  rapidapi:
+    api_key: ""            # https://rapidapi.com/ -> or RAPIDAPI_KEY
+    jsearch: false         # LinkedIn + Indeed + Glassdoor + ZipRecruiter
+    linkedin: false        # linkedin-job-search-api / linkedin-jobs-api2
+    active_ats: false      # active-jobs-db: read off company ATSes
+    indeed: false          # company-scoped, driven by the network ranking
+    indeed_top_n: 10
+    indeed_locality: in
+    time_frame: 7d         # 1h | 24h | 7d | 30d -- selects the endpoint path
+    days: 30               # window for the query-based sources
+    queries: ["business development manager", "strategy consultant",
+              "market intelligence", "energy analyst"]
+    locations: ["India", "United Kingdom"]
+
+  # Same JSearch index, direct front door instead of via RapidAPI. When this
+  # key is set it is preferred over the RapidAPI one.
+  openwebninja:
+    api_key: ""            # or OPENWEBNINJA_KEY
+
+  # Google's job index -- the only source here that carries iimjobs, Naukri,
+  # Foundit and Hirist, which is where India's senior market actually runs.
+  serpapi:
+    enabled: false         # https://serpapi.com/manage-api-key -> or SERPAPI_KEY
+    api_key: ""
+
 # Opt-in per company. Brittle by nature - only add pages you care about.
 careers_pages: {}
 #  Invest India: https://www.investindia.gov.in/careers
