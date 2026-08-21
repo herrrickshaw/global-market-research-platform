@@ -14,6 +14,7 @@ import argparse
 import math
 import os
 import sys
+import time
 from datetime import date, timedelta
 
 import pytest
@@ -21,9 +22,12 @@ import pytest
 ROOT = os.path.join(os.path.dirname(__file__), "..")
 sys.path.insert(0, os.path.join(ROOT, "research", "consumer_demand"))
 
+import amazon_demand_compare as comp  # noqa: E402
 import nexscope_keyword_history as trend  # noqa: E402
 from shortlist import (  # noqa: E402
     DEFAULT_ALLOWED_FLAGS,
+    DEFAULT_COUNTRY,
+    MARKETS,
     PROFILES,
     WEIGHTS,
     _minmax,
@@ -31,7 +35,9 @@ from shortlist import (  # noqa: E402
     collect,
     expand,
     gate,
+    market_for,
     profile_queries,
+    resolve_gates,
     score_candidates,
 )
 
@@ -41,7 +47,8 @@ def _args(**over):
                 allowed_flags=list(DEFAULT_ALLOWED_FLAGS), price_all=False,
                 endpoint="https://example.test/x", auth_header="Authorization",
                 auth_prefix="Bearer ", sleep=0, dry_run=True, from_cache=False,
-                no_cache=True)
+                no_cache=True, cache_max_age_hours=24.0,
+                trend_cache_max_age_hours=168.0)
     base.update(over)
     return argparse.Namespace(**base)
 
@@ -413,3 +420,199 @@ def test_a_longer_window_is_passed_through(monkeypatch):
     monkeypatch.setattr(trend, "fetch", fake_fetch)
     collect("moringa oil", _args(dry_run=False, weeks=104), "k", "k", PROFILES["b2c"])
     assert seen["start"] == (date.today() - timedelta(weeks=104)).isoformat()
+
+
+# --------------------------------------------------------------- cache expiry
+def _age_file(path, hours):
+    """Backdate a file's mtime so freshness can be tested without waiting."""
+    old = time.time() - hours * 3600
+    os.utime(path, (old, old))
+
+
+def test_a_fresh_cache_is_used(tmp_path):
+    f = tmp_path / "c.json"
+    f.write_text("{}")
+    assert comp.cache_is_fresh(f, 24) is True
+    assert trend.cache_is_fresh(f, 168) is True
+
+
+def test_a_stale_cache_is_not_considered_fresh(tmp_path):
+    """The defect this fixes: without an age check a month-old snapshot is
+    served as current and nothing downstream can tell."""
+    f = tmp_path / "c.json"
+    f.write_text("{}")
+    _age_file(f, 30 * 24)
+    assert comp.cache_is_fresh(f, 24) is False
+    assert trend.cache_is_fresh(f, 168) is False
+
+
+def test_a_missing_cache_is_never_fresh(tmp_path):
+    assert comp.cache_is_fresh(tmp_path / "nope.json", 24) is False
+
+
+def test_zero_max_age_disables_expiry(tmp_path):
+    """An explicit opt-out, for reproducing an old run deliberately."""
+    f = tmp_path / "c.json"
+    f.write_text("{}")
+    _age_file(f, 365 * 24)
+    assert comp.cache_is_fresh(f, 0) is True
+
+
+def test_the_boundary_is_inclusive(tmp_path):
+    f = tmp_path / "c.json"
+    f.write_text("{}")
+    _age_file(f, 23.9)
+    assert comp.cache_is_fresh(f, 24) is True
+    _age_file(f, 24.1)
+    assert comp.cache_is_fresh(f, 24) is False
+
+
+def test_trend_data_is_cached_far_longer_than_competition_data():
+    """Not arbitrary: a weekly series gains one point a week, so refetching it
+    daily only spends quota. Prices and rankings move daily, so a day-old
+    competition snapshot is already at the edge of useful."""
+    assert trend.DEFAULT_CACHE_MAX_AGE_HOURS > comp.DEFAULT_CACHE_MAX_AGE_HOURS
+    assert comp.DEFAULT_CACHE_MAX_AGE_HOURS == 24
+    assert trend.DEFAULT_CACHE_MAX_AGE_HOURS == 168
+
+
+def test_cache_age_reports_hours(tmp_path):
+    f = tmp_path / "c.json"
+    f.write_text("{}")
+    _age_file(f, 5)
+    assert comp.cache_age_hours(f) == pytest.approx(5.0, abs=0.1)
+    assert comp.cache_age_hours(tmp_path / "nope.json") is None
+
+
+def test_the_shortlist_writes_and_then_reuses_a_trend_cache(tmp_path, monkeypatch):
+    """Regression test. The shortlist path never cached trend responses at all,
+    so --from-cache silently did nothing for the trend half and every run
+    re-spent one request per keyword per profile."""
+    monkeypatch.setattr(trend, "CACHE_DIR", tmp_path)
+    calls = []
+
+    def fake_fetch(keyword, country, key, endpoint, auth_header, auth_prefix,
+                   start=None, end=None, **kw):
+        calls.append(keyword)
+        return trend.dry_run_payload(keyword)
+
+    monkeypatch.setattr(trend, "fetch", fake_fetch)
+    args = _args(dry_run=False, no_cache=False)
+    collect("moringa oil", args, "k", "k", PROFILES["b2c"])
+    assert len(calls) == 1, "first run must fetch"
+
+    collect("moringa oil", args, "k", "k", PROFILES["b2c"])
+    assert len(calls) == 1, "second run must reuse the cache, not refetch"
+
+
+def test_a_stale_trend_cache_is_refetched_rather_than_served(tmp_path, monkeypatch):
+    monkeypatch.setattr(trend, "CACHE_DIR", tmp_path)
+    calls = []
+
+    def fake_fetch(keyword, country, key, endpoint, auth_header, auth_prefix,
+                   start=None, end=None, **kw):
+        calls.append(keyword)
+        return trend.dry_run_payload(keyword)
+
+    monkeypatch.setattr(trend, "fetch", fake_fetch)
+    args = _args(dry_run=False, no_cache=False)
+    collect("moringa oil", args, "k", "k", PROFILES["b2c"])
+    _age_file(trend.cache_path("moringa oil", "US"), 30 * 24)
+    collect("moringa oil", args, "k", "k", PROFILES["b2c"])
+    assert len(calls) == 2, "a month-old series must be refetched, not served as current"
+
+
+# ------------------------------------------------------------------ markets
+def test_the_b2b_price_floor_is_denominated_in_the_local_currency():
+    """The bug this guards. 25 is a sensible USD floor and a meaningless INR
+    one — Rs 25 is about $0.30, so a currency-naive floor on amazon.in passes
+    every product and the gate silently stops existing."""
+    us = resolve_gates(PROFILES["b2b"], market_for("US"))["min_median_price"]
+    inr = resolve_gates(PROFILES["b2b"], market_for("IN"))["min_median_price"]
+    assert us == 25.0
+    assert inr >= 1000, f"an INR floor of {inr} would pass everything"
+
+
+def test_every_known_market_sets_a_b2b_floor_above_a_trivial_amount():
+    for code, m in MARKETS.items():
+        g = resolve_gates(PROFILES["b2b"], m)
+        assert g["min_median_price"] == m["b2b_min_price"], code
+        assert g["min_median_price"] > 0, code
+
+
+def test_b2c_never_gains_a_price_floor_from_the_market():
+    """The floor is a statement about the B2B channel, not about the country."""
+    for m in MARKETS.values():
+        assert resolve_gates(PROFILES["b2c"], m)["min_median_price"] is None
+
+
+def test_volume_gates_scale_down_for_smaller_marketplaces():
+    """Amazon India's absolute search counts are far below the US's for the
+    same category; an unscaled US floor rejects viable Indian niches for being
+    Indian."""
+    us = resolve_gates(PROFILES["b2c"], market_for("US"))["min_volume"]
+    inr = resolve_gates(PROFILES["b2c"], market_for("IN"))["min_volume"]
+    assert inr < us
+
+
+def test_the_volume_gate_never_scales_to_zero():
+    """A floor of 0 would admit every keyword including dead ones."""
+    tiny = {"currency": "X", "symbol": "", "b2b_min_price": 1.0, "volume_scale": 0.00001}
+    for name in PROFILES:
+        assert resolve_gates(PROFILES[name], tiny)["min_volume"] >= 1
+
+
+def test_an_unknown_country_falls_back_without_crashing():
+    m = market_for("ZZ")
+    assert m["b2b_min_price"] > 0
+    assert resolve_gates(PROFILES["b2b"], m)["min_median_price"] > 0
+
+
+def test_market_lookup_is_case_insensitive():
+    assert market_for("in") == market_for("IN")
+
+
+def test_resolve_gates_does_not_mutate_the_profile():
+    """Profiles are module-level dicts; mutating them would leak the first
+    country's thresholds into every later run in the same process."""
+    before = dict(PROFILES["b2b"]["gates"])
+    resolve_gates(PROFILES["b2b"], market_for("IN"))
+    resolve_gates(PROFILES["b2b"], market_for("JP"))
+    assert PROFILES["b2b"]["gates"] == before
+
+
+def test_india_is_the_default_marketplace():
+    """Stated target. A US default would silently apply USD gates to rupee
+    prices, which is the failure the market block exists to prevent."""
+    assert DEFAULT_COUNTRY == "IN"
+    assert DEFAULT_COUNTRY in MARKETS
+
+
+def test_the_dry_run_fixture_prices_scale_with_the_marketplace():
+    """Without this the fixture emits dollar-scale prices against a rupee
+    gate, the B2B floor rejects every candidate, and a correct gate on
+    unrealistic data looks exactly like a broken gate."""
+    us = comp.dry_run_payload("some unnamed keyword", "US")
+    inr = comp.dry_run_payload("some unnamed keyword", "IN")
+    us_price = comp.parse_price(comp.products_of(us)[0]["product_price"])
+    in_price = comp.parse_price(comp.products_of(inr)[0]["product_price"])
+    assert in_price > us_price * 50
+
+
+def test_the_named_fixtures_stay_in_usd_whatever_the_country():
+    """They carry the exact values the arithmetic tests assert on."""
+    for country in ("US", "IN", "JP"):
+        p = comp.products_of(comp.dry_run_payload("honey", country))
+        assert p[0]["product_price"] == "$14.99", country
+
+
+def test_both_profiles_produce_a_shortlist_on_the_india_defaults():
+    """A profile that rejects 100% is either correctly strict or broken, and
+    from the outside those look identical — so both must be non-empty on
+    fixtures built to contain viable candidates."""
+    kws = ["moringa oil", "turmeric soap", "nitrile examination gloves",
+           "a4 copier paper ream", "corrugated box 5 ply", "safety shoes steel toe"]
+    b2c, _ = _run(kws, profile_name="b2c", country="IN")
+    b2b, _ = _run(kws, profile_name="b2b", country="IN")
+    assert b2c, "B2C shortlist empty on India defaults"
+    assert b2b, "B2B shortlist empty on India defaults"

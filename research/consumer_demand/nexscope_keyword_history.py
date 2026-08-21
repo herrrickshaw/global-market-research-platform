@@ -41,7 +41,7 @@ Usage:
     python3 research/consumer_demand/nexscope_keyword_history.py \
         --keywords "moringa oil,raw honey,mouth tape"
     python3 research/consumer_demand/nexscope_keyword_history.py \
-        --keywords-file candidates.txt --country US --weeks 52
+        --keywords-file candidates_in.txt --country US --weeks 52
     python3 research/consumer_demand/nexscope_keyword_history.py \
         --auth-header X-API-Key --endpoint https://api.nexscope.ai/v1/...
 """
@@ -56,6 +56,7 @@ import os
 import re
 import statistics
 import sys
+import time as _time
 import time
 import urllib.error
 import urllib.parse
@@ -90,6 +91,29 @@ VOLUME_KEYS = ("search_volume", "searchVolume", "volume", "searches",
 RANK_KEYS = ("search_frequency_rank", "searchFrequencyRank", "rank", "sfr")
 
 CACHE_DIR = Path("data/nexscope_raw")
+
+# A weekly search-volume series gains at most one new point per week, so a
+# day-old copy is identical to a fresh fetch and refetching it only spends
+# quota. Deliberately much longer than the competition module's 24h: that one
+# reads prices and rankings, which move daily.
+DEFAULT_CACHE_MAX_AGE_HOURS = 168.0
+
+
+def cache_is_fresh(path: Path, max_age_hours: float) -> bool:
+    """A cache with no expiry is worse than no cache: it answers today's
+    question with last month's data and nothing downstream can tell.
+    max_age_hours <= 0 disables expiry (keep forever)."""
+    if not path.exists():
+        return False
+    if max_age_hours <= 0:
+        return True
+    return (_time.time() - path.stat().st_mtime) / 3600.0 <= max_age_hours
+
+
+def cache_age_hours(path: Path) -> float | None:
+    if not path.exists():
+        return None
+    return (_time.time() - path.stat().st_mtime) / 3600.0
 
 
 class SchemaMismatch(RuntimeError):
@@ -594,6 +618,9 @@ def main() -> int:
     ap.add_argument("--dry-run", action="store_true")
     ap.add_argument("--from-cache", action="store_true")
     ap.add_argument("--no-cache", action="store_true")
+    ap.add_argument("--cache-max-age-hours", type=float,
+                    default=DEFAULT_CACHE_MAX_AGE_HOURS,
+                    help="refetch cached series older than this; 0 = never expire")
     ap.add_argument("--out", default="reports")
     args = ap.parse_args()
 
@@ -616,13 +643,18 @@ def main() -> int:
     rows: list[dict] = []
     for kw in keywords:
         cp = cache_path(kw, country)
+        fresh = cache_is_fresh(cp, args.cache_max_age_hours)
         if args.dry_run:
             payload = dry_run_payload(kw)
-        elif args.from_cache or cp.exists():
+        elif args.from_cache or fresh:
             if not cp.exists():
                 print(f"  {kw!r}: no cache — skipped")
                 continue
             payload = json.loads(cp.read_text())
+            if not fresh:
+                print(f"  {kw!r}: STALE CACHE {cache_age_hours(cp):.0f}h old "
+                      f"(limit {args.cache_max_age_hours:g}h), using it anyway "
+                      f"because --from-cache forbids a refetch")
         else:
             try:
                 payload = fetch(kw, country, key, args.endpoint,

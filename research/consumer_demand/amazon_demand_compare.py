@@ -68,6 +68,7 @@ import os
 import re
 import statistics
 import sys
+import time as _time
 import time
 import urllib.error
 import urllib.parse
@@ -125,6 +126,31 @@ def build_url(query: str, country: str = "US", page: int = 1,
         "query": query, "country": country, "page": page, "sort_by": sort_by,
     })
     return f"{BASE}?{q}"
+
+
+# Search results — prices, the sales badge, which listings rank — turn over
+# daily. A day-old snapshot is a fair read of "now"; a week-old one is fiction
+# presented as current. trends.py uses a longer default for the same reason
+# inverted: its series is weekly, so a fresh fetch cannot say anything new.
+DEFAULT_CACHE_MAX_AGE_HOURS = 24
+
+
+def cache_is_fresh(path: Path, max_age_hours: float) -> bool:
+    """A cache with no expiry is worse than no cache: it silently answers
+    today's question with last month's data, and nothing downstream can tell.
+    max_age_hours <= 0 disables the check (keep forever)."""
+    if not path.exists():
+        return False
+    if max_age_hours <= 0:
+        return True
+    age_hours = (_time.time() - path.stat().st_mtime) / 3600.0
+    return age_hours <= max_age_hours
+
+
+def cache_age_hours(path: Path) -> float | None:
+    if not path.exists():
+        return None
+    return (_time.time() - path.stat().st_mtime) / 3600.0
 
 
 def cache_path(query: str, country: str, page: int) -> Path:
@@ -245,7 +271,9 @@ def listing_row(p: dict, group: str, query: str) -> dict:
 # ---------------------------------------------------------------- collection
 def collect_group(group: str, queries: list[str], country: str, pages: int,
                   key: str | None, sleep: float, dry_run: bool,
-                  from_cache: bool, write_cache: bool) -> tuple[list[dict], int | None]:
+                  from_cache: bool, write_cache: bool,
+                  cache_max_age_hours: float = DEFAULT_CACHE_MAX_AGE_HOURS
+                  ) -> tuple[list[dict], int | None]:
     """Union of listings across a group's keyword variants, deduped by ASIN.
 
     Dedupe matters: "honey" and "raw honey" return heavily overlapping results,
@@ -260,14 +288,24 @@ def collect_group(group: str, queries: list[str], country: str, pages: int,
             payload = None
             cp = cache_path(query, country, page)
 
+            fresh = cache_is_fresh(cp, cache_max_age_hours)
             if dry_run:
-                payload = dry_run_payload(group)
-            elif from_cache or cp.exists():
+                payload = dry_run_payload(group, country)
+            elif from_cache or fresh:
                 if not cp.exists():
                     print(f"    no cache for {query!r} p{page} — skipped")
                     continue
                 payload = json.loads(cp.read_text())
-                print(f"    cached  {query!r} p{page}")
+                age = cache_age_hours(cp)
+                if not fresh:
+                    # --from-cache means no network, so a stale entry is the
+                    # only thing available. Use it, but never quietly: the
+                    # caller is about to treat it as current.
+                    print(f"    STALE CACHE {query!r} p{page} — {age:.0f}h old "
+                          f"(limit {cache_max_age_hours:g}h), using it anyway "
+                          f"because --from-cache forbids a refetch")
+                else:
+                    print(f"    cached  {query!r} p{page} ({age:.0f}h old)")
             else:
                 try:
                     payload = fetch(query, country, page, key)
@@ -435,7 +473,20 @@ def verdict(summaries: list[dict], country: str) -> list[str]:
 
 
 # ---------------------------------------------------------------- dry run
-def dry_run_payload(group: str) -> dict:
+# Fixture-only. Rough units-per-USD, so a dry run against a non-USD
+# marketplace produces prices on that marketplace's scale. Without this the
+# fixture emits dollar-scale numbers against a rupee-denominated gate and the
+# B2B price floor rejects everything — the gate behaving correctly on
+# unrealistic data, which looks exactly like a broken gate.
+#
+# Deliberately NOT the same table as shortlist.MARKETS: that one holds
+# thresholds a user tunes, this one holds fake prices. Sharing them would
+# couple a fixture detail to a business rule.
+_DRY_RUN_PRICE_SCALE = {"US": 1, "IN": 80, "JP": 150, "GB": 1, "DE": 1,
+                        "CA": 1.4, "AU": 1.5, "AE": 4}
+
+
+def dry_run_payload(group: str, country: str = "US") -> dict:
     """Shaped like a real response, with deliberately different demand
     profiles so the ranking, the ratio and the coverage warning all fire."""
     if group.startswith("moringa"):
@@ -507,8 +558,9 @@ def dry_run_payload(group: str) -> dict:
         # review moat and the same price, collapsing the openness and headroom
         # components to 0.5 across the board — a ranking with nothing to rank.
         h = int(hashlib.md5(group.encode()).hexdigest(), 16)
+        scale = _DRY_RUN_PRICE_SCALE.get(country.upper(), 1)
         moat = 80 * (2 ** (h % 10))              # ~80 to ~40,000
-        base = 4 + (h // 7) % 90                 # $4 to $94
+        base = (4 + (h // 7) % 90) * scale       # local-currency scale
         spread = 1 + (h // 11) % 4               # tight to wide pricing
         units = 100 * (1 + (h // 13) % 40)
         products = [
@@ -627,6 +679,9 @@ def main() -> int:
     ap.add_argument("--from-cache", action="store_true",
                     help="analyse previously cached responses only, no network")
     ap.add_argument("--no-cache", action="store_true", help="do not write raw responses")
+    ap.add_argument("--cache-max-age-hours", type=float,
+                    default=DEFAULT_CACHE_MAX_AGE_HOURS,
+                    help="refetch cached responses older than this; 0 = never expire")
     ap.add_argument("--out", default="reports")
     args = ap.parse_args()
 
@@ -651,6 +706,7 @@ def main() -> int:
         rows, breadth = collect_group(
             group, queries, country, args.pages, key, args.sleep,
             args.dry_run, args.from_cache, not args.no_cache,
+            args.cache_max_age_hours,
         )
         if not rows:
             print(f"    nothing collected for {group}")

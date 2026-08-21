@@ -67,11 +67,30 @@ and returns one ranked list.
 ```bash
 export NEXSCOPE_API_KEY=... OPENWEB_NINJA_API_KEY=...
 python3 research/consumer_demand/shortlist.py --dry-run
-python3 research/consumer_demand/shortlist.py --keywords-file research/consumer_demand/candidates.txt
+python3 research/consumer_demand/shortlist.py --keywords-file research/consumer_demand/candidates_in.txt
 python3 research/consumer_demand/shortlist.py --min-volume 1000 --max-review-moat 1500
 ```
 
 Writes `reports/amazon_shortlist_b2c.{csv,md}` and `reports/amazon_shortlist_b2b.{csv,md}`.
+
+### Marketplace: India by default
+
+`--country` defaults to **IN**. Thresholds denominated in money or in absolute
+search counts cannot be one global number, so they live in a `MARKETS` table and
+are resolved per run:
+
+| | US | IN | Why |
+|---|---|---|---|
+| B2B price floor | $25 | ₹2,000 | ₹25 is about $0.30 — a currency-naive floor passes literally everything and the gate silently stops existing |
+| Volume gate scale | ×1.0 | ×0.2 | Amazon India's absolute search counts are far below the US's for the same category; an unscaled floor rejects viable Indian niches for being Indian |
+
+The price floors are converted at rough spot rates; **the volume scales are
+estimates, not measurements.** Nothing here is calibrated against observed data.
+They sit in one table so retuning after a first real run is a one-line edit.
+
+`candidates_in.txt` (119 keywords) is the India universe; `candidates_us.txt`
+is kept for the US marketplace. The catalogues genuinely differ — ayurvedic and
+hair-oil categories are mainstream in one and niche in the other.
 
 ### B2C and B2B are separate analyses
 
@@ -120,6 +139,19 @@ The rejected table is usually the more useful half. "Rising, but seasonal" and
 `shilajit resin` is the case the design exists for: demand genuinely rising, and
 the category still not enterable.
 
+### Caching
+
+Raw responses cache under `data/` and **expire**: competition snapshots after
+24h, trend series after 168h. The split is not arbitrary — prices and rankings
+move daily, while a weekly search-volume series gains one point a week, so
+refetching it daily only spends quota. `--cache-max-age-hours` and
+`--trend-cache-max-age-hours` override; `0` disables expiry.
+
+A cache with no expiry is worse than no cache: it answers today's question with
+last month's data and nothing downstream can tell. Under `--from-cache` a stale
+entry is still used — it is the only thing available with no network — but never
+quietly: the run prints its age and the limit it exceeded.
+
 Trend runs before competition on purpose — the competition call bills per
 listing returned, and roughly half of any candidate list dies on the trend gate.
 
@@ -128,7 +160,7 @@ normalised across the candidates you supply, so adding an eleventh changes the
 other ten. `0.9` means "best of what you supplied", never "good in absolute
 terms". Compare within a run, never across runs.
 
-`candidates.txt` is a seed universe to run against — read its header first, the
+`candidates_in.txt` is a seed universe to run against — read its header first, the
 provenance matters.
 
 ## `nexscope_keyword_history.py`

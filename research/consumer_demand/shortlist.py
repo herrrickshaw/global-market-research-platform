@@ -37,13 +37,14 @@ Usage:
     python3 research/consumer_demand/shortlist.py --dry-run
     export NEXSCOPE_API_KEY=... OPENWEB_NINJA_API_KEY=...
     python3 research/consumer_demand/shortlist.py --keywords "moringa oil,mouth tape"
-    python3 research/consumer_demand/shortlist.py --keywords-file candidates.txt \
+    python3 research/consumer_demand/shortlist.py --keywords-file candidates_in.txt \
         --min-volume 1000 --max-review-moat 1500
 """
 from __future__ import annotations
 
 import argparse
 import csv
+import json
 import math
 import os
 import sys
@@ -58,6 +59,60 @@ import nexscope_keyword_history as trend  # noqa: E402
 # Trend verdicts allowed through. "spiky" and "seasonal bounce" are excluded
 # because they are the two ways a rising-looking series lies.
 DEFAULT_ALLOWED_FLAGS = ("RISING",)
+
+# ---------------------------------------------------------------- markets
+# Thresholds denominated in money or in absolute search counts cannot be one
+# global number. The B2B order-value floor is the clearest case: 25 is a
+# sensible USD floor and a meaningless INR one — Rs 25 is about $0.30, so on
+# amazon.in a currency-naive floor passes literally everything and the gate
+# silently stops existing.
+#
+# `volume_scale` adjusts the search-volume gates for absolute market size:
+# Amazon India's search counts are far smaller than the US's for the same
+# category, so a US floor would reject viable Indian niches for being Indian.
+#
+# HONEST STATUS: b2b_min_price values are converted at rough spot rates and
+# rounded to a round number a buyer would recognise. volume_scale values are
+# ESTIMATES, not measurements — nothing here is calibrated against observed
+# data, and they should be retuned after a first real run in the target
+# marketplace. They are explicit and in one place precisely so that retuning
+# is a one-line edit rather than an archaeology exercise.
+MARKETS = {
+    "US": {"currency": "USD", "symbol": "$",  "b2b_min_price": 25.0,   "volume_scale": 1.0},
+    "IN": {"currency": "INR", "symbol": "\u20b9", "b2b_min_price": 2000.0, "volume_scale": 0.2},
+    "GB": {"currency": "GBP", "symbol": "\u00a3",  "b2b_min_price": 20.0,   "volume_scale": 0.25},
+    "DE": {"currency": "EUR", "symbol": "\u20ac",  "b2b_min_price": 25.0,   "volume_scale": 0.25},
+    "CA": {"currency": "CAD", "symbol": "$",  "b2b_min_price": 35.0,   "volume_scale": 0.12},
+    "AU": {"currency": "AUD", "symbol": "$",  "b2b_min_price": 40.0,   "volume_scale": 0.08},
+    "JP": {"currency": "JPY", "symbol": "\u00a5",  "b2b_min_price": 4000.0, "volume_scale": 0.3},
+    "AE": {"currency": "AED", "symbol": "AED", "b2b_min_price": 90.0,  "volume_scale": 0.05},
+}
+DEFAULT_MARKET = {"currency": "?", "symbol": "", "b2b_min_price": 25.0, "volume_scale": 1.0}
+
+# The stated target marketplace. A US default would silently apply USD-
+# denominated gates to rupee prices, which is the failure the block above
+# exists to prevent.
+DEFAULT_COUNTRY = "IN"
+
+
+def market_for(country: str) -> dict:
+    return MARKETS.get(country.upper(), DEFAULT_MARKET)
+
+
+def resolve_gates(profile: dict, market: dict) -> dict:
+    """Profile gates expressed in the target marketplace's units.
+
+    Kept separate from the profile definition so the profile stays a statement
+    about the CHANNEL (retail vs procurement) and the market stays a statement
+    about the COUNTRY. Folding them together would need one entry per
+    channel-country pair.
+    """
+    g = dict(profile["gates"])
+    if g["min_median_price"] is not None:
+        g["min_median_price"] = market["b2b_min_price"]
+    g["min_volume"] = max(1.0, round(g["min_volume"] * market["volume_scale"]))
+    return g
+
 
 # ---------------------------------------------------------------- profiles
 # B2C and B2B are run as SEPARATE analyses rather than one with a filter,
@@ -245,11 +300,24 @@ def collect(keyword: str, args, trend_key, comp_key, profile: dict) -> dict:
     volume and its own seasonality, which is the reason the two profiles are
     separate analyses rather than one with a filter.
     """
-    gates = profile["gates"]
+    gates = resolve_gates(profile, market_for(args.country))
     trend_term = expand(profile["trend_term"], keyword)
 
+    tcp = trend.cache_path(trend_term, args.country)
+    tfresh = trend.cache_is_fresh(tcp, args.trend_cache_max_age_hours)
     if args.dry_run:
         payload = trend.dry_run_payload(trend_term)
+    elif args.from_cache or tfresh:
+        # Previously this path never cached trend responses at all, so
+        # --from-cache silently did nothing for the trend half and every run
+        # re-spent one request per keyword per profile.
+        if not tcp.exists():
+            raise RuntimeError(f"no cached trend series for {trend_term!r}")
+        payload = json.loads(tcp.read_text())
+        if not tfresh:
+            print(f"    STALE TREND CACHE {trend.cache_age_hours(tcp):.0f}h old "
+                  f"(limit {args.trend_cache_max_age_hours:g}h), using it anyway "
+                  f"because --from-cache forbids a refetch")
     else:
         # start_date must be sent explicitly. Without it the API returns
         # whatever default window it likes, and if that is under 52 weeks then
@@ -260,6 +328,9 @@ def collect(keyword: str, args, trend_key, comp_key, profile: dict) -> dict:
         start = (date.today() - timedelta(weeks=args.weeks)).isoformat()
         payload = trend.fetch(trend_term, args.country, trend_key, args.endpoint,
                               args.auth_header, args.auth_prefix, start=start)
+        if not args.no_cache:
+            tcp.parent.mkdir(parents=True, exist_ok=True)
+            tcp.write_text(json.dumps(payload))
     points = trend.parse_series(payload, trend_term)
     tsum = trend.summarise_keyword(keyword, points, args.window)
     tsum["opportunity_flag"] = trend.opportunity_flag(tsum)
@@ -285,6 +356,7 @@ def collect(keyword: str, args, trend_key, comp_key, profile: dict) -> dict:
     rows, breadth = comp.collect_group(
         keyword, queries, args.country, args.pages, comp_key, args.sleep,
         args.dry_run, args.from_cache, not args.no_cache,
+        args.cache_max_age_hours,
     )
     if rows:
         csum = comp.summarise_group(keyword, rows, breadth)
@@ -312,7 +384,7 @@ def write_csv(path: Path, rows: list[dict]) -> None:
 
 
 def write_markdown(path: Path, shortlist: list[dict], rejected: list[dict],
-                   country: str, args, profile: dict) -> None:
+                   country: str, args, profile: dict, gates: dict) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     md = [
         f"# Amazon product shortlist — {profile['label']}",
@@ -325,11 +397,11 @@ def write_markdown(path: Path, shortlist: list[dict], rejected: list[dict],
         + " for competition.",
         "",
         f"Gates: trend in {list(args.allowed_flags)} · latest volume ≥ "
-        f"{profile['gates']['min_volume']:g} · ≥ "
-        f"{profile['gates']['min_observations']} observations · review moat ≤ "
-        f"{profile['gates']['max_review_moat']:,.0f}"
-        + (f" · median price ≥ {profile['gates']['min_median_price']:g}"
-           if profile["gates"]["min_median_price"] else ""),
+        f"{gates['min_volume']:g} · ≥ {gates['min_observations']} observations "
+        f"· review moat ≤ {gates['max_review_moat']:,.0f}"
+        + (f" · median price ≥ {market_for(country)['symbol']}"
+           f"{gates['min_median_price']:,.0f}"
+           if gates["min_median_price"] else ""),
         "",
         "## Shortlist",
         "",
@@ -389,8 +461,10 @@ def run_profile(name: str, keywords: list[str], args, trend_key, comp_key,
                 out: Path) -> tuple[list[dict], list[dict]]:
     profile = PROFILES[name]
     args.profile_name = name
-    gates = profile["gates"]
-    print(f"\n=== {profile['label']} ===")
+    market = market_for(args.country)
+    gates = resolve_gates(profile, market)
+    print(f"\n=== {profile['label']} · {args.country.upper()} "
+          f"({market['currency']}) ===")
 
     candidates = []
     for kw in keywords:
@@ -432,7 +506,7 @@ def run_profile(name: str, keywords: list[str], args, trend_key, comp_key,
 
     write_csv(out / f"amazon_shortlist_{name}.csv", shortlist + rejected)
     write_markdown(out / f"amazon_shortlist_{name}.md", shortlist, rejected,
-                   args.country.upper(), args, profile)
+                   args.country.upper(), args, profile, gates)
     return shortlist, rejected
 
 
@@ -443,7 +517,9 @@ def main() -> int:
     ap.add_argument("--profile", default="both", choices=["b2c", "b2b", "both"],
                     help="B2C and B2B are separate analyses; 'both' runs each "
                          "and writes its own report")
-    ap.add_argument("--country", default="US")
+    ap.add_argument("--country", default=DEFAULT_COUNTRY,
+                    help="target marketplace; sets currency-denominated gates "
+                         f"(known: {', '.join(sorted(MARKETS))})")
     ap.add_argument("--pages", type=int, default=2)
     ap.add_argument("--window", type=int, default=4)
     ap.add_argument("--weeks", type=int, default=52)
@@ -457,6 +533,14 @@ def main() -> int:
     ap.add_argument("--dry-run", action="store_true")
     ap.add_argument("--from-cache", action="store_true")
     ap.add_argument("--no-cache", action="store_true")
+    ap.add_argument("--cache-max-age-hours", type=float,
+                    default=comp.DEFAULT_CACHE_MAX_AGE_HOURS,
+                    help="competition snapshots older than this are refetched "
+                         "(prices and rankings move daily); 0 = never expire")
+    ap.add_argument("--trend-cache-max-age-hours", type=float,
+                    default=trend.DEFAULT_CACHE_MAX_AGE_HOURS,
+                    help="trend series older than this are refetched (a weekly "
+                         "series gains one point a week); 0 = never expire")
     ap.add_argument("--out", default="reports")
     args = ap.parse_args()
     args.profile_name = None
