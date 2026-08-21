@@ -59,6 +59,16 @@ Two limits worth stating before anyone quotes a result:
   complete. `total_listings_on_primary_keyword` is the only census-like figure
   and it counts listings, not sales.
 
+### Other providers
+
+`DATA_SOURCES.md` surveys the alternatives — Amazon's own Brand Analytics funnel
+(real purchases, but your brand only), BSR-based sales estimators (Keepa, Jungle
+Scout, Helium 10), the other search-result aggregators (Rainforest, Canopy,
+SerpApi, DataForSEO, Bright Data), and free cross-checks like Google Trends. The
+aggregators all return the same underlying page, so swapping one in touches
+`fetch()` and `products_of()` only — the badge parsing, ASIN dedupe and
+coverage-aware scoring are provider-independent.
+
 ### Credentials
 
 `OPENWEB_NINJA_API_KEY` is read from the environment only. `tests/test_amazon_demand.py`
