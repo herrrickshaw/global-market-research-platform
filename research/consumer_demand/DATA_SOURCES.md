@@ -1,5 +1,11 @@
 # Amazon demand data sources
 
+> **Survey only.** This is a reference note on where Amazon demand data can be
+> bought and what each source actually measures. The tooling that consumes it —
+> trend ranking, competition gating, the B2C/B2B split — lives in its own repo,
+> [`herrrickshaw/amazon-product-selector`](https://github.com/herrrickshaw/amazon-product-selector),
+> so there is one copy of it rather than two drifting.
+
 **Objective this serves:** find products worth selling, by spotting demand that
 is *rising* before the category is saturated. That is a discovery problem with a
 time axis, and it is not the same problem as "which of these two products sells
@@ -59,14 +65,14 @@ that sees the whole marketplace.
 |---|---|
 | **Keepa** | **BSR and price history** per ASIN, deep and cheap (~€49/mo tier, real API). The best affordable way to turn a snapshot into a trend, and far less lossy than Amazon's bucketed "N+ bought in past month" badge. If you add one paid source, add this. |
 | **Jungle Scout / Helium 10 Xray** | BSR→units sales estimates. Directional only, and weakest in exactly the thin niches new sellers target. |
-| **Search-result aggregators** — Rainforest (~$66/mo), Canopy, SerpApi, DataForSEO (~$0.60/1k), OpenWeb Ninja, Bright Data, Oxylabs | Parse the live search page: price, rating count, BSR, and the "N+ bought in past month" badge. This is what `amazon_demand_compare.py` consumes. They all read the same page, so switching changes cost and reliability, not what is measurable. |
+| **Search-result aggregators** — Rainforest (~$66/mo), Canopy, SerpApi, DataForSEO (~$0.60/1k), OpenWeb Ninja, Bright Data, Oxylabs | Parse the live search page: price, rating count, BSR, and the "N+ bought in past month" badge. This is the class the selector tool consumes. They all read the same page, so switching changes cost and reliability, not what is measurable. |
 
 ## Stage 3 — Competition: can you actually win the slot?
 
 Demand alone is a trap. A large category split across thousands of entrenched
 listings is a worse entry than a small one with forty. From the aggregator data:
 
-- **`demand_per_listing`** — implemented in `amazon_demand_compare.py`.
+- **`demand_per_listing`** — demand against the competing catalogue.
 - **Review moat** — median review count of page-one listings. A niche where the
   top ten all have 5,000+ reviews is closed to a new entrant regardless of
   search volume.
@@ -101,5 +107,6 @@ None of these hosts are reachable from the Claude Code sandbox.
 `api.dataforseo.com`, `graphql.canopyapi.co`, `trends.google.com`,
 `sellingpartnerapi-na.amazon.com` and `www.amazon.com` were each tested and each
 returned a 403 on CONNECT from the egress proxy. The constraint is the sandbox's
-allowlist, not any vendor, so changing provider does not make this runnable
-there. Run it anywhere with ordinary internet access.
+allowlist, not any vendor, so changing provider does not make it runnable
+there. Anything built on these sources has to run somewhere with ordinary
+internet access.

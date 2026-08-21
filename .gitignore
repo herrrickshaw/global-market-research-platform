@@ -155,10 +155,3 @@ reports/network_targets.csv
 reports/*contacts*.csv
 reports/*network*.csv
 private/
-
-# Raw Amazon search responses cached by research/consumer_demand/. They are a
-# same-day snapshot of a third-party API's result ranking — re-fetchable, large,
-# and stale within hours — so they follow the same rule as the daily instrument
-# lists above and stay out of the tree. `--from-cache` reads them locally.
-data/amazon_raw/
-data/nexscope_raw/
