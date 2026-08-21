@@ -337,6 +337,44 @@ def summarise_group(group: str, rows: list[dict], breadth: int | None) -> dict:
     }
 
 
+def competition_metrics(rows: list[dict], top_n: int = 10) -> dict:
+    """Whether a category can be entered, as distinct from how big it is.
+
+    Demand alone is a trap: the biggest category is usually the one most
+    thoroughly owned. These three ask whether there is a slot free.
+    """
+    ratings = sorted((int(r["num_ratings"] or 0) for r in rows), reverse=True)
+    prices = sorted(r["price"] for r in rows if r["price"])
+    units = sorted((r["units_past_month"] or 0 for r in rows), reverse=True)
+    total_units = sum(units)
+
+    # Review moat: the median review count of the leaders, not of the whole
+    # page. The tail of a search page is full of dead listings with 3 reviews,
+    # and including them makes an entrenched category look wide open.
+    leaders = ratings[:top_n]
+    review_moat = int(statistics.median(leaders)) if leaders else None
+
+    # Price dispersion as IQR/median — scale-free, so a $12 category and a
+    # $600 one are comparable. Wide spread means room to position; tight
+    # clustering means competing on price alone.
+    dispersion = None
+    if len(prices) >= 4:
+        q1 = prices[len(prices) // 4]
+        q3 = prices[3 * len(prices) // 4]
+        med = statistics.median(prices)
+        dispersion = round((q3 - q1) / med, 3) if med > 0 else None
+
+    # Concentration: if three ASINs hold most of the volume, the category is
+    # decided regardless of how many listings exist.
+    top3_share = round(sum(units[:3]) / total_units, 3) if total_units else None
+
+    return {
+        "review_moat": review_moat,
+        "price_dispersion": dispersion,
+        "top3_unit_share": top3_share,
+    }
+
+
 def _ratio(a, b) -> str:
     if not a or not b:
         return "n/a"
@@ -416,6 +454,52 @@ def dry_run_payload(group: str) -> dict:
              "product_url": "https://amazon.com/dp/B0MOR3"},
         ]
         total = 2_000
+    elif group.startswith("turmeric"):
+        # Open category: low review moat, wide price spread, many listings.
+        products = [
+            {"asin": "B0TUR1", "product_title": "Turmeric Soap Bar 100g",
+             "product_price": "$8.99", "currency": "USD", "product_star_rating": "4.3",
+             "product_num_ratings": 420, "sales_volume": "2K+ bought in past month",
+             "product_url": "https://amazon.com/dp/B0TUR1"},
+            {"asin": "B0TUR2", "product_title": "Turmeric & Kojic Soap 2-pack",
+             "product_price": "$14.99", "currency": "USD", "product_star_rating": "4.5",
+             "product_num_ratings": 310, "sales_volume": "1K+ bought in past month",
+             "product_url": "https://amazon.com/dp/B0TUR2"},
+            {"asin": "B0TUR3", "product_title": "Organic Turmeric Cleansing Bar",
+             "product_price": "$22.00", "currency": "USD", "product_star_rating": "4.2",
+             "product_num_ratings": 150, "sales_volume": "500+ bought in past month",
+             "product_url": "https://amazon.com/dp/B0TUR3"},
+            {"asin": "B0TUR4", "product_title": "Turmeric Soap Gift Set",
+             "product_price": "$34.50", "currency": "USD", "product_star_rating": "4.6",
+             "product_num_ratings": 95, "sales_volume": "200+ bought in past month",
+             "product_url": "https://amazon.com/dp/B0TUR4"},
+            {"asin": "B0TUR5", "product_title": "Turmeric Face Soap 50g",
+             "product_price": "$6.49", "currency": "USD", "product_star_rating": "4.0",
+             "product_num_ratings": 60, "sales_volume": "100+ bought in past month",
+             "product_url": "https://amazon.com/dp/B0TUR5"},
+        ]
+        total = 900
+    elif group.startswith("shilajit"):
+        # Closed category: entrenched incumbents, tight pricing.
+        products = [
+            {"asin": "B0SHI1", "product_title": "Pure Shilajit Resin 30g",
+             "product_price": "$29.99", "currency": "USD", "product_star_rating": "4.4",
+             "product_num_ratings": 38000, "sales_volume": "3K+ bought in past month",
+             "is_best_seller": True, "product_url": "https://amazon.com/dp/B0SHI1"},
+            {"asin": "B0SHI2", "product_title": "Himalayan Shilajit Resin",
+             "product_price": "$31.50", "currency": "USD", "product_star_rating": "4.3",
+             "product_num_ratings": 24000, "sales_volume": "2K+ bought in past month",
+             "product_url": "https://amazon.com/dp/B0SHI2"},
+            {"asin": "B0SHI3", "product_title": "Shilajit Resin Gold Grade",
+             "product_price": "$28.00", "currency": "USD", "product_star_rating": "4.5",
+             "product_num_ratings": 19500, "sales_volume": "1K+ bought in past month",
+             "product_url": "https://amazon.com/dp/B0SHI3"},
+            {"asin": "B0SHI4", "product_title": "Shilajit Drops 60ml",
+             "product_price": "$26.99", "currency": "USD", "product_star_rating": "4.1",
+             "product_num_ratings": 12000, "sales_volume": "900+ bought in past month",
+             "product_url": "https://amazon.com/dp/B0SHI4"},
+        ]
+        total = 4200
     else:
         products = [
             {"asin": "B0HON1", "product_title": "Raw Unfiltered Honey 32oz",

@@ -1,0 +1,276 @@
+"""
+Tests for the shortlist pipeline.
+
+The pipeline's whole value is that it REJECTS things, so most of these are
+about rejection: that each gate fires for its own reason, that the reason is
+recorded rather than the candidate silently vanishing, and that a candidate
+disqualified on the trend never costs a competition API call.
+
+Run:
+    python -m pytest tests/test_shortlist.py -v
+"""
+
+import argparse
+import math
+import os
+import sys
+
+import pytest
+
+ROOT = os.path.join(os.path.dirname(__file__), "..")
+sys.path.insert(0, os.path.join(ROOT, "research", "consumer_demand"))
+
+import nexscope_keyword_history as trend  # noqa: E402
+from shortlist import (  # noqa: E402
+    DEFAULT_ALLOWED_FLAGS,
+    WEIGHTS,
+    _minmax,
+    build_candidate,
+    collect,
+    gate,
+    score_candidates,
+)
+
+
+def _args(**over):
+    base = dict(country="US", pages=1, window=4, weeks=52, min_volume=500,
+                min_observations=12, max_review_moat=2000,
+                allowed_flags=list(DEFAULT_ALLOWED_FLAGS), price_all=False,
+                endpoint="https://example.test/x", auth_header="Authorization",
+                auth_prefix="Bearer ", sleep=0, dry_run=True, from_cache=False,
+                no_cache=True)
+    base.update(over)
+    return argparse.Namespace(**base)
+
+
+# ------------------------------------------------------------------ weights
+def test_weights_sum_to_one():
+    assert sum(WEIGHTS.values()) == pytest.approx(1.0)
+
+
+def test_growth_carries_the_most_weight():
+    """The tool exists to find demand before saturation; if any other term
+    outweighed growth the ranking would be answering a different question."""
+    assert max(WEIGHTS, key=WEIGHTS.get) == "growth"
+
+
+# -------------------------------------------------------------------- gates
+def test_a_clean_candidate_passes_every_gate():
+    cand = {"opportunity_flag": "RISING", "observations": 60,
+            "latest_volume": 5000, "review_moat": 400, "listings_sampled": 5}
+    assert gate(cand, allowed_flags=("RISING",), min_volume=500,
+                min_observations=12, max_review_moat=2000) == []
+
+
+@pytest.mark.parametrize("override,fragment", [
+    ({"opportunity_flag": "flat"}, "not in"),
+    ({"opportunity_flag": "spiky — growth may be noise"}, "not in"),
+    ({"observations": 4}, "observations"),
+    ({"latest_volume": 50}, "below"),
+    ({"review_moat": 40000}, "review moat"),
+    ({"listings_sampled": 0}, "no competition data"),
+])
+def test_each_gate_fires_for_its_own_reason(override, fragment):
+    cand = {"opportunity_flag": "RISING", "observations": 60,
+            "latest_volume": 5000, "review_moat": 400, "listings_sampled": 5}
+    cand.update(override)
+    fails = gate(cand, allowed_flags=("RISING",), min_volume=500,
+                 min_observations=12, max_review_moat=2000)
+    assert any(fragment in f for f in fails), fails
+
+
+def test_multiple_failures_are_all_reported_not_just_the_first():
+    """A candidate that is both unsearched and entrenched should say so —
+    fixing one problem would not make it viable."""
+    cand = {"opportunity_flag": "flat", "observations": 2, "latest_volume": 1,
+            "review_moat": 90000, "listings_sampled": 5}
+    fails = gate(cand, allowed_flags=("RISING",), min_volume=500,
+                 min_observations=12, max_review_moat=2000)
+    assert len(fails) >= 4
+
+
+def test_a_missing_review_moat_does_not_silently_disqualify():
+    """None means 'not measured', not 'infinitely entrenched'."""
+    cand = {"opportunity_flag": "RISING", "observations": 60,
+            "latest_volume": 5000, "review_moat": None, "listings_sampled": 5}
+    assert gate(cand, allowed_flags=("RISING",), min_volume=500,
+                min_observations=12, max_review_moat=2000) == []
+
+
+# ----------------------------------------------------------------- min-max
+def test_minmax_scales_to_the_unit_interval():
+    assert _minmax([0.0, 5.0, 10.0]) == [0.0, 0.5, 1.0]
+
+
+def test_a_constant_column_maps_to_one_half_not_to_an_extreme():
+    """With no spread there is no evidence either way. Collapsing to 0 or 1
+    would hand that component's entire weight to everyone or to no one."""
+    assert _minmax([7.0, 7.0, 7.0]) == [0.5, 0.5, 0.5]
+
+
+def test_minmax_treats_none_as_no_evidence():
+    assert _minmax([None, None]) == [0.5, 0.5]
+    assert _minmax([0.0, None, 10.0]) == [0.0, 0.5, 1.0]
+
+
+# ----------------------------------------------------------------- scoring
+def _cand(kw, growth, volume, moat, dpl, disp):
+    return {"keyword": kw, "growth_per_period_pct": growth, "latest_volume": volume,
+            "review_moat": moat, "demand_per_listing": dpl, "price_dispersion": disp}
+
+
+def test_the_better_candidate_on_every_component_ranks_first():
+    ranked = score_candidates([
+        _cand("weak", 1.0, 1000, 9000, 0.1, 0.1),
+        _cand("strong", 8.0, 40000, 200, 2.0, 1.5),
+    ])
+    assert ranked[0]["keyword"] == "strong" and ranked[0]["rank"] == 1
+    assert ranked[1]["rank"] == 2
+
+
+def test_every_component_is_reported_alongside_the_total():
+    """A score you cannot decompose is a score you cannot argue with."""
+    ranked = score_candidates([_cand("a", 1.0, 1000, 100, 0.5, 0.2),
+                               _cand("b", 2.0, 2000, 200, 0.6, 0.3)])
+    for key in ("score_growth", "score_demand", "score_openness", "score_headroom"):
+        assert key in ranked[0]
+
+
+def test_a_lower_review_moat_scores_more_open():
+    """Openness must move the right way — an inverted sign here would rank the
+    most entrenched category top and look entirely plausible doing it."""
+    ranked = score_candidates([_cand("open", 5.0, 10000, 100, 1.0, 0.5),
+                               _cand("closed", 5.0, 10000, 90000, 1.0, 0.5)])
+    by_kw = {r["keyword"]: r for r in ranked}
+    assert by_kw["open"]["score_openness"] > by_kw["closed"]["score_openness"]
+
+
+def test_demand_is_scored_on_a_log_scale():
+    """Linear scaling would let one huge term flatten every other candidate to
+    ~0; 500 vs 5,000 must separate more than 50,000 vs 54,500."""
+    ranked = score_candidates([_cand("tiny", 5.0, 500, 100, 1.0, 0.5),
+                               _cand("small", 5.0, 5000, 100, 1.0, 0.5),
+                               _cand("huge", 5.0, 500000, 100, 1.0, 0.5)])
+    by_kw = {r["keyword"]: r["score_demand"] for r in ranked}
+    assert by_kw["small"] > 0.25, "log scaling must keep mid candidates off the floor"
+
+
+def test_the_score_is_relative_to_the_candidate_set():
+    """Documented caveat, pinned as behaviour: adding a candidate changes the
+    others' scores, so a score means 'best of what you supplied' and must never
+    be compared across runs."""
+    pair = [_cand("a", 1.0, 1000, 100, 0.5, 0.2), _cand("b", 2.0, 2000, 200, 0.6, 0.3)]
+    alone = {r["keyword"]: r["score"] for r in score_candidates(list(pair))}
+    with_third = {r["keyword"]: r["score"]
+                  for r in score_candidates(pair + [_cand("c", 99.0, 999999, 10, 9.0, 9.0)])}
+    assert alone["b"] != with_third["b"]
+
+
+def test_scoring_an_empty_list_is_not_an_error():
+    assert score_candidates([]) == []
+
+
+# ------------------------------------------------------- credit conservation
+def test_a_trend_rejected_keyword_is_never_priced_for_competition():
+    """The competition call bills per listing returned. Paying it for a keyword
+    already disqualified as seasonal is the most expensive way to learn
+    nothing."""
+    row = collect("honey", _args(), None, None)          # fixture: flat
+    assert row["priced_competition"] is False
+    assert "gate_failures" in row
+
+
+def test_a_trend_passing_keyword_is_priced():
+    row = collect("moringa oil", _args(), None, None)    # fixture: RISING
+    assert row["priced_competition"] is True
+    assert row["listings_sampled"] > 0
+
+
+def test_price_all_overrides_the_pre_gate():
+    row = collect("honey", _args(price_all=True), None, None)
+    assert row["priced_competition"] is True
+
+
+# --------------------------------------------------------------- end to end
+def _run(keywords, **over):
+    cands = [collect(k, _args(**over), None, None) for k in keywords]
+    passed, rejected = [], []
+    for c in cands:
+        fails = c.get("gate_failures")
+        fails = fails.split("; ") if fails else gate(
+            c, allowed_flags=("RISING",), min_volume=500,
+            min_observations=12, max_review_moat=2000)
+        (rejected if fails else passed).append(c)
+        if fails:
+            c["gate_failures"] = "; ".join(fails)
+    return score_candidates(passed), rejected
+
+
+def test_the_pipeline_shortlists_the_open_riser_over_the_tighter_one():
+    shortlist, _ = _run(["moringa oil", "turmeric soap"])
+    assert [r["keyword"] for r in shortlist] == ["turmeric soap", "moringa oil"]
+
+
+def test_a_riser_in_an_entrenched_category_is_rejected_on_the_moat_not_the_trend():
+    """The case the whole gate design exists for: demand is genuinely rising,
+    and the category is still not enterable."""
+    shortlist, rejected = _run(["shilajit resin"])
+    assert shortlist == []
+    reason = rejected[0]["gate_failures"]
+    assert "review moat" in reason
+    assert "trend" not in reason, "it passed the trend gate — the moat is what killed it"
+
+
+def test_each_way_of_looking_rising_without_being_rising_is_rejected_separately():
+    _, rejected = _run(["honey", "mouth tape", "sleep gummies"])
+    reasons = {r["keyword"]: r["gate_failures"] for r in rejected}
+    assert "flat" in reasons["honey"]
+    assert "seasonal" in reasons["mouth tape"]
+    assert "spiky" in reasons["sleep gummies"]
+
+
+def test_build_candidate_keeps_the_keyword_once():
+    row = build_candidate("kw", {"keyword": "kw", "latest_volume": 5}, None, None)
+    assert row["keyword"] == "kw" and row["latest_volume"] == 5
+
+
+# ----------------------------------------------- trend-fit regression guard
+def test_a_steep_clean_riser_is_not_mistaken_for_noise():
+    """Regression test. The spiky check originally keyed on raw CV, which a
+    cleanly compounding series inflates BY CONSTRUCTION — a term growing
+    4.5%/week for a year triples, and its raw CV exceeds the noise threshold.
+    That flagged the best candidates as noise. The check now keys on variance
+    the trend does NOT explain."""
+    steep = [4000 * (1.045 ** i) for i in range(60)]
+    assert trend.trend_fit_r2(steep) > 0.99, "a clean exponential must fit near-perfectly"
+    s = trend.summarise_keyword("steep riser",
+                                trend.parse_series(trend.dry_run_payload("turmeric soap"),
+                                                   "turmeric soap"))
+    s["opportunity_flag"] = trend.opportunity_flag(s)
+    assert s["volatility_cv"] > 0.6, "raw spread is high — this is the trap"
+    assert s["opportunity_flag"] == "RISING", "but the trend explains it, so it is not noise"
+
+
+def test_a_series_that_swings_without_going_anywhere_fits_badly():
+    noisy = [1000, 9000, 1500, 12000, 800, 7000, 2000, 15000] * 4
+    assert trend.trend_fit_r2(noisy) < 0.3
+
+
+def test_trend_fit_r2_is_scale_and_steepness_invariant():
+    gentle = [100 * (1.005 ** i) for i in range(40)]
+    steep = [100 * (1.20 ** i) for i in range(40)]
+    assert trend.trend_fit_r2(gentle) == pytest.approx(trend.trend_fit_r2(steep), abs=1e-6)
+
+
+def test_trend_fit_r2_is_one_for_a_flat_series():
+    assert trend.trend_fit_r2([500.0] * 20) == pytest.approx(1.0)
+
+
+def test_trend_fit_r2_needs_enough_points():
+    assert trend.trend_fit_r2([100.0, 110.0]) is None
+
+
+def test_r2_and_slope_agree_on_a_synthetic_series():
+    vals = [1000 * (1.03 ** i) for i in range(30)]
+    assert math.exp(trend.log_slope(vals)) - 1 == pytest.approx(0.03, abs=1e-6)
+    assert trend.trend_fit_r2(vals) == pytest.approx(1.0, abs=1e-6)

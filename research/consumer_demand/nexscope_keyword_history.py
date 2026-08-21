@@ -304,6 +304,37 @@ def log_slope(values: list[float]) -> float | None:
     return sum((x - mx) * (y - my) for x, y in zip(xs, ys)) / denom
 
 
+def trend_fit_r2(values: list[float]) -> float | None:
+    """R^2 of the log-linear fit — how much of the series the TREND explains.
+
+    This exists because the obvious noise measure is wrong here. The raw
+    coefficient of variation of a cleanly compounding series is large *by
+    construction*: a term growing 4.5%/week for a year triples, and a CV
+    computed on those raw levels is dominated by the growth itself. Using CV
+    alone to detect "spiky" therefore penalises precisely the clean risers this
+    tool exists to find.
+
+    Residual variation around the fitted trend is the quantity actually wanted:
+    a clean exponential scores near 1.0 however steep it is, while a series that
+    swings without going anywhere scores near 0.
+    """
+    pairs = [(i, v) for i, v in enumerate(values) if v > 0]
+    if len(pairs) < 3:
+        return None
+    xs = [p[0] for p in pairs]
+    ys = [math.log(p[1]) for p in pairs]
+    slope = log_slope(values)
+    if slope is None:
+        return None
+    mx, my = statistics.mean(xs), statistics.mean(ys)
+    intercept = my - slope * mx
+    ss_res = sum((y - (slope * x + intercept)) ** 2 for x, y in zip(xs, ys))
+    ss_tot = sum((y - my) ** 2 for y in ys)
+    if ss_tot <= 0:
+        return 1.0
+    return max(0.0, 1.0 - ss_res / ss_tot)
+
+
 def momentum(values: list[float], window: int = 4) -> float | None:
     """Recent window mean vs the window before it, as a fraction.
 
@@ -363,6 +394,7 @@ def summarise_keyword(keyword: str, points, window: int = 4) -> dict:
         "momentum_pct": round(momentum(values, window) * 100, 1) if momentum(values, window) is not None else None,
         "yoy_pct": round(year_over_year(points, period_days) * 100, 1) if year_over_year(points, period_days) is not None else None,
         "volatility_cv": round(cv, 3) if cv is not None else None,
+        "trend_fit_r2": round(trend_fit_r2(values), 3) if trend_fit_r2(values) is not None else None,
         "latest_rank": points[-1][2],
     }
 
@@ -378,6 +410,7 @@ def opportunity_flag(s: dict) -> str:
     mom = s.get("momentum_pct")
     yoy = s.get("yoy_pct")
     cv = s.get("volatility_cv")
+    r2 = s.get("trend_fit_r2")
 
     if g is None and mom is None:
         return "no-trend-data"
@@ -390,7 +423,10 @@ def opportunity_flag(s: dict) -> str:
     # explanation, so the specific test has to run first.
     if yoy is not None and yoy < 0 and (mom or 0) > 0:
         return "seasonal bounce — down year-over-year"
-    if cv is not None and cv > 0.6 and (mom or 0) > 0:
+    # Spiky means "swings the trend does NOT explain" — hence the r2 term.
+    # Testing cv alone would flag every steep clean riser, because compounding
+    # produces a large raw spread on its own.
+    if r2 is not None and r2 < 0.3 and cv is not None and cv > 0.6 and (mom or 0) > 0:
         return "spiky — growth may be noise"
     if (g or 0) > 0.5 and (mom or 0) > 10:
         return "RISING"
@@ -414,6 +450,10 @@ def dry_run_payload(keyword: str) -> dict:
     kw = keyword.lower()
     if "moringa" in kw:                       # steady ~3%/week riser
         vals = [round(1000 * (1.03 ** i)) for i in range(60)]
+    elif "turmeric soap" in kw:               # faster riser, higher volume
+        vals = [round(4000 * (1.045 ** i)) for i in range(60)]
+    elif "shilajit" in kw:                    # riser, but a small prize
+        vals = [round(300 * (1.035 ** i)) for i in range(60)]
     elif "honey" in kw:                       # flat, mild noise
         vals = [40000 + (i % 5) * 300 for i in range(60)]
     elif "mouth tape" in kw:

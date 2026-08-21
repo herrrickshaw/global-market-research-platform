@@ -1,0 +1,39 @@
+# Seed candidates for shortlist.py --keywords-file
+#
+# PROVENANCE, because it changes how much weight these deserve:
+#
+# The first block is claims made by Amazon-seller research blogs in 2026 about
+# categories growing year-over-year (mouth tape ~134%, flat back earrings ~65%,
+# sleep bonnets ~64%, blue light therapy ~38%, sleep earbuds ~31%, hair repair
+# masks ~30%). Those figures are UNVERIFIED third-party marketing content, and
+# a widely-published "rising category" is by definition one every other seller
+# has already read about. They are here as a starting universe to TEST, not as
+# recommendations — running them through the pipeline is the point, and the
+# seasonality and moat gates exist precisely to kill the ones that only look
+# like opportunities.
+#
+# The second block is adjacent categories with no such claim attached, included
+# so the run is not entirely composed of terms the whole market is watching.
+#
+# Replace all of this with your own candidates. The pipeline is the value; this
+# file is scaffolding.
+
+# --- publicly-touted 2026 risers (verify, do not trust) ---
+mouth tape
+flat back earrings
+sleep bonnet
+blue light therapy lamp
+sleep earbuds
+hair repair mask
+
+# --- less-watched adjacents ---
+moringa oil
+turmeric soap
+shilajit resin
+castor oil pack
+tallow balm
+magnesium glycinate
+red light therapy mask
+silk pillowcase
+collagen peptides
+sea moss gel
