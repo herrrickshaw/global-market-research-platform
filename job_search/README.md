@@ -226,6 +226,18 @@ holds anything useful, and a dump that only captured part of a company is
 flagged with a `_caveat` that is logged as a warning instead of quietly reading
 as full coverage.
 
+### `apollo_days` filters a snapshot, not a feed
+
+Every other date window here trades coverage against cost: a wider one means
+more pages and more credits. `apollo_days` does not. The dump is already
+saved, so the window only decides how much of it to throw away — narrowing it
+buys nothing and silently discards rows.
+
+At 30 days a real run dropped seven postings, one of them Uniper's **Head of
+LNG Trading**, scoring 0.75 — cut for being 35 days old. Senior commercial
+roles stay open for months, so the number that is right for a live feed is
+wrong for a snapshot. The default is 45.
+
 ### Workday: the free feed the paid one was standing in for
 
 Every Shell posting collected through Apollo carries a

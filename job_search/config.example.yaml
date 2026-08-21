@@ -28,6 +28,17 @@ sort_by_ats: false         # rank by ATS score instead of the blended score
 # Personio) for the N strongest-network companies. All unauthenticated.
 ats_probe_top_n: 40
 
+# Replay postings saved from an Apollo MCP session -- no key, no credits.
+apollo_dump: ""
+apollo_countries: []
+# Days back to keep. This filters a SNAPSHOT that was already paid for, so
+# narrowing it discards rows rather than saving credits -- the opposite of the
+# trade-off the same number makes on a live feed. Senior commercial roles stay
+# open for months: at 30 days a real run here dropped seven postings including
+# a Head of LNG Trading scoring 0.75, purely because it was posted 35 days ago.
+# 45 is the better default for a dump; use 30 only for live sources.
+apollo_days: 45
+
 # Workday cannot be probed by slug: its host carries a data-centre number
 # (wd1/wd3/wd5) that is not derivable from a company name. So list it per
 # company -- a careers or posting URL is enough, everything is parsed out of it.
