@@ -1,103 +1,105 @@
 # Amazon demand data sources
 
-Surveyed while building `amazon_demand_compare.py`, which currently talks to one
-provider (OpenWeb Ninja's Realtime Amazon Data). This is the map of what else
-exists, organised by **what the source actually measures** rather than by
-vendor, because the tiers below are not substitutes for one another — they
-answer different questions and only one of them reports real orders.
+**Objective this serves:** find products worth selling, by spotting demand that
+is *rising* before the category is saturated. That is a discovery problem with a
+time axis, and it is not the same problem as "which of these two products sells
+more" — a snapshot ranks what already exists, a trend tells you what to enter.
 
-Prices are as advertised in August 2026 and move often; treat them as order of
-magnitude, not as quotes.
+Sources are grouped by the stage of that workflow they serve. Prices and access
+rules are as advertised in August 2026 and move often.
 
 ---
 
-## Tier 1 — Real order data, straight from Amazon
+## First, three corrections worth making up front
 
-The only sources where "orders" means orders rather than an estimate.
+**Personal search history is not available, and you do not want it.** Amazon
+exposes no API for an individual user's searches or browsing, and no legitimate
+third party has one either. This is not the obstacle it sounds like: for product
+research the unit of analysis is *aggregate search volume for a keyword over
+time*, which several sources below do provide. A single user's history would be
+noise even if you could get it.
 
-| Source | What you get | The catch |
+**Two commonly-cited APIs are real but solve a different problem:**
+
+- **Alexa Intent Request History API** returns utterances for *your own Alexa
+  skill*. It is voice-assistant telemetry for skill developers. It tells you
+  nothing about Amazon.com shopping demand.
+- **Amazon Ads API "Change History"** tracks edits *you* made to *your own* ad
+  campaigns — budget and bid changes over 90 days. It is a campaign audit log,
+  not a search-metrics endpoint.
+
+Both appear in AI-generated comparison tables of "Amazon search history APIs".
+Neither belongs in a product-research stack.
+
+---
+
+## Stage 1 — Discovery: what is rising?
+
+The stage that actually answers "what should I sell". Everything else validates
+a candidate you already have.
+
+| Source | What it gives you | Access |
 |---|---|---|
-| **SP-API → Brand Analytics → Search Query Performance** | The complete funnel per search term: impressions → clicks → add-to-carts → **purchases**. Real counts, not modelled. Programmatic via SP-API since Feb 2025. | Requires **Brand Registry**, and returns data **only for your own brand's ASINs**. |
-| **SP-API sales & traffic reports** | Your own units ordered, sessions, conversion. | Your own catalogue only. |
-| **Product Advertising API (PA-API 5.0)** | Catalogue, price, availability, images. | Requires an Associates account with qualifying sales, and it reports **no sales volume at all**. |
+| **Amazon Product Opportunity Explorer** | Amazon's own purpose-built tool for this exact question: niches ranked by search volume, 90-day demand trend, units sold, average price, review moat, and an opportunity score. Sourced from Amazon's real data, not modelled. | Seller Central, Professional seller account. **The strongest option, and free if you already sell.** UI-first; no clean public API. |
+| **Brand Analytics → Top Search Terms** | **Search Frequency Rank for all of Amazon**, not just your brand — the top clicked ASINs and click/conversion share per term, weekly. This is the discovery-grade Brand Analytics report. | Brand Registry required. |
+| **Helium 10 Magnet / Cerebro** | Keyword search-volume estimates **with history**, plus reverse-ASIN (what terms a competitor ranks for). Magnet expands a seed term into a category map. | Paid; API on top tiers. |
+| **MerchantWords** | Specialist in Amazon **keyword history and trends** — multi-year search-volume series per term. Has an API. | Paid. |
+| **Google Trends** (`pytrends`) | Free, years of history, catches a rise before it shows up in Amazon tooling. Measures interest, not purchases, and is not Amazon-specific. | Free. |
+| **Nexscope, SoldScope, AmazVol, SellerSprite** | Newer keyword/trend APIs; Nexscope also carries BSR, price and monthly-sales time series. | Paid; verify coverage against a keyword you already know before committing. |
 
-**For the moringa-oil-vs-honey question this tier is unusable.** You do not own
-either brand, so Amazon will not show you their funnel. Anyone claiming
-category-wide order counts is modelling them — which is Tier 2.
+Note on **Brand Analytics Search Query Performance (SQP)**: often recommended
+for this, but it is scoped to **your own ASINs**. It is excellent for optimising
+a product you already sell and structurally useless for discovering one you
+don't — a chicken-and-egg you cannot code around. Top Search Terms is the report
+that sees the whole marketplace.
 
-## Tier 2 — Sales *estimates* modelled from Best Sellers Rank
+## Stage 2 — Validation: is the demand real and growing?
 
-The standard approach: BSR is public, and each vendor fits BSR → units per
-category from panel data. This is where "X sells 4,000 units/month" numbers
-come from, and the models disagree with each other by a lot in thin categories.
-
-| Source | Notes |
+| Source | What it gives you |
 |---|---|
-| **Keepa** | The reference for **BSR and price history** — deep time series across marketplaces, with a real data API on a token model (~€49/mo tier). Does not hand you units directly, but the BSR history is the best raw input for estimating them, and it is the only affordable way to get **trend** rather than a snapshot. |
-| **Jungle Scout** | Sales estimates from BSR; official API on the Cobalt/enterprise tiers. |
-| **Helium 10** | Xray sales estimates, Magnet keyword volume; API on the top tiers. |
-| **SellerAmp, ZonGuru, PLOTT DATA** | Cheaper estimate tools, mostly UI-first. |
+| **Keepa** | **BSR and price history** per ASIN, deep and cheap (~€49/mo tier, real API). The best affordable way to turn a snapshot into a trend, and far less lossy than Amazon's bucketed "N+ bought in past month" badge. If you add one paid source, add this. |
+| **Jungle Scout / Helium 10 Xray** | BSR→units sales estimates. Directional only, and weakest in exactly the thin niches new sellers target. |
+| **Search-result aggregators** — Rainforest (~$66/mo), Canopy, SerpApi, DataForSEO (~$0.60/1k), OpenWeb Ninja, Bright Data, Oxylabs | Parse the live search page: price, rating count, BSR, and the "N+ bought in past month" badge. This is what `amazon_demand_compare.py` consumes. They all read the same page, so switching changes cost and reliability, not what is measurable. |
 
-Accuracy is directional, not exact — it varies by category and by sales
-velocity, and thin categories like moringa oil are exactly where BSR→units
-models are weakest. Treat a single vendor's estimate as one opinion.
+## Stage 3 — Competition: can you actually win the slot?
 
-## Tier 3 — Search-result aggregators
+Demand alone is a trap. A large category split across thousands of entrenched
+listings is a worse entry than a small one with forty. From the aggregator data:
 
-The class `amazon_demand_compare.py` already targets: they return parsed search
-results — title, price, rating count, BSR, and Amazon's **"N+ bought in past
-month"** badge, which is the closest thing to a public order count.
+- **`demand_per_listing`** — implemented in `amazon_demand_compare.py`.
+- **Review moat** — median review count of page-one listings. A niche where the
+  top ten all have 5,000+ reviews is closed to a new entrant regardless of
+  search volume.
+- **Price dispersion** — wide spread implies room to position; tight clustering
+  implies commodity competition on price alone.
 
-| Provider | Shape | Rough entry price |
-|---|---|---|
-| **OpenWeb Ninja** (current) | REST, Amazon-specific | RapidAPI-style tiers |
-| **Rainforest API** (Traject Data) | Deepest Amazon coverage; search, product, reviews, BSR pages | ~$66/mo |
-| **Canopy API** | GraphQL, Amazon-specific | mid |
-| **SerpApi** | Amazon engine among many; subscription per successful search | ~$3,750/mo at 1M searches |
-| **DataForSEO** | Cheapest at volume — ~$0.60/1k queued, ~$2/1k live | pay-as-you-go |
-| **Bright Data / Oxylabs / ScraperAPI / Apify** | Infrastructure plays: proxies, scrapers, prebuilt Amazon datasets | volume-priced |
-| **FlyByAPIs / Pangolin / Easyparser** | Newer, cheaper entrants (~$20/mo for 10k requests) | low |
+## Stage 4 — Once you sell it
 
-Because they all return the same underlying page, **switching provider changes
-cost and reliability, not what can be measured**. The scoring in
-`amazon_demand_compare.py` — badge parsing, ASIN dedupe, coverage-aware
-totals — carries over to any of them; only `fetch()` and `products_of()` need a
-new adapter.
-
-## Tier 4 — Demand proxies outside Amazon
-
-Free or cheap, and worth running as a cross-check rather than a primary source.
-If Amazon says one thing and all of these say the opposite, suspect the sample.
-
-- **Google Trends** (`pytrends`) — relative search interest, free, years of
-  history. The right tool for seasonality and for a sanity check on a ratio.
-  It measures interest, not purchases.
-- **Amazon Ads API / Amazon Marketing Stream** — keyword search volume and
-  competitive metrics; needs an advertising account.
-- **Helium 10 Magnet / Jungle Scout Keyword Scout** — Amazon-native search
-  volume estimates.
+Tier 1 replaces every estimate above **for your own ASINs**: SQP gives the true
+impressions → clicks → add-to-carts → **purchases** funnel per search term,
+programmatic via SP-API since Feb 2025. SP-API sales & traffic reports give your
+units and conversion.
 
 ---
 
-## Recommended stack for a category comparison you don't sell in
+## Recommended stack
 
-1. **Tier 3 for the snapshot** — the sales badge, coverage-adjusted. This is
-   what the tool already does.
-2. **Keepa for the trend** — BSR history on the top listings of each group
-   turns a one-day snapshot into a direction, and is far less lossy than the
-   bucketed `N+` badge.
-3. **Google Trends for the sanity check** — free, and it will catch a Tier 3
-   sample that happened to land on an unrepresentative page.
-
-Tier 1 enters the picture only once you actually sell one of these products,
-at which point it replaces every estimate above for your own ASINs.
+1. **Amazon Product Opportunity Explorer** for discovery — it is Amazon's own
+   data, purpose-built for this, and free with a seller account. Start here
+   before paying anyone.
+2. **Keepa** for the trend on candidates it surfaces.
+3. **Google Trends** as a free cross-check that the rise is real and not a
+   tooling artefact.
+4. **An aggregator** (already integrated) for the competition read.
+5. Add **MerchantWords or Helium 10** only if you need keyword history at a
+   granularity the above cannot reach.
 
 ## Note on running any of this
 
-None of the hosts in this document are reachable from the Claude Code sandbox —
+None of these hosts are reachable from the Claude Code sandbox.
 `api.openwebninja.com`, `api.keepa.com`, `api.rainforestapi.com`, `serpapi.com`,
 `api.dataforseo.com`, `graphql.canopyapi.co`, `trends.google.com`,
 `sellingpartnerapi-na.amazon.com` and `www.amazon.com` were each tested and each
-returned a 403 on CONNECT from the egress proxy. The constraint is the
-sandbox's allowlist, not any one vendor, so changing provider does not make the
-analysis runnable there. Run it anywhere with ordinary internet access.
+returned a 403 on CONNECT from the egress proxy. The constraint is the sandbox's
+allowlist, not any vendor, so changing provider does not make this runnable
+there. Run it anywhere with ordinary internet access.
