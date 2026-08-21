@@ -116,6 +116,35 @@ def _():
 
 
 # ── EDGAR parsing ─────────────────────────────────────────────────────────────
+@check("edgar: a second writer cannot silently erase the first one's rows")
+def _():
+    """2026-08-21: two full collections ran against the store at once.
+
+    Each writer held its own in-memory copy loaded at startup and concatenated
+    onto THAT, so the one finishing second wrote a store missing everything the
+    first had added — no error, no warning, just fewer tickers than either run
+    reported. The store survived by luck of ordering, not by design.
+    """
+    try:
+        import pandas as pd
+
+        import us_fundamentals_edgar as M
+    except Exception as e:
+        raise _Skip(f"module unavailable ({type(e).__name__})")
+    real = M.STORE
+    try:
+        with tempfile.TemporaryDirectory() as d:
+            M.STORE = Path(d) / "s.parquet"
+            M.save_store(pd.DataFrame(), [{"ticker": "AAA", "fy": 2025}], "t1")
+            # Writer 2 began before AAA existed, so its view is empty. It must
+            # still re-read from disk rather than trusting that stale copy.
+            M.save_store(pd.DataFrame(), [{"ticker": "BBB", "fy": 2025}], "t2")
+            got = sorted(pd.read_parquet(M.STORE)["ticker"])
+        assert got == ["AAA", "BBB"], f"lost update: {got}"
+    finally:
+        M.STORE = real
+
+
 @check("edgar: offline parse invariants (restatement, span, future instants)")
 def _():
     try:

@@ -594,21 +594,53 @@ def load_store() -> pd.DataFrame:
     return pd.read_parquet(STORE) if STORE.exists() else pd.DataFrame()
 
 
+def _store_lock():
+    """Exclusive lock around the store's read-modify-write.
+
+    🔴 2026-08-21: two full collections ran CONCURRENTLY against this store —
+    one launched here, one from a terminal — and nothing prevented it. The write
+    is atomic (tmp + replace), which protects a READER from a half-file, but
+    does nothing for two WRITERS: each holds its own in-memory `store`, drops
+    the tickers it refetched, concatenates its own rows and replaces the file,
+    so whichever finishes second silently discards everything the first added.
+
+    That run happened to come out coherent because the two passes covered the
+    same tickers in the same hash order, which is luck of timing, not design.
+    It is the same lost-update shape `refresh_panels._panel_lock` was added for
+    the day before; this file simply had not been given the same treatment.
+    """
+    try:
+        from filelock import FileLock
+
+        return FileLock("/tmp/us_fundamentals_edgar.lock", timeout=3600)
+    except ImportError:
+        import contextlib
+
+        print("  ⚠ filelock absent — a concurrent collection can silently lose rows")
+        return contextlib.nullcontext()
+
+
 def save_store(store: pd.DataFrame, new_rows: list, collected_at: str) -> pd.DataFrame:
     if not new_rows:
         return store
     nd = pd.DataFrame(new_rows)
     nd["collected_at"] = collected_at
-    if not store.empty:
-        store = store[~store["ticker"].astype(str).str.upper().isin(
-            nd["ticker"].astype(str).str.upper())]
-    merged = pd.concat([store, nd], ignore_index=True)
-    STORE.parent.mkdir(parents=True, exist_ok=True)
-    if STORE.exists():
-        shutil.copy2(STORE, STORE.with_suffix(".parquet.bak"))
-    tmp = STORE.with_suffix(".parquet.tmp")
-    merged.to_parquet(tmp, index=False)
-    tmp.replace(STORE)
+    with _store_lock():
+        # Re-read INSIDE the lock rather than merging into the caller's copy.
+        # The in-memory `store` was loaded at startup and is stale by exactly
+        # whatever another process committed since — merging into it is what
+        # discards their rows. Re-reading makes this a genuine read-modify-write.
+        on_disk = pd.read_parquet(STORE) if STORE.exists() else store
+        if not on_disk.empty:
+            on_disk = on_disk[~on_disk["ticker"].astype(str).str.upper().isin(
+                nd["ticker"].astype(str).str.upper())]
+        merged = pd.concat([on_disk, nd], ignore_index=True)
+        STORE.parent.mkdir(parents=True, exist_ok=True)
+        if STORE.exists():
+            shutil.copy2(STORE, STORE.with_suffix(".parquet.bak"))
+        tmp = STORE.with_suffix(".parquet.tmp")
+        merged.to_parquet(tmp, index=False)
+        tmp.replace(STORE)
     return merged
 
 
