@@ -161,3 +161,4 @@ private/
 # and stale within hours — so they follow the same rule as the daily instrument
 # lists above and stay out of the tree. `--from-cache` reads them locally.
 data/amazon_raw/
+data/nexscope_raw/

@@ -59,6 +59,47 @@ Two limits worth stating before anyone quotes a result:
   complete. `total_listings_on_primary_keyword` is the only census-like figure
   and it counts listings, not sales.
 
+## `nexscope_keyword_history.py`
+
+Ranks keywords by whether Amazon demand for them is **rising** — the discovery
+question, as opposed to the snapshot question the module above answers.
+
+```bash
+export NEXSCOPE_API_KEY=...
+export NEXSCOPE_PROXY_BASE=https://api.nexscope.ai/
+python3 research/consumer_demand/nexscope_keyword_history.py --dry-run
+python3 research/consumer_demand/nexscope_keyword_history.py \
+    --keywords "moringa oil,raw honey,mouth tape"
+python3 research/consumer_demand/nexscope_keyword_history.py \
+    --keywords-file candidates.txt --country US --weeks 52
+```
+
+Writes `reports/nexscope_keyword_trends.csv` and `.md`, sorted by momentum.
+
+Metrics, and why each one is there:
+
+| Column | What it is | Why |
+|---|---|---|
+| `growth_per_period_pct` | Least-squares slope of **log** volume | A growth *rate*, so 100→200 and 10,000→20,000 score alike. A linear fit would rank the second 100× higher |
+| `momentum_pct` | Last 4 periods vs the 4 before | Search volume is spiky; latest-vs-oldest swings on one reading |
+| `yoy_pct` | Latest vs ~52 weeks back | The seasonality control — positive momentum with negative YoY is a trough bounce, not growth |
+| `volatility_cv` | Coefficient of variation | Guards the growth numbers; above ~0.6 the trend is inside the noise |
+| `opportunity_flag` | A label, not a score | Names *which* test decided the verdict, rather than blending them into one number that hides the reason |
+
+### The schema is assumed
+
+`www.nexscope.ai` is blocked by the sandbox egress proxy, so the docs could not
+be read. The endpoint path, auth header and response field names are educated
+guesses, and they are isolated so a wrong guess costs a flag rather than an
+edit: `--endpoint` / `--auth-header` / `--auth-prefix` override the request
+side, and the parser accepts every plausible field name via the `SERIES_KEYS` /
+`DATE_KEYS` / `VOLUME_KEYS` tuples. When nothing matches it raises
+`SchemaMismatch` **naming the keys the API actually returned** — because a
+rigid parser that guessed wrong would return an empty series, and an empty
+series reads exactly like "nobody searches for this".
+
+The first live run therefore either works or tells you precisely what to fix.
+
 ### Other providers
 
 `DATA_SOURCES.md` surveys the alternatives — Amazon's own Brand Analytics funnel
