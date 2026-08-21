@@ -77,9 +77,15 @@ def test_redact_strips_the_key(monkeypatch):
     assert "SECRET_VALUE_HERE" not in redact("...SECRET_VALUE_HERE...")
 
 
-def test_the_key_never_travels_in_the_url():
+def test_the_key_never_travels_in_the_url(monkeypatch):
+    """It belongs in the auth header. Checked by looking for credential-shaped
+    QUERY PARAMS and for the secret's own value — not for the substring "key",
+    which `keyword=` legitimately contains."""
+    monkeypatch.setenv("NEXSCOPE_API_KEY", "SENTINEL_SECRET_0000")
     url = build_url("https://api.nexscope.ai/v1/x", "moringa oil", "US", None, None)
-    assert "key" not in url.lower()
+    assert "SENTINEL_SECRET_0000" not in url
+    for param in ("api_key=", "apikey=", "access_token=", "token=", "&key=", "?key="):
+        assert param not in url.lower()
     assert "keyword=moringa+oil" in url and "country=US" in url
 
 
