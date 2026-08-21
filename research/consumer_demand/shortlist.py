@@ -47,6 +47,7 @@ import csv
 import math
 import os
 import sys
+from datetime import date, timedelta
 from pathlib import Path
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -250,8 +251,15 @@ def collect(keyword: str, args, trend_key, comp_key, profile: dict) -> dict:
     if args.dry_run:
         payload = trend.dry_run_payload(trend_term)
     else:
+        # start_date must be sent explicitly. Without it the API returns
+        # whatever default window it likes, and if that is under 52 weeks then
+        # year_over_year() has nothing to compare against, returns None for
+        # every candidate, and the seasonality gate silently never fires —
+        # letting exactly the trough-bounce categories it exists to catch
+        # through as RISING. A short window must not look like an absent season.
+        start = (date.today() - timedelta(weeks=args.weeks)).isoformat()
         payload = trend.fetch(trend_term, args.country, trend_key, args.endpoint,
-                              args.auth_header, args.auth_prefix)
+                              args.auth_header, args.auth_prefix, start=start)
     points = trend.parse_series(payload, trend_term)
     tsum = trend.summarise_keyword(keyword, points, args.window)
     tsum["opportunity_flag"] = trend.opportunity_flag(tsum)

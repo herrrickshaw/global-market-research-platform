@@ -62,6 +62,7 @@ from __future__ import annotations
 
 import argparse
 import csv
+import hashlib
 import json
 import os
 import re
@@ -500,6 +501,28 @@ def dry_run_payload(group: str) -> dict:
              "product_url": "https://amazon.com/dp/B0SHI4"},
         ]
         total = 4200
+    elif not group.startswith("honey"):
+        # Unnamed keyword: a stable, varied competition profile. Constant
+        # fixtures here would give every candidate in a large dry run the same
+        # review moat and the same price, collapsing the openness and headroom
+        # components to 0.5 across the board — a ranking with nothing to rank.
+        h = int(hashlib.md5(group.encode()).hexdigest(), 16)
+        moat = 80 * (2 ** (h % 10))              # ~80 to ~40,000
+        base = 4 + (h // 7) % 90                 # $4 to $94
+        spread = 1 + (h // 11) % 4               # tight to wide pricing
+        units = 100 * (1 + (h // 13) % 40)
+        products = [
+            {"asin": f"B0{h % 100000:05d}{i}",
+             "product_title": f"{group} variant {i}",
+             "product_price": f"${round(base * (1 + i * spread * 0.25), 2)}",
+             "currency": "USD",
+             "product_star_rating": f"{4.0 + (h // (17 + i)) % 9 / 10:.1f}",
+             "product_num_ratings": max(1, moat // (1 + i)),
+             "sales_volume": f"{max(50, units // (1 + i))}+ bought in past month",
+             "product_url": f"https://amazon.com/dp/B0{h % 100000:05d}{i}"}
+            for i in range(6)
+        ]
+        total = 500 + (h // 3) % 40000
     else:
         products = [
             {"asin": "B0HON1", "product_title": "Raw Unfiltered Honey 32oz",

@@ -14,6 +14,7 @@ import argparse
 import math
 import os
 import sys
+from datetime import date, timedelta
 
 import pytest
 
@@ -376,3 +377,39 @@ def test_each_candidate_records_which_profile_and_term_produced_it():
     row = collect("moringa oil", _args(profile_name="b2b"), None, None, PROFILES["b2b"])
     assert row["profile"] == "b2b"
     assert row["trend_term"] == "bulk moringa oil"
+
+
+# --------------------------------------------------- history window is sent
+def test_the_history_window_is_actually_requested(monkeypatch):
+    """Regression test. --weeks was accepted and silently dropped, so the API
+    returned its own default window. If that default is under 52 weeks,
+    year_over_year() has nothing to compare against and returns None for every
+    candidate — the seasonality gate then never fires and trough-bounce
+    categories pass as RISING. A short window must not look like an absent
+    season."""
+    seen = {}
+
+    def fake_fetch(keyword, country, key, endpoint, auth_header, auth_prefix,
+                   start=None, end=None, **kw):
+        seen["start"] = start
+        return trend.dry_run_payload(keyword)
+
+    monkeypatch.setattr(trend, "fetch", fake_fetch)
+    collect("moringa oil", _args(dry_run=False, weeks=52), "k", "k", PROFILES["b2c"])
+    assert seen["start"] is not None, "start_date must be sent, not left to the API default"
+
+    expected = (date.today() - timedelta(weeks=52)).isoformat()
+    assert seen["start"] == expected
+
+
+def test_a_longer_window_is_passed_through(monkeypatch):
+    seen = {}
+
+    def fake_fetch(keyword, country, key, endpoint, auth_header, auth_prefix,
+                   start=None, end=None, **kw):
+        seen["start"] = start
+        return trend.dry_run_payload(keyword)
+
+    monkeypatch.setattr(trend, "fetch", fake_fetch)
+    collect("moringa oil", _args(dry_run=False, weeks=104), "k", "k", PROFILES["b2c"])
+    assert seen["start"] == (date.today() - timedelta(weeks=104)).isoformat()
