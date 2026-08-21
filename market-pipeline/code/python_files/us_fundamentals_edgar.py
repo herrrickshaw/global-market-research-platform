@@ -594,8 +594,12 @@ def load_store() -> pd.DataFrame:
     return pd.read_parquet(STORE) if STORE.exists() else pd.DataFrame()
 
 
-def _store_lock():
-    """Exclusive lock around the store's read-modify-write.
+def _store_lock(name: str = "us_fundamentals_edgar"):
+    """Exclusive lock around a store's read-modify-write.
+
+    `name` picks the lock file, so sibling collectors that write their own
+    parquet (collect_us_sic) serialise against themselves without blocking an
+    unrelated fundamentals run.
 
     🔴 2026-08-21: two full collections ran CONCURRENTLY against this store —
     one launched here, one from a terminal — and nothing prevented it. The write
@@ -612,7 +616,7 @@ def _store_lock():
     try:
         from filelock import FileLock
 
-        return FileLock("/tmp/us_fundamentals_edgar.lock", timeout=3600)
+        return FileLock(f"/tmp/{name}.lock", timeout=3600)
     except ImportError:
         import contextlib
 
