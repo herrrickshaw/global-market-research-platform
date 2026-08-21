@@ -17,6 +17,26 @@ W_ROLE, W_NETWORK, W_FRESH = 0.50, 0.35, 0.15
 _HALF_LIFE_DAYS = 30.0
 
 
+# Inserts employers wedge into the middle of a title. Left in place they break
+# every multi-word keyword: "Research (Senior) Analyst" does not contain
+# "research analyst", so the role scores zero on "no keyword match" -- while the
+# identical "Senior Research Analyst" matches fine. German and Dutch postings
+# make this routine, since "(f/m/d)" and "(m/w/d)" are near-universal there.
+_TITLE_INSERT = re.compile(r"\([^)]*\)|\[[^\]]*\]")
+
+
+def strip_inserts(title: str) -> str:
+    """Title with bracketed inserts removed and punctuation flattened.
+
+    Used ALONGSIDE the raw title, never instead of it: the insert often carries
+    the seniority marker ("(Senior)"), which still has to be read from the
+    original.
+    """
+    cleaned = _TITLE_INSERT.sub(" ", title or "")
+    cleaned = re.sub(r"[^a-z0-9&+/\s-]", " ", cleaned.lower())
+    return re.sub(r"\s+", " ", cleaned).strip()
+
+
 def _contains(haystack: str, needle: str) -> bool:
     """Word-boundary-aware substring test, so 'vp' does not match 'development'."""
     if " " in needle:
@@ -27,14 +47,18 @@ def _contains(haystack: str, needle: str) -> bool:
 def role_fit(job: JobPosting, profile: TargetProfile) -> tuple[float, list[str]]:
     """0-1 fit of a posting's title/description to the target profile."""
     title = (job.title or "").lower()
+    # Match against the title with bracketed inserts removed as well, so a
+    # keyword is not defeated by "(Senior)" or "(f/m/d)" sitting inside it.
+    bare = strip_inserts(job.title or "")
     body = f"{title} {(job.description or '').lower()}"
     reasons: list[str] = []
 
     for bad in profile.exclude_keywords:
-        if _contains(title, bad.lower()):
+        if _contains(title, bad.lower()) or _contains(bare, bad.lower()):
             return 0.0, [f"excluded: '{bad}' in title"]
 
-    title_hits = [(kw, w) for kw, w in profile.title_keywords.items() if _contains(title, kw)]
+    title_hits = [(kw, w) for kw, w in profile.title_keywords.items()
+                  if _contains(title, kw) or _contains(bare, kw)]
     if not title_hits:
         # Fall back to the description at a discount - a relevant role whose
         # title uses in-house jargon still deserves a look, just not a top slot.

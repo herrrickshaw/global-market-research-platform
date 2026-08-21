@@ -118,6 +118,36 @@ class TargetProfile:
         "gas market": 0.8,
         "market research": 0.7,
         "price reporter": 0.6,
+        # "Head of Refined Products Analytics" scored zero: "analytics" was
+        # nowhere in this map, though refined-product market analytics is
+        # precisely the Shell Category Analyst work plus the Invest India
+        # study of India's refining and import landscape.
+        "analytics": 0.6,
+        "refined products": 0.8,
+        "commodity": 0.7,
+        # The CV's own subtitle is "Business Transformation & Project
+        # Development", and Invest India was project development in
+        # substance -- steering approvals so companies could realise
+        # projects. Four Uniper "Project Development Manager" roles scored
+        # zero because only "project manager" was listed, which the words
+        # "project development manager" do not contain.
+        "project development": 0.8,
+        "development manager": 0.7,
+        "business development manager": 0.95,
+        # LNG is the single deepest sector line on the CV (~USD 7bn train,
+        # front-end design, cost engineering). Weighted mid on its own: an
+        # LNG TRADING desk is a different discipline the CV does not
+        # evidence, so this should surface the role, not top-rank it.
+        "lng": 0.6,
+        "gas trading": 0.45,
+        # German-language titles, for the Germany/DACH corridor the ESMT MBA
+        # and B1 German open up. "Leiter Energy Hub Nordwest" -- head of the
+        # Wilhelmshaven LNG import hub -- scored zero purely for being in
+        # German.
+        "leiter": 0.75,
+        "geschaftsentwicklung": 0.9,
+        "geschäftsentwicklung": 0.9,
+        "referent": 0.6,
         "research analyst": 0.6,
         "business analyst": 0.5,
         "transformation": 0.6,

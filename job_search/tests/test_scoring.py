@@ -140,3 +140,72 @@ def test_financial_crime_roles_are_excluded():
     deal, _ = role_fit(_job("Manager, Transaction Advisory & Due Diligence",
                             location="London, United Kingdom"), P)
     assert deal > 0.3
+
+
+# --------------------------------------------------------------------------
+# Titles that hide the function -- the sixth instance of this failure
+# --------------------------------------------------------------------------
+
+def test_bracketed_inserts_do_not_defeat_a_keyword():
+    """"Research (Senior) Analyst" does not CONTAIN "research analyst".
+
+    The insert sits inside the phrase and breaks it, so the role scored zero on
+    "no keyword match" while the identical "Senior Research Analyst" matched.
+    German and Dutch postings make this routine: "(f/m/d)" and "(m/w/d)" are
+    near-universal there, and they land mid-title.
+    """
+    fit, why = role_fit(_job("Research (Senior) Analyst - The Netherlands",
+                             location="Amsterdam, Netherlands"), P)
+    assert fit > 0.3, why
+
+
+def test_seniority_inside_an_insert_is_still_read():
+    """Stripping inserts to match must not also discard the seniority signal."""
+    senior, _ = role_fit(_job("Research (Senior) Analyst", location="London"), P)
+    plain, _ = role_fit(_job("Research Analyst", location="London"), P)
+    assert senior > plain
+
+
+def test_a_gendered_german_insert_is_ignored():
+    fit, _ = role_fit(_job("Head of LNG Trading (f/m/d)",
+                           location="Duesseldorf, Germany"), P)
+    assert fit > 0.3
+
+
+def test_titles_that_state_the_function_in_other_words_still_match():
+    """Each of these scored zero until the CV line behind it was encoded.
+
+    Refined-product analytics is the Shell Category Analyst work; project
+    development is on the CV's own subtitle and is what Invest India did in
+    substance; "Leiter" is simply "Head of" in the language of the corridor
+    the ESMT MBA and B1 German open up.
+    """
+    for title, location in [
+        ("Head of Refined Products Analytics", "London, United Kingdom"),
+        ("Project Development Manager France", "Paris, France"),
+        ("Leiter Energy Hub Nordwest", "Wilhelmshaven, Germany"),
+        ("Senior Waterborne LNG Analyst", "London, United Kingdom"),
+    ]:
+        fit, why = role_fit(_job(title, location=location), P)
+        assert fit > 0.3, f"{title}: {why}"
+
+
+def test_the_new_keywords_do_not_drag_in_unrelated_work():
+    """Negative controls. Widening the map must not turn it into a sieve."""
+    for title in ["Manager Audit and Technology",
+                  "Head of Solar Development Engineering",
+                  "Senior Account Manager",
+                  "Warehouse Supervisor"]:
+        fit, _ = role_fit(_job(title, location="London, United Kingdom"), P)
+        assert fit == 0.0, title
+
+
+def test_lng_trading_surfaces_without_outranking_the_core():
+    """LNG is the deepest sector line on the CV, but a TRADING desk is a
+    different discipline it does not evidence -- so the role should appear,
+    not lead."""
+    trading, _ = role_fit(_job("Head of LNG Trading (f/m/d)",
+                               location="Duesseldorf, Germany"), P)
+    core, _ = role_fit(_job("Senior Business Development Manager, LNG",
+                            location="Duesseldorf, Germany"), P)
+    assert 0.3 < trading < core
