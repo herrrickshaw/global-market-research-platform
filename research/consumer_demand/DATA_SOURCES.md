@@ -96,7 +96,7 @@ units and conversion.
 2. **Keepa** for the trend on candidates it surfaces.
 3. **Google Trends** as a free cross-check that the rise is real and not a
    tooling artefact.
-4. **An aggregator** (already integrated) for the competition read.
+4. **An aggregator** for the competition read — any of the Stage 2 group.
 5. Add **MerchantWords or Helium 10** only if you need keyword history at a
    granularity the above cannot reach.
 
