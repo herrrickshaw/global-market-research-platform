@@ -9,6 +9,21 @@ connections_files:
 out_dir: out
 top_n: 200
 
+# --- ATS scoring ------------------------------------------------------
+# Scores your CV against each posting's actual job-description text the way an
+# applicant tracking system does: keyword coverage, requirements weighted above
+# boilerplate, knockouts on years and degree. The useful output is the GAP
+# list -- the terms the JD asks for that your CV never says.
+#
+# Needs BOTH a resume AND postings that carry description text. Apollo returns
+# no JD text at all; Workday, Greenhouse, Workable, SmartRecruiters, JSearch
+# and Google Jobs all do. Postings with no description show a blank ATS score,
+# never a zero.
+resume_path: ""            # a .pdf/.docx/.txt/.md; overrides resume_dir
+resume_dir: data/cv        # otherwise the newest supported file in here
+min_ats: 0                 # 0 = report only. Set e.g. 40 to filter.
+sort_by_ats: false         # rank by ATS score instead of the blended score
+
 # Probe public ATS boards (Greenhouse, Lever, Ashby, SmartRecruiters, Workable,
 # Personio) for the N strongest-network companies. All unauthenticated.
 ats_probe_top_n: 40

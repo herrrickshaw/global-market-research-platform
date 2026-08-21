@@ -300,6 +300,29 @@ def dedupe_jobs(jobs: list[JobPosting]) -> list[JobPosting]:
     )
 
 
+def load_resume_text(cfg: Config) -> str:
+    """Read the resume once per run, or return "" and say why.
+
+    A missing resume is not fatal -- the ranking still works on titles and the
+    network. It just means no ATS column, which is reported as absent rather
+    than as a zero score.
+    """
+    from .resume import ResumeError, find_resume, load_resume
+
+    path = cfg.resume_path or find_resume(cfg.resume_dir)
+    if not path:
+        log.info("no resume found in %s - ATS scoring disabled for this run",
+                 cfg.resume_dir)
+        return ""
+    try:
+        text = load_resume(path)
+    except ResumeError as exc:
+        log.warning("resume not read (%s) - ATS scoring disabled", exc)
+        return ""
+    log.info("resume: %s (%d characters)", path, len(text))
+    return text
+
+
 def run(cfg: Config, today: date | None = None) -> tuple[list[Match], dict]:
     connections, index, stats = load_network(cfg.connections_files)
     log.info("network: %d connections across %d companies", len(connections), len(index))
@@ -310,18 +333,44 @@ def run(cfg: Config, today: date | None = None) -> tuple[list[Match], dict]:
     jobs = dedupe_jobs(jobs)
     log.info("jobs: %d raw -> %d unique", raw_count, len(jobs))
 
+    resume = load_resume_text(cfg)
+
     matches = []
     for job in jobs:
         net = index.get(normalize_company(job.company))
-        matches.append(score_job(job, net, cfg.profile, today))
+        matches.append(score_job(job, net, cfg.profile, today, resume=resume))
 
     matches = [m for m in matches if m.total >= cfg.profile.min_score]
-    matches.sort(key=lambda m: -m.total)
+
+    scored = [m for m in matches if m.ats_percent is not None]
+    if cfg.min_ats > 0:
+        # Filter only what was actually measured. Dropping postings that
+        # carried no description would silently discard every Apollo result,
+        # since that feed returns no JD text at all.
+        before = len(matches)
+        matches = [m for m in matches
+                   if m.ats_percent is None or m.ats_percent >= cfg.min_ats]
+        log.info("ATS filter >=%d%%: %d -> %d (unscored postings kept)",
+                 cfg.min_ats, before, len(matches))
+
+    if cfg.sort_by_ats and scored:
+        # Unscored postings sort last rather than first: absent is not a high
+        # score. Ties fall back to the blended ranking.
+        matches.sort(key=lambda m: (-(m.ats_percent or -1), -m.total))
+    else:
+        matches.sort(key=lambda m: -m.total)
+
+    no_jd = sum(1 for m in matches if m.ats_percent is None)
+    if resume and no_jd:
+        log.warning("%d of %d matches carry no job-description text, so they "
+                    "have no ATS score - absent, not zero", no_jd, len(matches))
 
     stats.update({
         "jobs_raw": raw_count,
         "jobs_unique": len(jobs),
         "matches": len(matches),
         "matches_with_warm_path": sum(1 for m in matches if m.has_warm_path),
+        "ats_scored": len(scored),
+        "ats_unscored_no_jd": no_jd,
     })
     return matches[: cfg.top_n], stats

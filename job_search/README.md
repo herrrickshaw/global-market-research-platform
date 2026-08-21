@@ -112,6 +112,70 @@ Names that mean *no employer* — `Self-employed`, `Freelance`, `Student` — ma
 an empty key and are excluded, so freelancers don't collapse into one fake
 mega-company.
 
+## ATS scoring: does your CV clear the keyword screen?
+
+```bash
+python cli.py ats --resume cv.pdf --jd role.txt     # one JD, in detail
+python cli.py scan --resume cv.pdf --min-ats 40     # every match, filtered
+```
+
+Real applicant tracking systems do far less than candidates imagine: they match
+keywords, weight the requirements section above the blurb, and knock out on
+years and degree. There is no semantic understanding. `jobsearch/ats.py` models
+that deliberately — what actually screens you out, not what a thoughtful reader
+would conclude.
+
+**The useful output is the gap, not the number.** `missing` lists the terms the
+JD asks for that your CV never says, ranked by weight. That is an edit list:
+
+```
+ATS keyword match: 24%
+
+Add these to the CV, highest impact first:
+  - strategy consulting
+  - commercial acumen
+  - financial modelling
+  - petrochemicals
+  - downstream
+```
+
+A knockout is not a low score, it is a rejection: 15 years required against 4
+evidenced caps the score rather than shading it. A CV that never states a year
+count at all is *flagged*, not failed — that is a fixable resume problem.
+
+**What it is not.** It is a keyword model. It cannot see that "built a 550-person
+India delivery centre" answers "experience scaling offshore operations" unless
+the words overlap. A low score means your CV does not use the JD's vocabulary —
+real and fixable, but not the same as being a poor candidate.
+
+### Four defects that only appeared on real text
+
+Each was invisible while reading the code and obvious the first time a real CV
+met a real JD:
+
+- **Stopwords were stripped before building n-grams**, so `business` vanished
+  and **`business development` could never match** — on a business-development
+  CV, the most expensive false negative available. Phrases are now built from
+  the raw token stream.
+- **N-grams spanned line breaks**, so two adjacent bullets manufactured
+  `consulting deep knowledge` and `10+ development strategy`: unmatchable by
+  construction, yet counted in the denominator, dragging every score down.
+- **Term frequency was counted with a different tokenizer than phrase
+  building.** `BOOT/JV` is one token to one and two to the other, so a phrase
+  plainly present scored a frequency of zero — which reached `math.log()` as a
+  domain error.
+- **Redundant variants buried the real gaps.** One requirement generates
+  `npv irr`, `irr discounted`, `npv irr discounted`…, pushing **Kubernetes and
+  Terraform to 21st and 22nd** — the two genuinely disqualifying single-word
+  skills, which are exactly what a screen hard-filters on.
+
+### Absent is not zero
+
+A posting with no description gets a **blank** ATS score, never `0%`, and
+`--min-ats` filters only what was actually measured. Zeroing them would silently
+discard every Apollo result, since that feed carries no JD text at all — the
+same failure this project has now met in five other guises.
+
 ## Scoring
 
 ```

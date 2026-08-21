@@ -65,7 +65,15 @@ class Match:
     freshness: float
     total: float
     reasons: list = field(default_factory=list)
+    # Populated only when the posting carried real job-description text AND a
+    # resume was supplied. Left as None otherwise, deliberately: a title-only
+    # score must never be presented as though a JD had been read.
+    ats: Optional[object] = None
 
     @property
     def has_warm_path(self) -> bool:
         return self.network is not None and self.network.size > 0
+
+    @property
+    def ats_percent(self) -> Optional[int]:
+        return self.ats.percent if self.ats and self.ats.scored_against_jd else None

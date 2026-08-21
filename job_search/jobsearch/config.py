@@ -54,6 +54,12 @@ class Config:
     jooble_key: str = ""
     careerjet_affid: str = ""
     careerjet_locale: str = "en_IN"
+    # Resume used for ATS scoring. resume_path wins; otherwise the newest
+    # supported file in resume_dir is used.
+    resume_path: str = ""
+    resume_dir: str = "data/cv"
+    min_ats: int = 0          # 0 = report the score, filter nothing
+    sort_by_ats: bool = False
     ats_probe_top_n: int = 40
     apollo_dump: str = ""
     apollo_countries: list = field(default_factory=list)
@@ -73,7 +79,8 @@ def load_config(path: str | Path | None) -> Config:
         raw = yaml.safe_load(p.read_text(encoding="utf-8")) or {}
         for key in ("connections_files", "out_dir", "top_n", "ats_probe_top_n",
                     "careers_pages", "apollo_dump", "workday_tenants",
-                    "workday_autodiscover", "apollo_countries", "apollo_days"):
+                    "workday_autodiscover", "resume_path", "resume_dir",
+                    "min_ats", "sort_by_ats", "apollo_countries", "apollo_days"):
             if key in raw:
                 setattr(cfg, key, raw[key])
         src = raw.get("sources", {}) or {}

@@ -94,7 +94,7 @@ def freshness(job: JobPosting, today: date | None = None) -> float:
 
 
 def score_job(job: JobPosting, net: CompanyNetwork | None, profile: TargetProfile,
-              today: date | None = None) -> Match:
+              today: date | None = None, resume: str = "") -> Match:
     fit, reasons = role_fit(job, profile)
     net_score = network_strength(net) if net else 0.0
     fresh = freshness(job, today)
@@ -112,5 +112,18 @@ def score_job(job: JobPosting, net: CompanyNetwork | None, profile: TargetProfil
     if fit == 0.0:
         total = 0.0
 
+    # The ATS score is reported alongside the ranking rather than folded into
+    # it. Blending them would let a posting with no description inherit a
+    # number that looks like a JD match, which is the failure this project has
+    # now hit five times in other guises.
+    ats = None
+    if resume and (job.description or "").strip():
+        from .ats import score_resume
+        ats = score_resume(resume, job.description)
+        if ats.knockouts:
+            reasons.append("ATS knockout: " + "; ".join(ats.knockouts))
+        else:
+            reasons.append(f"ATS {ats.percent}% keyword match")
+
     return Match(job=job, network=net, role_fit=fit, network_score=net_score,
-                 freshness=fresh, total=round(total, 4), reasons=reasons)
+                 freshness=fresh, total=round(total, 4), reasons=reasons, ats=ats)

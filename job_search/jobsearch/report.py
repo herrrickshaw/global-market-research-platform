@@ -31,7 +31,8 @@ def to_csv(matches: list[Match], path: str | Path) -> Path:
     path.parent.mkdir(parents=True, exist_ok=True)
     with open(path, "w", encoding="utf-8", newline="") as fh:
         w = csv.writer(fh)
-        w.writerow(["score", "role_fit", "network_score", "freshness", "company",
+        w.writerow(["score", "ats_percent", "ats_missing", "ats_knockouts",
+                    "role_fit", "network_score", "freshness", "company",
                     "title", "location", "source", "posted_at", "url",
                     "connections", "hiring_contacts", "top_contact",
                     "top_contact_title", "top_contact_url", "reasons"])
@@ -39,7 +40,12 @@ def to_csv(matches: list[Match], path: str | Path) -> Path:
             picks = _contact_lines(m, 1)
             top = picks[0] if picks else None
             w.writerow([
-                m.total, m.role_fit, m.network_score, m.freshness,
+                m.total,
+                # Blank, not 0: the posting carried no description to score.
+                m.ats_percent if m.ats_percent is not None else "",
+                "; ".join(m.ats.missing[:10]) if m.ats else "",
+                "; ".join(m.ats.knockouts) if m.ats else "",
+                m.role_fit, m.network_score, m.freshness,
                 m.job.company, m.job.title, m.job.location, m.job.source,
                 m.job.posted_at or "", m.job.url,
                 m.network.size if m.network else 0,
@@ -59,6 +65,12 @@ def to_markdown(matches: list[Match], path: str | Path, title: str = "Job matche
     for i, m in enumerate(matches, 1):
         lines.append(f"## {i}. {m.job.title} — {m.job.company}")
         lines.append("")
+        if m.ats_percent is not None:
+            lines.append(f"- **ATS {m.ats_percent}% keyword match**"
+                         + (f" — knockout: {'; '.join(m.ats.knockouts)}"
+                            if m.ats.knockouts else ""))
+            if m.ats.missing:
+                lines.append(f"- Add to CV: {', '.join(m.ats.missing[:8])}")
         lines.append(f"- **Score** {m.total:.3f}  (fit {m.role_fit:.2f} · "
                      f"network {m.network_score:.2f} · fresh {m.freshness:.2f})")
         lines.append(f"- **Location** {m.job.location or 'n/a'} · **Source** {m.job.source}"
@@ -88,7 +100,7 @@ def to_html(matches: list[Match], path: str | Path, title: str = "Job matches") 
         warm = "warm" if m.has_warm_path else "cold"
         rows.append(f"""<tr class="{warm}">
 <td class="n">{i}</td>
-<td><b>{m.total:.3f}</b><div class="t">fit {m.role_fit:.2f} · net {m.network_score:.2f}</div></td>
+<td><b>{m.total:.3f}</b><div class="t">fit {m.role_fit:.2f} · net {m.network_score:.2f}{f" · ATS {m.ats_percent}%" if m.ats_percent is not None else " · no JD"}</div></td>
 <td><a href="{e(m.job.url)}"><b>{e(m.job.title)}</b></a><div class="t">{e(m.job.source)}
 {e(str(m.job.posted_at) if m.job.posted_at else '')}</div></td>
 <td>{e(m.job.company)}</td>
