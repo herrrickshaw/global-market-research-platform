@@ -23,18 +23,20 @@ sys.path.insert(0, os.path.join(ROOT, "research", "consumer_demand"))
 import nexscope_keyword_history as trend  # noqa: E402
 from shortlist import (  # noqa: E402
     DEFAULT_ALLOWED_FLAGS,
+    PROFILES,
     WEIGHTS,
     _minmax,
     build_candidate,
     collect,
+    expand,
     gate,
+    profile_queries,
     score_candidates,
 )
 
 
 def _args(**over):
-    base = dict(country="US", pages=1, window=4, weeks=52, min_volume=500,
-                min_observations=12, max_review_moat=2000,
+    base = dict(country="US", pages=1, window=4, weeks=52, profile_name="b2c",
                 allowed_flags=list(DEFAULT_ALLOWED_FLAGS), price_all=False,
                 endpoint="https://example.test/x", auth_header="Authorization",
                 auth_prefix="Bearer ", sleep=0, dry_run=True, from_cache=False,
@@ -175,35 +177,40 @@ def test_a_trend_rejected_keyword_is_never_priced_for_competition():
     """The competition call bills per listing returned. Paying it for a keyword
     already disqualified as seasonal is the most expensive way to learn
     nothing."""
-    row = collect("honey", _args(), None, None)          # fixture: flat
+    row = collect("honey", _args(), None, None, PROFILES["b2c"])          # fixture: flat
     assert row["priced_competition"] is False
     assert "gate_failures" in row
 
 
 def test_a_trend_passing_keyword_is_priced():
-    row = collect("moringa oil", _args(), None, None)    # fixture: RISING
+    row = collect("moringa oil", _args(), None, None, PROFILES["b2c"])    # fixture: RISING
     assert row["priced_competition"] is True
     assert row["listings_sampled"] > 0
 
 
 def test_price_all_overrides_the_pre_gate():
-    row = collect("honey", _args(price_all=True), None, None)
+    row = collect("honey", _args(price_all=True), None, None, PROFILES["b2c"])
     assert row["priced_competition"] is True
 
 
 # --------------------------------------------------------------- end to end
-def _run(keywords, **over):
-    cands = [collect(k, _args(**over), None, None) for k in keywords]
+def _run(keywords, profile_name="b2c", **over):
+    profile = PROFILES[profile_name]
+    g = profile["gates"]
+    cands = [collect(k, _args(profile_name=profile_name, **over), None, None, profile)
+             for k in keywords]
     passed, rejected = [], []
     for c in cands:
         fails = c.get("gate_failures")
         fails = fails.split("; ") if fails else gate(
-            c, allowed_flags=("RISING",), min_volume=500,
-            min_observations=12, max_review_moat=2000)
+            c, allowed_flags=("RISING",), min_volume=g["min_volume"],
+            min_observations=g["min_observations"],
+            max_review_moat=g["max_review_moat"],
+            min_median_price=g["min_median_price"])
         (rejected if fails else passed).append(c)
         if fails:
             c["gate_failures"] = "; ".join(fails)
-    return score_candidates(passed), rejected
+    return score_candidates(passed, profile["weights"]), rejected
 
 
 def test_the_pipeline_shortlists_the_open_riser_over_the_tighter_one():
@@ -274,3 +281,98 @@ def test_r2_and_slope_agree_on_a_synthetic_series():
     vals = [1000 * (1.03 ** i) for i in range(30)]
     assert math.exp(trend.log_slope(vals)) - 1 == pytest.approx(0.03, abs=1e-6)
     assert trend.trend_fit_r2(vals) == pytest.approx(1.0, abs=1e-6)
+
+
+# ------------------------------------------------------------------ profiles
+def test_every_profile_weights_sum_to_one():
+    for name, p in PROFILES.items():
+        assert sum(p["weights"].values()) == pytest.approx(1.0), name
+
+
+def test_growth_leads_in_both_profiles():
+    """B2C and B2B differ on a lot, but not on the question being asked."""
+    for name, p in PROFILES.items():
+        assert max(p["weights"], key=p["weights"].get) == "growth", name
+
+
+def test_b2b_searches_bulk_terms_and_b2c_the_bare_one():
+    """The profiles are separate analyses because they do not share a search
+    series: a consumer searches 'moringa oil', a buyer searches 'bulk moringa
+    oil'. If these ever collapsed to the same terms the split would be
+    cosmetic."""
+    assert expand(PROFILES["b2c"]["trend_term"], "moringa oil") == "moringa oil"
+    assert expand(PROFILES["b2b"]["trend_term"], "moringa oil") == "bulk moringa oil"
+    b2b_queries = profile_queries(PROFILES["b2b"], "moringa oil")
+    assert len(b2b_queries) > 1
+    assert all(q != "moringa oil" for q in b2b_queries)
+
+
+def test_b2b_tolerates_far_lower_search_volume():
+    """Not a laxer standard — bulk terms carry a fraction of consumer volume,
+    so the B2C floor would reject every viable B2B niche."""
+    assert PROFILES["b2b"]["gates"]["min_volume"] < PROFILES["b2c"]["gates"]["min_volume"]
+
+
+def test_b2b_tolerates_a_much_larger_review_moat():
+    """Procurement is spec- and price-driven; review count is a weaker barrier
+    than it is for a consumer. Looser, but still gated — a dominant incumbent
+    is still a problem."""
+    assert (PROFILES["b2b"]["gates"]["max_review_moat"]
+            > PROFILES["b2c"]["gates"]["max_review_moat"])
+    assert PROFILES["b2b"]["gates"]["max_review_moat"] is not None
+
+
+def test_only_b2b_enforces_a_price_floor():
+    """B2B earns on order value, not unit count."""
+    assert PROFILES["b2b"]["gates"]["min_median_price"] is not None
+    assert PROFILES["b2c"]["gates"]["min_median_price"] is None
+
+
+def test_b2b_weights_headroom_higher_and_raw_demand_lower_than_b2c():
+    b2c, b2b = PROFILES["b2c"]["weights"], PROFILES["b2b"]["weights"]
+    assert b2b["headroom"] > b2c["headroom"]
+    assert b2b["demand"] < b2c["demand"]
+
+
+def test_the_price_floor_gate_fires_and_says_so():
+    cand = {"opportunity_flag": "RISING", "observations": 60, "latest_volume": 5000,
+            "review_moat": 400, "listings_sampled": 5, "median_price": 9.99}
+    fails = gate(cand, allowed_flags=("RISING",), min_volume=50, min_observations=12,
+                 max_review_moat=25000, min_median_price=25.0)
+    assert any("median price" in f for f in fails)
+
+
+def test_a_missing_price_does_not_silently_disqualify():
+    """None means 'not measured', not 'free'."""
+    cand = {"opportunity_flag": "RISING", "observations": 60, "latest_volume": 5000,
+            "review_moat": 400, "listings_sampled": 5, "median_price": None}
+    assert gate(cand, allowed_flags=("RISING",), min_volume=50, min_observations=12,
+                max_review_moat=25000, min_median_price=25.0) == []
+
+
+def test_the_same_product_can_be_closed_at_retail_and_open_in_bulk():
+    """The reason two analyses beat one. shilajit resin carries a ~21,750
+    review moat: disqualifying for a consumer listing, tolerable for a
+    procurement one, and its price clears the B2B order-value floor."""
+    b2c_short, b2c_rej = _run(["shilajit resin"], profile_name="b2c")
+    b2b_short, _ = _run(["shilajit resin"], profile_name="b2b")
+    assert b2c_short == [], "entrenched at retail"
+    assert "review moat" in b2c_rej[0]["gate_failures"]
+    assert [r["keyword"] for r in b2b_short] == ["shilajit resin"], "open in bulk"
+
+
+def test_a_cheap_consumer_winner_fails_the_b2b_order_value_floor():
+    """And the reverse: selling a $15 soap by the box is not a B2B business."""
+    b2c_short, _ = _run(["turmeric soap"], profile_name="b2c")
+    b2b_short, b2b_rej = _run(["turmeric soap"], profile_name="b2b")
+    assert [r["keyword"] for r in b2c_short] == ["turmeric soap"]
+    assert b2b_short == []
+    assert "median price" in b2b_rej[0]["gate_failures"]
+
+
+def test_each_candidate_records_which_profile_and_term_produced_it():
+    """Two reports with identical column names are easy to mix up; every row
+    carries its own provenance."""
+    row = collect("moringa oil", _args(profile_name="b2b"), None, None, PROFILES["b2b"])
+    assert row["profile"] == "b2b"
+    assert row["trend_term"] == "bulk moringa oil"

@@ -71,7 +71,30 @@ python3 research/consumer_demand/shortlist.py --keywords-file research/consumer_
 python3 research/consumer_demand/shortlist.py --min-volume 1000 --max-review-moat 1500
 ```
 
-Writes `reports/amazon_shortlist.csv` and `.md`.
+Writes `reports/amazon_shortlist_b2c.{csv,md}` and `reports/amazon_shortlist_b2b.{csv,md}`.
+
+### B2C and B2B are separate analyses
+
+Not one run with a filter, because they do not share a search series. A consumer
+searches `moringa oil`; a purchasing manager searches `bulk moringa oil` or
+`moringa oil case pack`. Different volumes, different seasonality — a single
+trend read cannot describe both, and every threshold downstream inherits the
+mismatch. `--profile b2c | b2b | both` (default `both`).
+
+| | B2C | B2B | Why |
+|---|---|---|---|
+| Trend term | `{kw}` | `bulk {kw}` | The searches genuinely differ |
+| Competition queries | `{kw}` | `bulk`, `case pack`, `wholesale`, `commercial` | Procurement language |
+| Min volume | 500 | 50 | Bulk terms carry a fraction of consumer volume — the same standard on a smaller scale, not a laxer one |
+| Max review moat | 2,000 | 25,000 | Consumer conversion runs on social proof; procurement is spec- and price-driven. Looser, but still gated |
+| Min median price | — | $25 | B2B earns on order value, not unit count |
+| Weights | growth 35 · demand 25 · openness 30 · headroom 10 | growth 35 · demand 15 · openness 20 · headroom 30 | Growth leads in both — the question is unchanged. Price tiering is where B2B margin lives |
+
+The run prints which terms appear on only one side, and that is the useful
+signal: **the same product can be saturated at retail and open in bulk.** In the
+fixtures `shilajit resin` carries a ~21,750 review moat — disqualifying for a
+consumer listing, tolerable for a procurement one — while `turmeric soap` wins
+at retail and fails the B2B order-value floor at $14.99.
 
 **Gate first, then rank.** The pipeline does not blend everything into one
 number: it applies pass/fail gates, records *why* each rejection failed, and
