@@ -37,10 +37,16 @@ from data_sources import fetch as multi_fetch
 HERE = Path(__file__).resolve().parent
 OUT_MD = HERE / "reports" / "zone_rule_rec_simulation.md"
 
-# only markets currently live on mom126 (zone_regime.json bull active_rule) —
-# the ones the bug actually affected in production
-AFFECTED_MARKETS = ("US", "JP", "EU")
-BENCH_TICKER = {"US": "^GSPC", "JP": "^N225", "EU": "^STOXX50E"}
+# US/JP/EU are currently live on mom126 (zone_regime.json bull active_rule) --
+# the bug actually affected production there. KR/IN currently run "revert"/
+# "trend" respectively (unaffected by this bug), included for completeness --
+# 🔴 KR's own zone_rules.json already shows mom126 (r126-ranked) tests NEGATIVE
+# there (-0.329%/t-2.13, the intended "correct" version) even before any bug --
+# so for Korea "fixed" does not imply "helps"; see the printed verdict.
+AFFECTED_MARKETS = ("US", "JP", "EU", "KR", "IN")
+LIVE_ON_MOM126 = ("US", "JP", "EU")   # for the summary note only
+BENCH_TICKER = {"US": "^GSPC", "JP": "^N225", "EU": "^STOXX50E",
+                "KR": "^KS11", "IN": "^NSEI"}
 STEP = max(1, FWD // 5)   # weekly bars, FWD trading days -> FWD//5 weeks; de-overlap stride
 
 
@@ -131,9 +137,10 @@ def main() -> int:
         old_res = compound_nonoverlap(old_ret)
         new_res = compound_nonoverlap(new_ret)
         bench_res = benchmark_result(mkt, old_ret.index)
-        rows.append({"market": mkt, "version": "OLD (buggy, d5-ranked)", **old_res})
-        rows.append({"market": mkt, "version": "NEW (fixed, d126-ranked)", **new_res})
-        rows.append({"market": mkt, "version": f"Benchmark ({BENCH_TICKER[mkt]})", **bench_res})
+        live = "LIVE on mom126" if mkt in LIVE_ON_MOM126 else "NOT live (currently uses a different rule)"
+        rows.append({"market": mkt, "live_status": live, "version": "OLD (buggy, d5-ranked)", **old_res})
+        rows.append({"market": mkt, "live_status": live, "version": "NEW (fixed, d126-ranked)", **new_res})
+        rows.append({"market": mkt, "live_status": live, "version": f"Benchmark ({BENCH_TICKER[mkt]})", **bench_res})
 
     df = pd.DataFrame(rows)
     print("\n" + "=" * 100)
