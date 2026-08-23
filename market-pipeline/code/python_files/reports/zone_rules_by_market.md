@@ -14,3 +14,5 @@ Each candidate zone rule scored by the forward-10d return SPREAD between the nam
 
 ## How this maps to the digest
 The zone engine can switch rule by market: a name is BUY if it passes its market's winning rule, SELL if it fails it, HOLD between. Eviction still runs off the SELL state, so a market whose winner is mean-reversion will evict on overbought-and-fading rather than below-EMA50 — which is what the literature (Balvers-Wu; emerging-market fast reversion; KOSPI contrarian) and our own signal-effectiveness analysis both point to.
+
+🔴 IN mom126 daily re-test (2026-08-23): 0.149% (t0.87, n=225 independent 10-day windows, real daily 126-trading-day lookback -- matches the live watchlist_digest.py field exactly, not the weekly-bar approximation above). NOT WIRED: IN stays on 'trend'. Daily re-test (0.149, t0.87, n=225) did not clear |t|>=1.5 and/or spread<=0 -- confirms the 14.7%-vs-10.2% CAGR edge in backtest_zone_rule_rec_simulation.py was NOT backed by real discriminating power. Recorded so this is not silently re-tried later.
