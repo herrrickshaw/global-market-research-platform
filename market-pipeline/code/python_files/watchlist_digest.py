@@ -663,7 +663,13 @@ def assign_recommendations(rows: list) -> None:
         if rule == "trend":
             continue                       # r['rec'] already = EMA zone
         # cross-sectional signal within the market
-        key = {"revert": "d5", "mom_st": "d5", "mom126": "d5"}.get(rule, "d5")
+        # 🔴 FIXED 2026-08-23: this used to map every non-trend rule to "d5"
+        # regardless of horizon, so mom_st (1mo) and mom126 (6mo) were both
+        # silently ranked by 5-day return -- backtested live (scratch_zone_
+        # bug_check.py) as the exact loss-making MIRROR of the intended
+        # signal in every market (e.g. US mom126: t-2.06 wrong-direction vs
+        # t+2.15 for the real 126-day momentum this rule is supposed to be).
+        key = {"revert": "d5", "mom_st": "d21", "mom126": "d126"}.get(rule, "d5")
         vals = [(r, r.get(key)) for r in grp if r.get(key) is not None]
         if len(vals) < 6:
             continue
@@ -871,7 +877,7 @@ def build_rows(watchlist: pd.DataFrame, frames_out: Optional[dict] = None) -> li
             # coverage gap worth seeing — dropping it makes the digest look
             # complete while quietly omitting exactly what you asked about.
             rows.append({"symbol": sym, "market": mkt, "mark": "❔", "d1": None,
-                         "d5": None, "close": None, "last": None,
+                         "d5": None, "d21": None, "d126": None, "close": None, "last": None,
                          "note": note, "status": status, "missing": True,
                          "liq": "?", "below_floor": False,
                          "why": why_listed(status, note),
@@ -910,7 +916,8 @@ def build_rows(watchlist: pd.DataFrame, frames_out: Optional[dict] = None) -> li
             except Exception:
                 pass
         rows.append({"symbol": sym, "market": mkt, "mark": classify(d1), "d1": d1,
-                     "d5": _pct_change(df, 5), "close": last_close,
+                     "d5": _pct_change(df, 5), "d21": _pct_change(df, 21),
+                     "d126": _pct_change(df, 126), "close": last_close,
                      "last": last_date, "note": note, "status": status,
                      "missing": False, "liq": liq, "below_floor": below,
                      "turn_usd": turn,
