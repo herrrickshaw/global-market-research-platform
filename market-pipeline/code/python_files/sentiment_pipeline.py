@@ -523,6 +523,12 @@ class SentimentPipeline:
         "NewsData": 0.8,       # headline-scored, macro
         "IndianRSS": 1.1,      # Moneycontrol/ET/BusinessLine — free, India-native
         "USRSS": 1.1,          # CNBC/MarketWatch — free, US-native
+        # Highest weight of the free sources: it is the only provider that
+        # scores ARTICLE BODIES rather than headlines, and the only one with
+        # per-ticker discovery (the RSS providers string-match a market-wide
+        # pool, so a name absent from today's feeds scores neutral rather than
+        # "no coverage"). Still free and quota-less. See news_crawler.py.
+        "scrapling": 1.3,
     }
 
     def __init__(self):
@@ -530,6 +536,14 @@ class SentimentPipeline:
                           FinnhubProvider(), NewsDataProvider(),
                           IndianRSSProvider(),   # free, no key — India sources
                           USRSSProvider()]       # free, no key — US sources (CNBC/MarketWatch)
+        # Optional: needs `pip install scrapling`. Imported late and guarded so
+        # a missing dependency degrades to the existing six providers instead
+        # of breaking the pipeline that the daily mailer depends on.
+        try:
+            from news_crawler import ScraplingProvider
+            self.providers.append(ScraplingProvider())
+        except Exception:
+            pass
         self.active = [p for p in self.providers if p.available]
         self._cache = self._load_cache()
         # Handles to the RSS providers for market-mood queries (by market)

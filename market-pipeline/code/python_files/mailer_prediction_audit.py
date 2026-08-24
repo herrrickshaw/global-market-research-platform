@@ -31,14 +31,64 @@ from price_prediction.kalman_trend import KalmanTrendModel          # noqa: E402
 from price_prediction.markov_regime import MarkovRegimeModel, label_states  # noqa: E402
 from market_regime import BASKETS, _ALIAS                            # noqa: E402
 
-LTM = Path.home() / "repos/global-stock-screener/cache_seed/ltm"
+# ── panel source ─────────────────────────────────────────────────────────────
+# 2026-08-24: this used to read the monolithic panels at
+# global-stock-screener/cache_seed/ltm/<MKT>.parquet. Those files DO NOT EXIST
+# for any market this module needs. GSS and GMD were deleted and recreated
+# LFS-free on 2026-08-04; the 15 small country panels survived, and the five
+# large ones — exactly IN/US/JP/KR/CN — were the LFS objects that did not.
+# Every run since then failed on IN and aborted the whole loop, so part_b has
+# been dead for ALL five markets, not just India.
+#
+# The monoliths were superseded on 2026-07-22 anyway (see the README still
+# sitting in that directory): the canonical store is the year-partitioned
+# warehouse, which the daily pipeline refreshes every morning.
+#
+# Prefer ohlcv_adj over ohlcv. The adjusted tree is back-adjusted for splits
+# and bonuses; the raw tree is not. On the raw tree MWL's 1:10 split shows up
+# as a -90% single-day return, which would poison both the Kalman slope and the
+# Markov state labelling. The |log return| < 0.5 filter downstream was a crude
+# guard against exactly this; reading the adjusted tree makes it real.
+WAREHOUSE = Path.home() / ".cache/market-warehouse"
+LTM = Path.home() / "repos/global-stock-screener/cache_seed/ltm"  # legacy fallback
 PANEL_MKT = {"IN": "IN", "US": "US", "JP": "JP", "KR": "KR", "CN": "CN"}
+
+# Both callers only ever pivot Close, so don't pay to read OHLCV.
+_PANEL_COLS = ["Date", "Symbol", "Close"]
 
 
 def _panel(mkt: str) -> pd.DataFrame:
-    df = pd.read_parquet(LTM / f"{mkt}.parquet")
-    df["Date"] = pd.to_datetime(df["Date"])
-    return df
+    """Long panel (Date, Symbol, Close) for one market.
+
+    Resolution order: adjusted warehouse → raw warehouse → legacy monolith.
+    Raises FileNotFoundError naming every path tried, so a future breakage of
+    this kind is diagnosable from the log line instead of a bare errno 2.
+    """
+    tried = []
+    for tree, adjusted in (("ohlcv_adj", True), ("ohlcv", False)):
+        mdir = WAREHOUSE / tree / mkt
+        tried.append(str(mdir))
+        files = sorted(mdir.glob("year=*.parquet")) if mdir.is_dir() else []
+        if not files:
+            continue
+        df = pd.concat(
+            [pd.read_parquet(f, columns=_PANEL_COLS) for f in files],
+            ignore_index=True)
+        if not adjusted:
+            print(f"    [{mkt}] WARNING: no adjusted panel — using raw Close. "
+                  f"Splits are NOT adjusted in this market.")
+        df["Date"] = pd.to_datetime(df["Date"])
+        return df.dropna(subset=["Close"])
+
+    legacy = LTM / f"{mkt}.parquet"
+    tried.append(str(legacy))
+    if legacy.exists():
+        df = pd.read_parquet(legacy)
+        df["Date"] = pd.to_datetime(df["Date"])
+        return df
+
+    raise FileNotFoundError(
+        f"no price panel for {mkt}; tried " + ", ".join(tried))
 
 
 def _basket_symbols(mkt: str, cols) -> list[str]:
@@ -78,7 +128,11 @@ def part_a() -> str:
              "median), joined to the point-in-time basket trend regime:", ""]
     rows = []
     for mkt in ["IN", "US"]:
-        p = _panel(mkt)
+        try:
+            p = _panel(mkt)
+        except FileNotFoundError as e:
+            print(f"    [{mkt}] skipped — {e}")
+            continue
         close = p.pivot_table(index="Date", columns="Symbol", values="Close",
                               aggfunc="last").sort_index()
         tr = trend_series(mkt, close)
@@ -113,7 +167,14 @@ def part_b() -> tuple[str, pd.DataFrame]:
         if names.empty:
             continue
         reg = get_regime(mkt)
-        p = _panel(PANEL_MKT[mkt])
+        # One unavailable market must not abort the other four. Before
+        # 2026-08-24 it did: IN is first in this list, its panel was missing,
+        # and the raised errno 2 took US/JP/KR/CN down with it.
+        try:
+            p = _panel(PANEL_MKT[mkt])
+        except FileNotFoundError as e:
+            print(f"    [{mkt}] skipped — {e}")
+            continue
         close = p.pivot_table(index="Date", columns="Symbol", values="Close",
                               aggfunc="last").sort_index()
         for _, r in names.iterrows():
