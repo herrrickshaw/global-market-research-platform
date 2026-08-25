@@ -57,18 +57,29 @@ PANEL_MKT = {"IN": "IN", "US": "US", "JP": "JP", "KR": "KR", "CN": "CN"}
 _PANEL_COLS = ["Date", "Symbol", "Close"]
 
 
-def _panel(mkt: str) -> pd.DataFrame:
+def _panel(mkt: str, since_year: int | None = None) -> pd.DataFrame:
     """Long panel (Date, Symbol, Close) for one market.
 
     Resolution order: adjusted warehouse → raw warehouse → legacy monolith.
     Raises FileNotFoundError naming every path tried, so a future breakage of
     this kind is diagnosable from the log line instead of a bare errno 2.
+
+    since_year bounds the read to year partitions >= that year. Default None
+    keeps the whole history, which is what the backtest-shaped callers here
+    want. A caller that only needs a trailing window should say so: US alone is
+    16.4M rows / 1.3 GB across 11 partitions, and a 252-bar rolling high does
+    not need 2015. The legacy monolith is not partitioned, so the bound cannot
+    apply there — it is filtered by Date instead.
     """
     tried = []
     for tree, adjusted in (("ohlcv_adj", True), ("ohlcv", False)):
         mdir = WAREHOUSE / tree / mkt
         tried.append(str(mdir))
         files = sorted(mdir.glob("year=*.parquet")) if mdir.is_dir() else []
+        if since_year is not None:
+            files = [f for f in files
+                     if f.stem.partition("=")[2].isdigit()
+                     and int(f.stem.partition("=")[2]) >= since_year]
         if not files:
             continue
         df = pd.concat(
@@ -85,6 +96,8 @@ def _panel(mkt: str) -> pd.DataFrame:
     if legacy.exists():
         df = pd.read_parquet(legacy)
         df["Date"] = pd.to_datetime(df["Date"])
+        if since_year is not None:
+            df = df[df["Date"].dt.year >= since_year]
         return df
 
     raise FileNotFoundError(

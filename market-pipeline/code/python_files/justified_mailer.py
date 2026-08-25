@@ -48,16 +48,44 @@ HERE = Path(__file__).resolve().parent
 BHAV = Path("/Users/umashankar/market-pipeline/data/bhavcopy_cache")
 OUT_HTML = HERE / "reports" / "justified_brief.html"
 
-PANELS = {
-    "US": BHAV / "ohlcv_US.parquet",
-    "JP": BHAV / "ohlcv_JAPAN.parquet",
-    "KR": BHAV / "ohlcv_KOREA.parquet",
-    # cleaned_long, NOT ohlcv_NSE: the scan cache holds ~126 bars, which is
-    # exactly too short for 126-day momentum (shift lands off the edge — first
-    # run produced 2 non-NaN momenta out of 2,069 symbols). cleaned_long holds
-    # ~273 trading days with NSE precedence pre-resolved.
-    "IN": BHAV / "cleaned_long.parquet",
-}
+# 🔴 2026-08-25: these four screens used to read four loose parquets under
+# data/bhavcopy_cache. Two of them were wrong in different ways:
+#
+#   ohlcv_US.parquet    — the ORPHAN. No scheduled job refreshes it; it sat at
+#                         the 21 Aug session while every other store held
+#                         24 Aug. data_catalog.py:462 has flagged it as "a
+#                         SECOND US panel, not what the scan reads" since
+#                         19 Aug — financial_ratios.py and us_fundamentals_edgar.py
+#                         were repointed off it then, and this was the last
+#                         primary consumer left holding it.
+#   ohlcv_JAPAN.parquet — the opposite failure: written by the JP scan mid-session
+#                         (06:12 IST = 09:42 JST), so it carried a PARTIAL
+#                         current-day bar. A half-formed close is not a close.
+#
+# All four now read the warehouse, which is what the daily pipeline actually
+# refreshes (refresh_panels.py, step ENSURE-FRESH) and what every other
+# prediction surface already reads. It is also deeper and settled: 16.4M US
+# rows over 11 years vs 1.8M, and India resolves to the SPLIT-ADJUSTED tree
+# (ohlcv_adj) rather than raw closes.
+#
+# The old India note — "cleaned_long, NOT ohlcv_NSE: the scan cache holds ~126
+# bars, exactly too short for 126-day momentum" — is satisfied far more amply
+# here: PANEL_SINCE keeps three year partitions, ~500 trading days, against the
+# 252 the widest window needs.
+PANEL_MARKETS = ("US", "JP", "KR", "IN")
+PANEL_SINCE = date.today().year - 2      # 3 partitions, ~500 trading days
+
+
+def _panel(market: str) -> pd.DataFrame:
+    """(Date, Symbol, Close) for one market, from the live warehouse.
+
+    Delegates to mailer_prediction_audit._panel — the ONE warehouse reader in
+    this codebase, already used by the prediction lens. Symbol conventions match
+    what WORKBOOKS joins against (US bare, JP .T, KR .KS, IN bare NSE), verified
+    against the retired panels before the switch.
+    """
+    import mailer_prediction_audit as _mpa
+    return _mpa._panel(market, since_year=PANEL_SINCE)
 WORKBOOKS = {
     "US": ("us_full_scan/us_full_scan_*.xlsx", "Symbol"),
     "JP": ("japan_scan/japan_market_scan_*.xlsx", "YF_Ticker"),
@@ -129,7 +157,7 @@ def oversold_picks(market: str) -> pd.DataFrame:
     Guards: >=100 bars of history (a 20-bar listing can print RSI ~0 on noise)
     and, for the US, the scan's own $2 price floor — without these the top of
     the list is delisting-bound zombies with 14 straight red days."""
-    px = pd.read_parquet(PANELS[market], columns=["Date", "Symbol", "Close"])
+    px = _panel(market)
     px = px.sort_values(["Symbol", "Date"])
     bars = px.groupby("Symbol")["Close"].transform("size")
     px = px[bars >= 100]
@@ -167,7 +195,7 @@ def india_momentum_picks() -> pd.DataFrame:
     """Near-52w-high AND positive 6m momentum, ranked by momentum. The NSE
     cache is the already-liquidity-gated universe (~2,400 names); filtered to
     real equities via ISIN before ranking."""
-    px = pd.read_parquet(PANELS["IN"], columns=["Date", "Symbol", "Close"])
+    px = _panel("IN")
     names = _india_equity_names()
     px = px[px["Symbol"].isin(names.index)]
     # Liquidity gate: cleaned_long is the FULL ~5,200-symbol universe; without
