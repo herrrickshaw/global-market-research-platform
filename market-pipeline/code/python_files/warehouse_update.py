@@ -100,6 +100,53 @@ PANELS = {
 BACKUP = WAREHOUSE.parent / "_backup" / "ohlcv"
 COLS = ["Date", "Symbol", "Open", "High", "Low", "Close", "Volume"]
 
+# ── split re-adjustment ──────────────────────────────────────────────────────
+# THE ONE EXCEPTION TO APPEND-ONLY, and it exists because append-only is exactly
+# what breaks on a split. Fresh bars arrive from the vendor already adjusted for
+# any split that has happened; stored bars are on the OLD basis and nothing was
+# re-adjusting them. The panel then holds one symbol on two different price
+# bases, joined at the split date, and every window that straddles that date
+# reports the split ratio as if it were a return.
+#
+# Found 2026-08-25 by trailing_returns.py, which flagged CISS +4,293.94% over
+# one week. CISS did a 1-for-40 reverse split on 2026-08-19: the panel's
+# 0.0685 close on 08-18 sits directly beside a 3.09 close on 08-19. The real
+# move was +12.8%. Same shape for ELAB (1-for-10, printed +646.85%) and VCIG
+# (1-for-15, printed +1,062.43%). A sweep of the last 45 days found 177 US and
+# 9 IN symbols carrying the same discontinuity, so this was never about three
+# microcaps — it is every split since the last full refetch of each panel.
+#
+# Splits BEFORE that refetch are already correct, which is what makes the bug
+# invisible: CISS's January 1-for-20 and April 1-for-7 both show ~1.0x
+# continuity. Only the incremental-append path is wrong, so the panel looks
+# healthy everywhere except its most recent weeks.
+#
+# DETECTION IS A CHEAP SCREEN, NOT A NETWORK SWEEP. Asking yfinance for the
+# split history of all 9,433 US symbols nightly is not affordable. But a split
+# always leaves a price discontinuity at the seam between the panel's last bar
+# and the first fresh one, so the DATA screens itself for free, and only the
+# handful that trip the screen (typically 0-5 a night) cost a network call to
+# confirm the exact ratio. Never INFER the ratio from the price jump: the jump
+# is split × that day's real move, so 45.1x is a 1-for-40 plus 12.8%, and
+# rounding it to "1-for-45" would bake the real move permanently into history.
+SPLIT_SCREEN_HI = 3.0        # fresh/stored close above this -> possible reverse split
+SPLIT_SCREEN_LO = 1 / 3.0    # ...below this -> possible forward split/bonus
+# yfinance reports a split as the multiplier applied to SHARE COUNT: 2.0 for a
+# 2-for-1, 0.025 for a 1-for-40 reverse. Price moves inversely, so putting
+# stored history onto the new basis is price / value and volume * value.
+SPLIT_SUFFIX = {"IN": ".NS"}  # US/JP/KR/EU symbols are already yfinance-shaped
+# RATIO FROM THE VENDOR, DATE FROM THE PANEL. yfinance's split date and the bar
+# where the price actually rebases routinely disagree by a few sessions — it may
+# stamp an announcement or effective date, and the panel may be missing bars in
+# between. LIMN split 2026-08-21 but the panel rebases 08-24; BRCC rebases 08-21
+# against a recorded 08-24. Matching them exactly finds neither. So the window is
+# generous, and what makes that safe is not the window but SPLIT_RATIO_TOL: the
+# vendor's ratio must predict the jump the panel actually shows, or the match is
+# rejected. The adjustment is then applied at the panel's own discontinuity,
+# which is the only date the stored bars agree on.
+SPLIT_WINDOW_PAD = pd.Timedelta(days=6)
+SPLIT_RATIO_TOL = 2.0   # observed jump within this factor of the ratio's prediction
+
 
 def _parts(panel: Path) -> list:
     """Year partitions ONLY.
@@ -190,6 +237,267 @@ def _panel_stats(panel: Path) -> dict:
         con.close()
     return {"rows": total, "symbols": len(symbols), "max_date": pd.Timestamp(mx),
             "dup_years": dup_years, "dups": dups}
+
+
+def _panel_last_bar(panel: Path) -> pd.DataFrame:
+    """Last stored (Date, Close) per symbol — the left side of the split seam.
+
+    One partition at a time, same reason as _panel_stats: QUALIFY collapses each
+    year to one row per symbol (~9,850 for US) before anything crosses into
+    pandas, so this never materialises a panel to learn a per-symbol scalar.
+    """
+    parts = _parts(panel)
+    if not parts:
+        return pd.DataFrame(columns=["Symbol", "Date", "Close"])
+    con = _con()
+    try:
+        frames = [con.execute(
+            f"""select Symbol, Date, Close from read_parquet('{p}')
+                qualify row_number() over (partition by Symbol order by Date desc) = 1"""
+        ).fetch_df() for p in parts]
+    finally:
+        con.close()
+    d = pd.concat(frames, ignore_index=True)
+    d["Date"] = pd.to_datetime(d["Date"])
+    d["Symbol"] = d["Symbol"].astype(str).str.upper()
+    # A symbol can appear in several years; its true last bar is the newest.
+    return d.sort_values("Date").drop_duplicates("Symbol", keep="last")
+
+
+def _confirm_split(market: str, sym: str, lo: pd.Timestamp,
+                   hi: pd.Timestamp) -> list:
+    """Real splits for `sym` in (lo, hi] as [(value, date), ...], oldest first.
+
+    A LIST, not one cumulative number, because the repair path needs each split
+    placed at its own date: with two unadjusted splits d1 < d2, bars before d1
+    are wrong by both and bars between them by only the second. Applying each
+    independently gets that right for free; a single product would over-adjust
+    the middle stretch. The seam path is the degenerate case where every stored
+    bar precedes all of them, so sequential application there just multiplies
+    out — which is what CISS needs, having split three times in 2026.
+
+    Returns [] on any doubt. A missed split leaves one visible bad return; a
+    fabricated one silently corrupts ten years of history. The errors are not
+    symmetric, so this fails toward doing nothing.
+    """
+    try:
+        import yfinance as yf
+        s = yf.Ticker(sym + SPLIT_SUFFIX.get(market, "")).splits
+    except Exception as e:
+        print(f"     {sym}: split lookup failed ({type(e).__name__}) — not adjusting")
+        return []
+    if s is None or not len(s):
+        return []
+    # NORMALISE TO MIDNIGHT. yfinance stamps a split at the session open
+    # (09:30 local), panel Dates are midnight. Compared raw, a split on the
+    # newest bar's own day sits ABOVE `hi` and is missed — which is exactly
+    # VCIG's 2026-08-24 1-for-15, the most recent and most urgent case.
+    idx = pd.to_datetime(s.index).tz_localize(None).normalize()
+    s = pd.Series(s.values, index=idx).sort_index()
+    hit = s[(s.index >= lo) & (s.index <= hi)]
+    hit = hit[hit > 0]
+    return [(float(v), d) for d, v in hit.items()]
+
+
+def _match_jump(market: str, sym: str, when: pd.Timestamp, prev_when: pd.Timestamp,
+                jump: float) -> Optional[float]:
+    """Cumulative split value explaining `jump` at `when`, or None.
+
+    The gate is agreement, not proximity: a 1-for-40 predicts a 40x rebase, so a
+    45.1x jump matches (the extra 12.8% is that day's real move) and a 4x jump
+    does not. Without this the widened window would happily attach an unrelated
+    split from the neighbouring week to a genuine move.
+    """
+    events = _confirm_split(market, sym, prev_when - SPLIT_WINDOW_PAD,
+                            when + SPLIT_WINDOW_PAD)
+    if not events:
+        return None
+    value = 1.0
+    for v, _ in events:
+        value *= v
+    if value <= 0:
+        return None
+    predicted = 1.0 / value
+    ratio = jump / predicted
+    if not (1 / SPLIT_RATIO_TOL) <= ratio <= SPLIT_RATIO_TOL:
+        print(f"     {sym}: split {value:g} predicts {predicted:.1f}x but panel "
+              f"shows {jump:.1f}x — rejected, not adjusting")
+        return None
+    return value
+
+
+def _detect_splits(market: str, panel: Path, new: pd.DataFrame,
+                   last_old: pd.Timestamp) -> dict:
+    """Symbols whose stored history is on a stale price basis.
+
+    Screens on the discontinuity at the seam (free), then confirms only the
+    flagged handful against yfinance (cheap because the screen is tight).
+    """
+    if new.empty:
+        return {}
+    first_new = (new.sort_values("Date")
+                    .drop_duplicates("Symbol", keep="first")[["Symbol", "Date", "Close"]]
+                    .rename(columns={"Date": "new_date", "Close": "new_close"}))
+    last_bar = (_panel_last_bar(panel)
+                .rename(columns={"Date": "old_date", "Close": "old_close"}))
+    seam = first_new.merge(last_bar, on="Symbol", how="inner")
+    seam = seam[(seam["old_close"] > 0) & (seam["new_close"] > 0)]
+    if seam.empty:
+        return {}
+    seam["jump"] = seam["new_close"] / seam["old_close"]
+    flagged = seam[(seam["jump"] > SPLIT_SCREEN_HI) | (seam["jump"] < SPLIT_SCREEN_LO)]
+    if flagged.empty:
+        return {}
+
+    print(f"  {market}: {len(flagged)} symbol(s) crossed the split screen — confirming")
+    out = {}
+    for r in flagged.itertuples():
+        value = _match_jump(market, r.Symbol, r.new_date, r.old_date, r.jump)
+        if value is None:
+            # Not a split — a genuine microcap move, or a vendor bad print. Left
+            # alone deliberately: this function corrects corporate actions, and
+            # silently smoothing a real 4x would be a different and worse bug.
+            print(f"     {r.Symbol}: {r.jump:.1f}x jump, no matching split — left as-is")
+            continue
+        out[r.Symbol] = [(value, r.new_date)]
+        print(f"     {r.Symbol}: split {value:g} at {r.new_date.date()} "
+              f"(seam {r.old_close:g} -> {r.new_close:g}, {r.jump:.1f}x) — adjusting history")
+    return out
+
+
+def _apply_splits(market: str, panel: Path, splits: dict, dry: bool) -> int:
+    """Put stored history for `splits` onto the post-split basis.
+
+    Rewrites EVERY year partition, because a split invalidates a symbol's whole
+    history, not just the current year — but strictly one partition at a time,
+    so the footprint stays at one year regardless of how deep the panel is. That
+    is why this is not folded into the main merge: routing it through
+    _write_years would mean adding every year to `changed_years` and reading the
+    entire panel back into one frame, which is the 1.63GB peak the DuckDB stats
+    path was written to remove.
+    """
+    if dry:
+        print(f"  {market}: dry-run, {len(splits)} split(s) not applied"); return 0
+    touched = 0
+    for part in _parts(panel):
+        d = pd.read_parquet(part)
+        d["Symbol"] = d["Symbol"].astype(str).str.upper()
+        d["Date"] = pd.to_datetime(d["Date"])
+        n = 0
+        for sym, events in splits.items():
+            for value, when in events:
+                # Bars strictly BEFORE the split are the stale ones. Applying
+                # each event at its own date is what makes multiple unadjusted
+                # splits compose correctly: a bar older than both gets divided
+                # twice, one between them only once.
+                m = (d["Symbol"] == sym) & (d["Date"] < when)
+                if not m.any():
+                    continue
+                for c in ("Open", "High", "Low", "Close"):
+                    if c in d.columns:
+                        d.loc[m, c] = (d.loc[m, c] / value).astype(d[c].dtype, errors="ignore")
+                if "Volume" in d.columns:
+                    d.loc[m, "Volume"] = (d.loc[m, "Volume"] * value).astype(
+                        d["Volume"].dtype, errors="ignore")
+                n += int(m.sum())
+        if not n:
+            continue
+        bak_dir = BACKUP / panel.name
+        bak_dir.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(part, bak_dir / f"{part.name}.presplit.bak")
+        tmp = part.with_suffix(".parquet.tmp")
+        d.to_parquet(tmp, compression="zstd", index=False)
+        tmp.replace(part)
+        touched += n
+        print(f"  ✅ {market}: {part.name} re-adjusted ({n:,} bars)")
+    if not touched:
+        print(f"  {market}: split confirmed but no stored bars matched — nothing to adjust")
+    return touched
+
+
+def _scan_discontinuities(panel: Path, since: Optional[pd.Timestamp] = None) -> pd.DataFrame:
+    """Split-shaped jumps already sitting INSIDE stored history.
+
+    The seam screen only sees the boundary between stored and fresh, so it
+    cannot help with splits ingested before this code existed — those are now
+    interior to the panel. Same test, applied to consecutive stored bars.
+
+    Pushed entirely into DuckDB: the lag() runs over the parquet and only the
+    handful of flagged rows cross into pandas. Reading Date/Symbol/Close for
+    all 16.3M US bars to diff them in pandas would cost about a gigabyte to
+    find ~200 rows.
+    """
+    parts = _parts(panel)
+    if not parts:
+        return pd.DataFrame()
+    files = "[" + ", ".join(f"'{p}'" for p in parts) + "]"
+    where = f"and Date >= DATE '{since.date()}'" if since is not None else ""
+    con = _con()
+    try:
+        return con.execute(f"""
+            select Symbol, Date, prev_date, prev_close, Close,
+                   Close / prev_close as jump
+            from (
+                select Symbol, Date, Close,
+                       lag(Close) over (partition by Symbol order by Date) as prev_close,
+                       lag(Date)  over (partition by Symbol order by Date) as prev_date
+                from read_parquet({files})
+                where Close is not null {where}
+            )
+            where prev_close > 0 and Close > 0
+              and (Close / prev_close > {SPLIT_SCREEN_HI}
+                   or Close / prev_close < {SPLIT_SCREEN_LO})
+            order by Symbol, Date
+        """).fetch_df()
+    finally:
+        con.close()
+
+
+def repair(market: str, dry: bool, since: Optional[pd.Timestamp] = None) -> int:
+    """One-off: re-adjust splits that were ingested before the seam check existed.
+
+    Separate entry point rather than part of the nightly run, because it rewrites
+    every year partition and re-reads split history for every flagged symbol.
+    That is right once, and wasteful every night — the seam check is what keeps
+    the panel correct from here on.
+    """
+    panel = PANELS.get(market)
+    if not panel or not panel.exists() or not _parts(panel):
+        print(f"  {market}: no warehouse partitions at {panel}"); return 1
+
+    hits = _scan_discontinuities(panel, since)
+    if hits.empty:
+        print(f"  {market}: no split-shaped discontinuities in stored history"); return 0
+    hits["Date"] = pd.to_datetime(hits["Date"])
+    hits["prev_date"] = pd.to_datetime(hits["prev_date"])
+    print(f"  {market}: {len(hits)} discontinuity bar(s) across "
+          f"{hits['Symbol'].nunique()} symbol(s) — confirming against yfinance")
+
+    splits, unexplained = {}, []
+    for r in hits.itertuples():
+        # Per FLAGGED BAR, not per symbol: a symbol with two unadjusted splits
+        # needs each one matched and dated separately, and collapsing them to one
+        # symbol-wide window would ask yfinance to explain both jumps at once.
+        value = _match_jump(market, r.Symbol, r.Date, r.prev_date, r.jump)
+        if value is None:
+            unexplained.append((r.Symbol, r.Date.date(), float(r.jump)))
+            continue
+        splits.setdefault(r.Symbol, []).append((value, r.Date))
+
+    n_ev = sum(len(v) for v in splits.values())
+    print(f"  {market}: {n_ev} split(s) confirmed across {len(splits)} symbol(s), "
+          f"{len(unexplained)} unexplained (left untouched)")
+    if unexplained:
+        # Surfaced, never silently adjusted. These are real moves, halts, or bad
+        # vendor prints, and each is a judgement call a human should make.
+        for sym, when, jump in unexplained[:15]:
+            print(f"     ? {sym} {when} {jump:.1f}x")
+        if len(unexplained) > 15:
+            print(f"     ... and {len(unexplained) - 15} more")
+    if not splits:
+        return 0
+    _apply_splits(market, panel, splits, dry)
+    return 0
 
 
 def _fresh_us(since=None) -> pd.DataFrame:
@@ -461,7 +769,7 @@ def _write_years(market: str, panel: Path, frame: pd.DataFrame, years, dry: bool
     return 0
 
 
-def update(market: str, dry: bool) -> int:
+def update(market: str, dry: bool, skip_splits: bool = False) -> int:
     panel = PANELS.get(market)
     if not panel or not panel.exists() or not any(panel.glob("year=*.parquet")):
         print(f"  {market}: no warehouse partitions at {panel}"); return 1
@@ -529,6 +837,15 @@ def update(market: str, dry: bool) -> int:
     if new.empty and not deduped:
         print(f"  {market}: already current — 0 new bars"); return 0
 
+    # ── re-adjust history for any split at the seam ──────────────────────────
+    # BEFORE the merge reads `old`, so the partitions it loads are already on the
+    # new basis and the append lands on a continuous series. Running it after
+    # would write the stale bars back out and leave the seam broken for a day.
+    if not new.empty and not skip_splits:
+        splits = _detect_splits(market, panel, new, last_old)
+        if splits:
+            _apply_splits(market, panel, splits, dry)
+
     # ── load ONLY the partitions this write will touch ───────────────────────
     # Closed years cannot change under the strictly-newer-dates rule, so reading
     # them was always pure cost. Dedup years join the set because their file
@@ -590,10 +907,24 @@ def main() -> int:
     ap = argparse.ArgumentParser(description="Fold fresh bars into the deep panels")
     ap.add_argument("--market", choices=list(PANELS))
     ap.add_argument("--dry-run", action="store_true")
+    ap.add_argument("--no-split-check", action="store_true",
+                    help="skip split detection (offline runs — the screen needs "
+                         "yfinance to confirm a ratio, and never guesses one)")
+    ap.add_argument("--repair-splits", action="store_true",
+                    help="one-off: re-adjust splits ingested before the seam "
+                         "check existed. Rewrites every year partition — run "
+                         "with --dry-run first")
+    ap.add_argument("--since", type=str, default=None,
+                    help="with --repair-splits, only scan bars from this date "
+                         "(YYYY-MM-DD) forward")
     a = ap.parse_args()
     rc = 0
     for m in ([a.market] if a.market else list(PANELS)):
-        rc |= update(m, a.dry_run)
+        if a.repair_splits:
+            rc |= repair(m, a.dry_run,
+                         pd.Timestamp(a.since) if a.since else None)
+        else:
+            rc |= update(m, a.dry_run, a.no_split_check)
         print()
     return rc
 

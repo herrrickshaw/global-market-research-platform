@@ -2,6 +2,63 @@
 
 Decisions and material changes to the pipeline, newest first.
 
+## 2026-08-25 — append-only ingest was reporting split ratios as returns
+
+`trailing_returns.py` flagged CISS at **+4,293.94% over one week**. CISS did a
+1-for-40 reverse split on 08-19; the panel held a 0.0685 close on 08-18 beside a
+3.09 close on 08-19. The real move was +12.8%. Append-only ingest is precisely
+what breaks here: fresh bars arrive vendor-adjusted, stored bars stay on the old
+basis, and the panel ends up holding one symbol on two price bases joined at the
+split date. A sweep found 466 such splits across 455 symbols in all five panels.
+
+Splits predating each panel's last full refetch were already correct, which is
+what kept this invisible — CISS's own January 1-for-20 and April 1-for-7 both
+show ~1.0x continuity. Only the incremental-append path was ever wrong, so the
+panel looked healthy everywhere except its most recent weeks.
+
+- **DECISION: never infer the ratio from the price jump.** CISS's seam is 45.1x
+  — a 1-for-40 *plus* that day's real +12.8%. Rounding to "1-for-45" would bake
+  the real move permanently into history. The ratio comes from yfinance or the
+  bar is left alone.
+- **DECISION: ratio from the vendor, date from the panel.** The two routinely
+  disagree by days — LIMN split 08-21 but the panel rebases 08-24 (missing
+  bars); BRCC rebases 08-21 against a recorded 08-24. Matching them exactly
+  found neither. **REJECTED** the exact `(prev_bar, flagged_bar]` window for
+  this reason. The window is now generous, and what makes that safe is not the
+  window but `SPLIT_RATIO_TOL`: the vendor's ratio must predict the jump the
+  panel actually shows, or the match is rejected. 285 candidates were rejected
+  this way, including a 360ONE entry where yfinance's 2-for-1 predicted 0.5x
+  against a panel showing 0.2x.
+- **Detection is a free screen, not a network sweep.** Asking yfinance about all
+  9,433 US symbols nightly is not affordable; a split always leaves a
+  discontinuity at the seam, so the data screens itself and only the handful
+  that trip it (0-5 a night) cost a call. **REJECTED** the alternative of
+  fetching split calendars for the whole universe.
+- **DECISION: surface unexplained jumps, never smooth them.** 7,701 US
+  discontinuities did not confirm as splits and were left untouched. Spot
+  checks (ZSTK, SDOT, PSIG) each show a 100-1000x volume spike and no split on
+  record — genuine trading. Silently smoothing a real 4x would be a worse bug
+  than the one being fixed. CFNB's 0.0x print followed by a 47x "recovery" is
+  likewise left alone as a bad print, for a human to judge.
+- **Repair is a separate entry point (`--repair-splits`), not part of the
+  nightly run.** It rewrites every year partition and re-reads split history for
+  every flagged symbol — right once, wasteful nightly. **REJECTED** folding it
+  into `_write_years`, which would have meant adding every year to
+  `changed_years` and reading the whole panel into one frame — the 1.63GB peak
+  the DuckDB stats path exists to remove. `_apply_splits` streams one partition
+  at a time instead.
+- **Verified surgically.** A split adjustment multiplies a contiguous prefix by
+  a constant, so it must change exactly ONE day-over-day ratio per event. Across
+  37.6M bars, changed ratios equalled splits applied in every market
+  (US 150/150, IN 282/282, KR 28/28, JP 5/5, EU 1/1), with no rows or symbols
+  lost. Two suspected regressions were checked and neither held: NXTT's -97.58%
+  6-month return is genuine (a 1-for-100 reverse split means a real collapse),
+  and the YHC/EDBL spikes predate the repair at identical 86.1x and 43.4x ratios
+  either side of it.
+- **Known gap:** the repair path logs rejections per symbol but not
+  confirmations, so the 466 applied splits are not individually recoverable from
+  its log — they had to be reconstructed by diffing a pre-write snapshot.
+
 ## 2026-08-19 — ensure_fresh wired into the send phase, and the report gap it found
 
 `ensure_fresh.py` existed but nothing called it: the "a brief requested at any
