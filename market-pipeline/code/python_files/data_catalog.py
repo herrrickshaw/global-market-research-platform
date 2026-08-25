@@ -454,14 +454,27 @@ def _mk(expected: dict[str, dt.date]) -> list[Dataset]:
             (lambda p=BHAV / f, m=mkt: _probe_parquet(p, expected=E(m))),
             refresh=STORE_REFRESH[mkt], authority="canonical",
             note=f"{mkt} scan input."))
-    ds.append(Dataset(
-        "cache.ohlcv.US_legacy", "prices", "US", str(BHAV / "ohlcv_US.parquet"),
-        "NASDAQ/NYSE close (yfinance)",
-        lambda: _probe_parquet(BHAV / "ohlcv_US.parquet", expected=E("US")),
-        authority="derived",
-        note="🔴 A SECOND US panel, not what the scan reads and not refreshed by "
-             "any current job — 14 Aug while the scan store held 17 Aug. Retire "
-             "it or wire it; leaving it is how the wrong file gets read."))
+    # cache.ohlcv.US_legacy (data/bhavcopy_cache/ohlcv_US.parquet) was RETIRED
+    # here on 2026-08-25. It was registered to make a second, unrefreshed US
+    # panel visible — "retire it or wire it; leaving it is how the wrong file
+    # gets read". Wiring it was never the answer: nothing needs a second US
+    # panel. So the readers were moved instead, and with the last one gone the
+    # registration had nothing left to protect.
+    #
+    #   financial_ratios.py        repointed 2026-08-19 (live per-ticker OHLC tree)
+    #   us_fundamentals_edgar.py   repointed 2026-08-19; keeps it as a declared
+    #                              last-resort fallback that ANNOUNCES itself on
+    #                              both paths (see _universe_fallback)
+    #   justified_mailer.py        repointed 2026-08-25 (warehouse)
+    #
+    # Registering it was actively counterproductive once no scheduled consumer
+    # read it: ensure_fresh reported it "behind with NO refresher" every single
+    # run, a permanent warning nothing could act on. That is the same alert
+    # fatigue the three dead pre-flight universe gates caused — a line that is
+    # always red is a line nobody reads.
+    #
+    # The FILE is deliberately left on disk: us_fundamentals_edgar.py still
+    # falls back to it, loudly. Delete it only after that fallback goes too.
     for mkt in ("IN", "US", "JP", "KR", "EU"):
         ds.append(Dataset(
             f"warehouse.ohlcv.{mkt}", "prices", mkt,

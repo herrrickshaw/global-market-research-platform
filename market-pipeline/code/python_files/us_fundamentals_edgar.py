@@ -673,9 +673,20 @@ def universe() -> list[str]:
 
 
 def _universe_fallback() -> list[str]:
-    """pandas fallback when duckdb isn't importable in this interpreter."""
+    """pandas fallback when duckdb isn't importable in this interpreter.
+
+    Announces, like the duckdb path above. This read used to be SILENT, which
+    mattered from 2026-08-25: the `cache.ohlcv.US_legacy` catalog entry was
+    retired that day (nothing refreshes the file, and the freshness planner
+    cannot fix what has no writer), so this print is now the ONLY signal that a
+    dead panel is being used. A silent read of an unmaintained file is how the
+    universe quietly stops seeing newly-listed tickers.
+    """
     df = pd.read_parquet(UNIVERSE_PARQUET, columns=["Symbol"])
-    return sorted(df["Symbol"].dropna().unique().tolist())
+    syms = sorted(df["Symbol"].dropna().unique().tolist())
+    print(f"  ! universe from STALE fallback {UNIVERSE_PARQUET.name} "
+          f"({len(syms)} symbols) — no job refreshes this file")
+    return syms
 
 
 def coverage(store: pd.DataFrame) -> None:

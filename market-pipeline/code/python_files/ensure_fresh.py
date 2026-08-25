@@ -277,10 +277,17 @@ def main() -> int:
                     if r["verdict"] in st._BEHIND
                     and (not a.require or r["market"] in a.require)]
     # A dataset with NO refresh command cannot be fixed by anything this tool
-    # does. `cache.ohlcv.US_legacy` is an orphan panel no job writes; reporting
-    # it as "STILL behind" after five successful refreshes — and exiting 1 on it
-    # — makes a clean run look failed, which is how an exit code stops being
-    # read. It is listed separately, as the standing problem it is.
+    # does. Reporting one as "STILL behind" after five successful refreshes —
+    # and exiting 1 on it — makes a clean run look failed, which is how an exit
+    # code stops being read. Orphans are listed separately, as the standing
+    # problems they are.
+    #
+    # The motivating case was `cache.ohlcv.US_legacy`, an orphan US panel no job
+    # wrote. It was RETIRED from the catalog on 2026-08-25 once its last
+    # scheduled reader was repointed, so this split currently matches nothing —
+    # which is the intended end state, not a reason to delete the split. Any
+    # future dataset registered without a writer lands here instead of
+    # corrupting the exit code.
     still = [r for r in behind_after if r.get("refresh")]
     orphaned = [r for r in behind_after if not r.get("refresh")]
 
