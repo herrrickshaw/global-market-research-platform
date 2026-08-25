@@ -51,6 +51,7 @@ from __future__ import annotations
 import argparse
 import datetime as dt
 import json
+import os
 import shlex
 import subprocess
 import tempfile
@@ -135,9 +136,28 @@ def run_step(cmd: str, timeout_s: float) -> dict:
     here in Python. Comparing `time.time()` stamps counts suspended time the way
     an observer does, so the bound now means what it says.
     """
-    argv = shlex.split(cmd)
+    # 🔴 EXPAND `~` — THERE IS NO SHELL HERE. Popen takes an argv list, so a
+    # tilde is a literal directory name and resolves against cwd=HERE. The
+    # `pg.snapshots.*` datasets were registered with
+    # `refresh="python3 ~/scripts/market_ingest.py"`, which every run since has
+    # executed as `.../python_files/~/scripts/market_ingest.py` — Python's
+    # "can't open file", exit 2, in 0.0 min. It has NEVER succeeded, and because
+    # the planner only reports "ran: <cmd>" against a dataset that is still
+    # behind, a command that could not start looked exactly like a refresh that
+    # ran and did not help.
+    argv = [os.path.expanduser(a) for a in shlex.split(cmd)]
     if argv and argv[0].endswith(".py"):
         argv = [PY, "-u"] + argv
+
+    # And say so when the target does not exist, rather than letting the child
+    # report it in an interpreter-specific way that gets truncated to one line
+    # in the mailer log. A refresh command that cannot start is a BUG in the
+    # catalog, not a slow dataset — it must not read as "tried, still behind".
+    _script = next((a for a in argv if a.endswith(".py")), None)
+    if _script and not Path(_script).exists():
+        return {"cmd": cmd, "ok": False, "code": "NOCMD", "secs": 0.0,
+                "tail": [f"refresh command cannot start: no such file: {_script}",
+                         "  fix the `refresh=` string in data_catalog.py"]}
     t0 = time.time()
 
     # 🔴 STDOUT GOES TO A FILE, NOT A PIPE. The first version of this poll loop

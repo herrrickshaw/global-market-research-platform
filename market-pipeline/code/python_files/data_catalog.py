@@ -503,7 +503,12 @@ def _mk(expected: dict[str, dt.date]) -> list[Dataset]:
             f"pg.snapshots.{mkt}", "snapshot", mkt, f"market_daily.snapshots [{PG_LABEL[mkt]}]",
             "derived from scans",
             (lambda m=mkt: _probe_pg_snapshots(m, E(m))),
-            refresh="python3 ~/scripts/market_ingest.py", depends_on=(f"scan.{mkt}",),
+            # Absolute, both halves. `~` never expands (ensure_fresh runs argv
+            # lists, not a shell) and bare `python3` is whatever the caller's
+            # PATH says — homebrew 3.14 under launchd. This is the exact command
+            # daily_pipeline.sh:349 and daily_research.sh:195 already use.
+            refresh=f"/usr/bin/python3 {Path.home()}/scripts/market_ingest.py",
+            depends_on=(f"scan.{mkt}",),
             authority="derived",
             note="Judged by price MOVEMENT — a carried-forward date reports the "
                  "last date that actually moved."))
