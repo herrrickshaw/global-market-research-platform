@@ -109,8 +109,40 @@ if ! mkdir "$LOCKDIR" 2>/dev/null; then
     # pre-empted by a still-running peer is a real no-op, not a lost deliverable.
     # Read the flags off "$@" directly: RUN_DATA/RUN_SEND are not parsed until
     # well after this lock is taken, so testing them here would always be false.
+    #
+    # 🔴 BUT "this send did no work" IS NOT "no brief went out". The two are
+    # different claims and only the second is a failure. On 2026-08-25 a send
+    # started by hand at 05:59 delivered the brief at 06:12 and chained
+    # daily_research.sh, which takes THIS SAME LOCK (daily_research.sh:61) and
+    # held it until 06:37. The 06:30 job therefore hit this branch, announced
+    # SEND LOST for a brief already sitting in the operator's inbox, mailed an
+    # alert about it, and handed launchd exit 75 for a day that had succeeded.
+    #
+    # So check the evidence before crying. state/last_brief_sent.json is written
+    # by send_mailer.py after a successful send and is the authoritative record
+    # (send_alert.py:44 re-checks the same file for the same reason). A brief
+    # dated today means this run is a redundant peer, not a lost deliverable:
+    # say so, stay quiet, exit 0. Only a genuinely missing brief escalates.
     case " $* " in
       *" --send "*)
+        _sent_subject="$("$PY" - <<'EOF' 2>/dev/null
+import datetime as dt, json, pathlib, sys
+m = pathlib.Path("state/last_brief_sent.json")
+try:
+    d = json.loads(m.read_text())
+    if dt.datetime.fromisoformat(d["sent_at"]).date() == dt.date.today():
+        sys.stdout.write("%s|%s" % (d["sent_at"], d.get("subject", "")[:60]))
+except Exception:
+    pass
+EOF
+)"
+        if [ -n "$_sent_subject" ]; then
+          echo "  ✅ not a lost send — a brief for $(date +%F) already went out at"
+          echo "     ${_sent_subject%%|*} ('${_sent_subject#*|}')."
+          echo "     The lock is held by pid $_owner (the research chain that send"
+          echo "     started). Nothing to re-run, no alert sent."
+          exit 0
+        fi
         echo "  🔴 SEND LOST — the brief for $(date +%F) did NOT go out. The lock"
         echo "     was held by pid $_owner, so this send did no work. Re-run once"
         echo "     that finishes:  ./daily_mailer.sh --send"

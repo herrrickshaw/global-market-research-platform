@@ -74,6 +74,15 @@ def _brief_actually_sent_since(when: _dt.datetime | None = None):
     return d if ts.date() == _dt.date.today() else None
 
 
+# Every phrasing this codebase uses to claim the brief did not go out. Matching
+# on "NOT SENT" alone was too literal: the lock branch in daily_mailer.sh says
+# "send lost: ... no brief for <date>", which asserts exactly the same thing and
+# so needs exactly the same re-check — but missed this filter and mailed a false
+# alarm on 2026-08-25 for a brief that had been delivered 18 minutes earlier.
+# Add a phrase here whenever a new caller learns to claim the brief was lost.
+_BRIEF_LOST_CLAIMS = ("NOT SENT", "SEND LOST", "NO BRIEF")
+
+
 def reconcile_failures(failed_steps: list) -> tuple[list, list]:
     """Split recorded failures into (still true, resolved since being recorded)."""
     sent = _brief_actually_sent_since()
@@ -81,7 +90,7 @@ def reconcile_failures(failed_steps: list) -> tuple[list, list]:
         return list(failed_steps), []
     live, resolved = [], []
     for s in failed_steps:
-        if "NOT SENT" in s.upper():
+        if any(c in s.upper() for c in _BRIEF_LOST_CLAIMS):
             resolved.append(f"{s}  ->  RESOLVED: a brief WAS sent at "
                             f"{sent['sent_at']} ('{sent['subject'][:60]}')")
         else:
