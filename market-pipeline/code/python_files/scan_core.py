@@ -21,6 +21,19 @@ from __future__ import annotations
 
 import pandas as pd
 
+# Imported for effect, once, on behalf of all five scans. Every one of them
+# runs a ThreadPoolExecutor against yfinance's shared SQLite caches, which
+# yfinance builds with no busy_timeout — so a lock collision fails instantly
+# rather than waiting, and 564-719 US tickers per run surfaced as
+# OperationalError('unable to open database file'). See yf_sqlite_tuning.py for
+# the measurement. This is the one file all five scans already import, so
+# tuning here needs no change at any call site. It never raises.
+try:
+    import yf_sqlite_tuning as _yf_tuning
+    _yf_tuning.apply()
+except Exception:                                              # noqa: BLE001
+    pass
+
 DARVAS_CONFIRM = 3   # consecutive bars a high/low must hold to confirm a box edge
 
 
