@@ -55,12 +55,26 @@ def main() -> int:
             check(f"dir writable: {name}", False, f"{p}: {e}")
 
     # 2 — universe lists non-trivial (a wiped/truncated list = half-empty scan)
+    #
+    # 🔴 GATE ONLY WHAT THE SCANS ACTUALLY READ. This used to also gate
+    # us_list.csv (min 3000), japan_list.csv (min 2000) and korea_list.csv
+    # (min 1500) — three files the daily pipeline does not open:
+    #
+    #   US  → full_us_market_scan.py:136 pulls NASDAQ/NYSE from the NASDAQ
+    #         trader FTP and caches it at us_full_scan/.symbols_cache.json
+    #   JP  → full_japan_market_scan.py:207 build_ticker_universe() (JPX/kabupy)
+    #   KR  → full_korea_market_scan.py:168 build_krx_universe() (FinanceDataReader)
+    #
+    # japan_list.csv and korea_list.csv do not exist on disk at all and
+    # us_list.csv is a 221-byte stub, so all three WARNed on EVERY run while
+    # the scans they supposedly guarded covered 5,852 / 2,930 / 2,537 names
+    # normally. A gate that always fires is worse than no gate: it trains the
+    # operator to skim past the pre-flight block, which is where a REAL input
+    # failure would appear. (Those CSVs are written by run_app.sh for the web
+    # app — a different consumer with its own lifecycle. Do not re-add them.)
     UNIVERSES = {  # file → minimum sane rows
-        HERE / "data" / "us_list.csv": 3000,
-        HERE / "data" / "japan_list.csv": 2000,
-        HERE / "data" / "korea_list.csv": 1500,
-        HERE / "data" / "nse_equity_list.csv": 1500,
-        HERE / "data" / "europe_broad_list.csv": 500,
+        HERE / "data" / "nse_equity_list.csv": 1500,   # watchlist_repair.py:87
+        HERE / "data" / "europe_broad_list.csv": 500,  # EU scan --universe arg
     }
     for f, min_rows in UNIVERSES.items():
         if not f.exists():
@@ -72,6 +86,25 @@ def main() -> int:
                   warn_only=n > 0)   # tiny-but-present = warn; empty = fail
         except OSError as e:
             check(f"universe: {f.name}", False, str(e))
+
+    # 2b — the US universe the scan DOES read. Absent is fine and not reported:
+    # the scan refetches from the FTP on a miss or once SYMBOL_CACHE_TTL (24h)
+    # expires. The failure this catches is the one the dead us_list.csv gate was
+    # aiming at — a cache present but truncated, which silently scans a handful
+    # of names and still writes a workbook that looks like a full run.
+    import json
+    uscache = HERE / "us_full_scan" / ".symbols_cache.json"
+    if uscache.exists():
+        try:
+            d = json.loads(uscache.read_text())
+            n = len(d.get("nasdaq", [])) + len(d.get("nyse", []))
+            check("universe: US symbol cache", n >= 5000,
+                  f"{n} symbols (min 5000)", warn_only=n > 0)
+        except (OSError, ValueError) as e:
+            # Unreadable is worth a warn: the scan will refetch, but a corrupt
+            # cache means whatever wrote it failed halfway.
+            check("universe: US symbol cache", False, f"unreadable: {e}",
+                  warn_only=True)
 
     # 3 — bhavcopy store freshness (India scans read it directly)
     try:
