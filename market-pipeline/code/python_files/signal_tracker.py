@@ -35,6 +35,30 @@ WHAT COUNTS AS A PASS
     signal_tracker.py --record        # stamp today's passes (idempotent)
     signal_tracker.py --report        # performance since each signal date
     signal_tracker.py --report --min-days 21
+
+🔴 --min-days IS this script's embargo, whether or not it was named that.
+2026-08-23 research (4 agents; research/LITERATURE_REGISTER.md "CPCV / embargo"
+section) found no single literature formula for embargo length, but multiple
+sources argue the theoretically-motivated minimum is embargo >= the horizon
+being evaluated (purge_embargo.py implements the precise version of this for
+train/test/val splits — a different situation from this script, see below).
+
+This script does NOT report fixed horizon columns (T+1d/T+1mo/etc, unlike
+backtest_screeners.py's HORIZONS table) — each entry's return is measured from
+signal_date to WHATEVER today's last panel bar is, so "days held" varies per
+entry and grows without bound as an entry ages. There is no train/test split
+here for purge_embargo.py's machinery to apply to directly. The embargo idea
+still applies, just differently: --min-days is a floor on how much price
+history an entry needs before its single as-of-today return is stable enough
+to be worth aggregating, not a boundary between two label windows. A low
+--min-days (the CLI example above uses 21) mixes very-fresh, noisy entries in
+with mature ones inside the same "med ret" statistic — the "med days" column
+`report()` prints alongside every result exists so the READER can judge that,
+but the aggregate itself does not separate them. If this ledger's output is
+ever consumed as an INPUT to a decision (e.g. weighting which screener to
+trust more), raise --min-days for that specific use well past 21 (the report
+already prints the oldest-entry age and a per-filter breakdown so an
+appropriate floor can be chosen from real data, not guessed).
 """
 
 from __future__ import annotations
@@ -58,8 +82,22 @@ LEDGER = HERE / "cache_seed" / "signal_ledger.parquet"
 # reads pull in every file present, so a stray year=YYYY.parquet.bak or .tmp is
 # loaded as a second copy of that year and every bar in it silently doubles.
 # That is exactly what happened to 2026 (fixed in warehouse_update.py 2026-07-31).
+# 🔴 INDIA READS THE ADJUSTED PANEL, NOT THE RAW ONE. India is the only market
+# with a real corporate-actions feed behind it, so price_adjuster.py can adjust
+# the WHOLE panel (ohlcv_adj/IN) rather than patch a handful of symbols. Reading
+# ohlcv/IN here instead meant every split and bonus printed as a crash: on
+# 2026-08-25 trailing_returns.py reported hundreds of Indian names past ±90%,
+# and warehouse_paths.ohlcv_adj_in() carries the same warning for exactly this
+# reason — a consumer reaching for the raw panel must not silently get it.
+#
+# The raw panel stays raw ON PURPOSE: it is price_adjuster.py's INPUT, and
+# adjusting it in place double-applies every factor on the next ingest.sh run.
+# Fix consumers to read the adjusted panel; never "fix" the raw one.
+#
+# US keeps the raw panel because no adjusted panel exists for it — the global
+# adjuster ships corrected_symbols.parquet, a patch overlay, not partitions.
 PANELS = {
-    "IN": _wh.market("IN"),
+    "IN": _wh.ohlcv_adj_in(),
     "US": _wh.market("US"),
 }
 

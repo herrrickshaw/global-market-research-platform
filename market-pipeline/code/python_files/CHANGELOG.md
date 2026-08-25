@@ -2,6 +2,48 @@
 
 Decisions and material changes to the pipeline, newest first.
 
+## 2026-08-25 — India reverted: the raw panel is an INPUT, and the fix was a reader
+
+Same-day correction to the entry below. That change adjusted splits in the raw
+`ohlcv/` panels of all five markets. For India that was wrong, and the trace
+that found it is worth keeping.
+
+India is the only market with a real corporate-actions feed, so
+`price_adjuster.py` adjusts the WHOLE panel: it reads raw `ohlcv/IN`, applies
+`adjustment_factors.parquet`, and writes `ohlcv_adj/IN` (`ingest.sh` [7b/7]).
+**The raw panel is that script's INPUT.** Adjusting it in place meant the next
+ingest would apply every factor a second time — measured: **244 of 282 India
+events collided with the same event** in the factor table, same symbol, same
+ex_date, my applied ratio exactly equal to its `factor`. Nothing was corrupted
+(`ohlcv_adj/IN` had been built at 00:19, before the repair), and `ingest.sh` is
+not in crontab, so this was caught in the window.
+
+- **DECISION: fix the CONSUMER, never the raw panel.** `signal_tracker.PANELS`
+  pointed India at `ohlcv/IN`, so every split and bonus printed as a crash —
+  which is what produced the original symptom. `warehouse_paths.ohlcv_adj_in()`
+  already carried that exact warning. India now reads `ohlcv_adj/IN`; the raw
+  panel is restored byte-for-byte from the pre-write backups (verified: 0
+  differing bars, the 549 raw discontinuities back, which is CORRECT — raw is
+  meant to be raw).
+- **The corporate-actions feed beats yfinance on India, decisively.** The two
+  worst weekly moves in the India watchlist were KIRLPNU -52.45% and
+  TDPOWERSYS -49.63%. Both are 1:2 face-value splits (ex 08-18 and 08-24) that
+  the NSE/BSE feed carries and yfinance does not — the yfinance-based repair
+  missed both, while the adjusted panel handles them. India names past ±50% in
+  a week went 1 -> 0, past ±25% went 7 -> 5. The feed also carries 414 bonus
+  events, a class yfinance routinely omits.
+- **US/JP/KR/EU keep the raw-panel repair.** No adjusted panel exists for them —
+  `price_adjuster_global.py` ships `corrected_symbols.parquet`, a patch overlay
+  covering 8 symbols. **KNOWN OVERLAP, not yet resolved:** 5 symbols (HCWB, MQ,
+  SVC, 7946.T, 408900.KQ) appear in both that patch and the repair, so a
+  consumer overlaying the patch on the repaired raw panel double-corrects them.
+  The repair's 183 symbols are far more complete than the patch's 8; the clean
+  resolution is to move that detection into `price_adjuster_global.py` so it
+  writes a patch instead of touching partitions.
+- **Schema note:** `ohlcv_adj/IN` carries an extra `adj_factor` column. Every
+  `_panel()` call site passes an explicit `columns=`, so this is inert — but a
+  future caller that omits it will see the extra column.
+
 ## 2026-08-25 — append-only ingest was reporting split ratios as returns
 
 `trailing_returns.py` flagged CISS at **+4,293.94% over one week**. CISS did a
