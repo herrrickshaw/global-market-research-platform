@@ -17,10 +17,16 @@ async def upload_csv(market: str, file: UploadFile = File(...)):
         if file.filename and (file.filename.endswith('.xlsx') or file.filename.endswith('.xls')):
             df = await run_in_threadpool(pd.read_excel, io.BytesIO(content))
         else:
+            # Offloaded for the same reason as the .xlsx branch above: inside an
+            # `async def` a bare pd.read_csv holds the event loop for the whole
+            # parse, so one big upload stalls every other in-flight request —
+            # health checks and live-scan polls included. The Excel path and
+            # normalize_columns were already offloaded; this branch was missed.
             try:
-                df = pd.read_csv(io.BytesIO(content))
+                df = await run_in_threadpool(pd.read_csv, io.BytesIO(content))
             except Exception:
-                df = pd.read_csv(io.BytesIO(content), encoding='latin-1')
+                df = await run_in_threadpool(pd.read_csv, io.BytesIO(content),
+                                             encoding='latin-1')
     except Exception as exc:
         raise HTTPException(status_code=400, detail=f"Failed to parse file: {exc}")
 
