@@ -65,6 +65,62 @@ def _tv(x):
     return f"${x / 1e6:.1f}M" if pd.notna(x) else "—"
 
 
+# ── CMP (current market price) ────────────────────────────────────────────────
+# Every per-name table carries the price, so a reader deciding whether a pick is
+# worth a look does not have to leave the brief to find out what it costs.
+#
+# Priced in LOCAL currency, because that is what the source scan stores and
+# converting would invent precision the FX snapshot does not have.
+_CCY = {"IN": "₹", "US": "$", "EU": "€", "JP": "¥", "KR": "₩", "CN": "¥",
+        "HK": "HK$", "TW": "NT$", "CA": "C$", "AU": "A$", "UK": "£",
+        "DE": "€", "FR": "€", "NL": "€", "ES": "€", "IT": "€", "FI": "€",
+        "CH": "CHF ", "SE": "kr", "NO": "kr", "DK": "kr", "SG": "S$",
+        "BR": "R$", "ZA": "R", "MX": "MX$", "ID": "Rp", "TH": "฿"}
+
+
+def _cmp(x, market: str = "IN") -> str:
+    """Format a price for display. Thousands separator, 2dp under 1000."""
+    try:
+        v = float(x)
+    except (TypeError, ValueError):
+        return "—"
+    if not pd.notna(v) or v <= 0:
+        return "—"
+    sym = _CCY.get(str(market).upper(), "")
+    return f"{sym}{v:,.2f}" if v < 1000 else f"{sym}{v:,.0f}"
+
+
+_CMP_CACHE: dict[str, dict] = {}
+
+
+def _cmp_lookup(market: str) -> dict:
+    """{SYMBOL -> last price} from the market's latest scan workbook.
+
+    For the tables whose own source carries no price (CCC, news picks, talk on
+    the street) — those name a stock without saying what it trades at, which is
+    the first thing a reader wants. Read once per market per build.
+    """
+    mkt = str(market).upper()
+    if mkt in _CMP_CACHE:
+        return _CMP_CACHE[mkt]
+    out: dict = {}
+    try:
+        import signal_tracker as ST
+        d, pat = ST.SCAN_DIRS[mkt]
+        f = ST._latest(d, pat)
+        if f:
+            s = pd.read_excel(f, "All_Stocks")
+            sym_col = "Code" if mkt in ("JP", "KR") else "Symbol"
+            price_col = {"KR": "LTP_KRW", "JP": "LTP_JPY"}.get(mkt, "LTP")
+            if sym_col in s.columns and price_col in s.columns:
+                out = dict(zip(s[sym_col].astype(str).str.upper(),
+                               pd.to_numeric(s[price_col], errors="coerce")))
+    except Exception:                                          # noqa: BLE001
+        out = {}
+    _CMP_CACHE[mkt] = out
+    return out
+
+
 def _coverage_scope_note() -> str:
     """State WHY the brief covers two markets, rather than letting three vanish.
 
@@ -161,11 +217,14 @@ def _news_rows(market: str, top: int = None):
         picks = npk.news_picks(market, top=top)
     except Exception:
         return []
+    px = _cmp_lookup(market)
     rows = []
     for p in picks:
         rows.append(
             f"<tr><td style='padding:4px 8px'><b>{p['symbol']}</b></td>"
             f"<td>{p['name']}</td>"
+            f"<td style='white-space:nowrap'>"
+            f"{_cmp(px.get(str(p['symbol']).upper()), market)}</td>"
             f"<td style='color:{_SENT_COL.get(p['label'], '#777')};font-weight:600'>{p['label']} ({p['score']:+.2f})</td>"
             f"<td>{p['mentions']}</td>"
             f"<td class='mut' style='color:#555'>{p['headline']}</td></tr>"
@@ -257,6 +316,7 @@ def _market_picks_rows(data: dict, market: str, cap: int = None):
                if _safe_int(r.get("N_Value")) else "<td style='color:#ccc'>·</td>")
         rows.append(
             f"<tr><td style='padding:4px 8px'><b>{r.Symbol}</b></td>"
+            f"<td style='white-space:nowrap'>{_cmp(r.get('LTP'), market)}</td>"
             f"{_conv_cell(r.get('N_Fund'))}"
             f"{_slots_cell(fund, r.get('N_Fund'))}"
             f"{val}"
@@ -381,26 +441,48 @@ def _convergence_note(data: dict) -> str:
                 "Convergence unavailable — this report predates the 4-screener "
                 "ladder.</p>")
     n_mf = sum(1 for p in picks if _safe_int(p.get("N_Value")))
-    mono = "font-family:ui-monospace,Menlo,monospace"
+    mono = "font-family:ui-monospace,Menlo,monospace;letter-spacing:1px"
     dist = " &middot; ".join(
         f"<b style='color:{_CONV_COL[lv]}'>{lv}/3</b> {counts.get(lv, 0)}"
         for lv in (3, 2, 1))
-    return ("<p class='mut' style='font-size:11px;margin:2px 0;color:#666'>"
-            "<b>Convergence</b> = how many of the three <b>quality</b> screeners "
-            "agree — all three judge the business from its financials with no "
-            "reference to price — read left to right as "
-            f"<b style='{mono}'>P</b>iotroski "
-            f"<b style='{mono}'>C</b>offee&nbsp;Can "
-            f"<b style='{mono}'>B</b>ull&nbsp;Cartel "
-            "(<span style='color:#ccc'>·</span> = did not pass). "
-            "<b style='color:#6a1b9a'>MF ✓</b> (Magic Formula) is kept in its own "
-            "column because it gates on <i>earnings yield</i> — it asks whether a "
-            "name is <b>cheap</b>, not whether it is <b>good</b>, so it is not a "
-            "fourth vote. Technical screens are separate for the same reason. "
-            f"Today: {dist} &middot; <b style='color:#6a1b9a'>MF ✓</b> {n_mf}.</p>")
+
+    def _row(key: str, text: str) -> str:
+        return (f"<tr><td style='padding:1px 10px 1px 0;white-space:nowrap;"
+                f"vertical-align:top'>{key}</td>"
+                f"<td style='padding:1px 0;vertical-align:top'>{text}</td></tr>")
+
+    # A keyed legend rather than a prose sentence: the reader meets P C B in the
+    # table and needs to decode it at a glance, which a paragraph does not allow.
+    return (
+        "<div class='mut' style='font-size:11px;color:#555;background:#f6f8fc;"
+        "border-left:3px solid #1a73e8;padding:6px 9px;margin:4px 0 12px'>"
+        "<b>Legend</b>"
+        "<table style='border-collapse:collapse;font-size:11px;margin-top:3px'>"
+        + _row(f"<b style='{mono}'>P&nbsp;C&nbsp;B</b>",
+               "<b>P</b>iotroski &middot; <b>C</b>offee&nbsp;Can &middot; "
+               "<b>B</b>ull&nbsp;Cartel — the three <b>quality</b> screeners. "
+               "<span style='color:#ccc'>·</span> in a slot = that one did not pass.")
+        + _row("<b>Convergence</b>",
+               "how many of those three agree (<b>3/3</b> is full agreement). All "
+               "three judge the <i>business</i> from its financials and never look "
+               "at the share price, so agreement between them is like-for-like.")
+        + _row("<b style='color:#6a1b9a'>MF&nbsp;✓</b>",
+               "<b>Magic Formula</b> — gates on <i>earnings yield</i>, so it asks "
+               "whether a name is <b>cheap</b>, not whether it is <b>good</b>. A "
+               "different question, so it sits in its own column and is <i>not</i> "
+               "a fourth vote.")
+        + _row("<b>Technical</b>",
+               "Darvas / Golden Cross — price-only signals, separate for the same "
+               "reason.")
+        + _row("<b>CMP</b>",
+               "current market price, in local currency, from today's scan.")
+        + _row("<b>Today</b>", f"{dist} &middot; "
+               f"<b style='color:#6a1b9a'>MF ✓</b> {n_mf}")
+        + "</table></div>")
 
 
-def _talk_rows(data: dict, cap: int = 10):
+def _talk_rows(data: dict, cap: int = 10, market: str = "IN"):
+    px = _cmp_lookup(market)
     talk = data.get("talk") or {}
     scored = [
         (s, t)
@@ -413,6 +495,7 @@ def _talk_rows(data: dict, cap: int = 10):
         col = _SENT_COL.get(t.get("label"), "#777")
         rows.append(
             f"<tr><td style='padding:4px 8px'><b>{sym}</b></td>"
+            f"<td style='white-space:nowrap'>{_cmp(px.get(str(sym).upper()), market)}</td>"
             f"<td style='color:{col};font-weight:600'>{t.get('label')}</td>"
             f"<td>{float(t.get('score', 0)):+.2f}</td><td>{t.get('n_articles', 0)}</td></tr>"
         )
@@ -461,11 +544,15 @@ def _ccc_rows(top: int = 12):
     cdf["Market"] = "IN"
     cdf = liq.annotate(cdf)
     cdf = cdf[cdf["Liquidity"].isin(["High", "Medium"])].sort_values("Cash_Cycle").head(top)
+    px = _cmp_lookup("IN")
     rows = []
     for _, r in cdf.iterrows():
         rows.append(
             f"<tr><td style='padding:4px 8px'><b>{r.Symbol}</b></td>"
-            f"<td>{r.get('Name', '')}</td><td>{r.Cash_Cycle:.1f}</td>"
+            f"<td>{r.get('Name', '')}</td>"
+            f"<td style='white-space:nowrap'>"
+            f"{_cmp(px.get(str(r.Symbol).upper()), 'IN')}</td>"
+            f"<td>{r.Cash_Cycle:.1f}</td>"
             f"<td>{r.get('ROCE', '')}</td>"
             f"<td style='color:{_COL.get(r.Liquidity, '#777')};font-weight:600'>{r.Liquidity}</td>"
             # The source is RENDERED, not just recorded. The old code fell back
@@ -834,8 +921,8 @@ def build():
     us_news_rows = _news_rows("US")
 
     # 5. Talk on the Street — per-ticker sentiment for the fundamental picks
-    in_talk_rows = _talk_rows(ind_data)
-    us_talk_rows = _talk_rows(us_data)
+    in_talk_rows = _talk_rows(ind_data, market="IN")
+    us_talk_rows = _talk_rows(us_data, market="US")
 
     # 6. Darvas Breakouts — India / US (always rendered, both markets).
     # The EU section is dropped with the rest of the parked markets above.
@@ -844,9 +931,22 @@ def build():
 
     # 7. Global momentum (top 15 overall)
     allh = rga.load_highlights()
+    # This frame is rebuilt on its own slower cadence and was 58 days behind on
+    # 2026-08-27. Its price column is therefore NOT a current market price, so
+    # the table says "Price*" and the footnote below stamps the actual date —
+    # an unlabelled stale price beside today's CMP is exactly the confusion the
+    # brief's freshness rules exist to prevent.
+    try:
+        _asof = pd.to_datetime(allh["as_of"]).max()
+        _age = (pd.Timestamp.now().normalize() - _asof.normalize()).days
+        _g_asof = (f"{_asof:%d %b %Y}"
+                   + (f" — <b>{_age} days old</b>" if _age > 3 else ""))
+    except Exception:                                          # noqa: BLE001
+        _g_asof = "an unknown date"
     g = allh.head(15)
     g_rows = [
         f"<tr><td style='padding:4px 8px'>{r.Market}</td><td>{r.Symbol}</td>"
+        f"<td style='white-space:nowrap'>{_cmp(r.get('ltp'), r.Market)}</td>"
         f"<td>{r.ret_126:+.0f}</td><td>{r.rsi14}</td></tr>"
         for _, r in g.iterrows()
     ]
@@ -882,7 +982,9 @@ def build():
             r = sub.iloc[0]
             other_rows.append(
                 f"<tr><td style='padding:4px 8px'>{names[m]}</td>"
-                f"<td><b>{r.Symbol}</b></td><td>{r.ret_126:+.0f}%</td>"
+                f"<td><b>{r.Symbol}</b></td>"
+                f"<td style='white-space:nowrap'>{_cmp(r.get('ltp'), m)}</td>"
+                f"<td>{r.ret_126:+.0f}%</td>"
                 f"<td style='color:{_COL.get(r.Liquidity, '#777')};font-weight:600'>{r.Liquidity}</td></tr>"
             )
     except Exception:
@@ -949,32 +1051,33 @@ h3{{font-size:14px;margin:14px 0 6px;color:#333}}
 <h3 style="font-size:13px;margin:12px 0 4px;color:#333">Screener — most tradable</h3>
 {_fund_coverage_note()}
 {_coverage_scope_note()}
-{_table(["Symbol", "Convergence", "P C B", "Value", "Technical", "Turnover", "Liquidity"], ind_picks_rows) if ind_picks_rows else "<p>no picks</p>"}
+{_table(["Symbol", "CMP", "Convergence", "P C B", "Value", "Technical", "Turnover", "Liquidity"], ind_picks_rows) if ind_picks_rows else "<p>no picks</p>"}
 <h3 style="font-size:13px;margin:14px 0 4px;color:#333">Cash Conversion Cycle <span style="font-weight:400;color:#777" class="mut">(screener.in 228040)</span></h3>
 <p style="font-size:11px;color:#666;margin:2px 0">Lowest/negative CCC = collects from customers before paying suppliers.</p>
-{_table(["Symbol", "Name", "CCC days", "ROCE", "Liquidity"], ccc_rows) if ccc_rows else "<p>n/a</p>"}
+{_table(["Symbol", "Name", "CMP", "CCC days", "ROCE", "Liquidity", "Source"], ccc_rows) if ccc_rows else "<p>n/a</p>"}
 {conv_in}
 <h3 style="font-size:13px;margin:14px 0 4px;color:#333">🔥 News picks <span style="font-weight:400;color:#777" class="mut">— buzz, NOT a recommendation</span></h3>
-{_table(["Symbol", "Name", "Sentiment", "Mentions", "Headline"], in_news_rows) if in_news_rows else "<p>n/a</p>"}
+{_table(["Symbol", "Name", "CMP", "Sentiment", "Mentions", "Headline"], in_news_rows) if in_news_rows else "<p>n/a</p>"}
 <h3 style="font-size:13px;margin:14px 0 4px;color:#333">🗞️ Talk on the Street <span style="font-weight:400;color:#777" class="mut">— per-ticker sentiment</span></h3>
-{_table(["Symbol", "Sentiment", "Score", "Articles"], in_talk_rows) if in_talk_rows else "<p class='mut' style='color:#777'>No per-ticker news matches today.</p>"}
+{_table(["Symbol", "CMP", "Sentiment", "Score", "Articles"], in_talk_rows) if in_talk_rows else "<p class='mut' style='color:#777'>No per-ticker news matches today.</p>"}
 {darvas_in}
 
 <h2 style="font-size:16px;border-bottom:2px solid #1a73e8;padding-bottom:3px;margin-top:26px">🇺🇸 US <span style="font-weight:400;color:#666;font-size:13px">— mood {us_mood["mood"]} ({us_mood["score"]:+.2f}) from {us_mood.get("n_articles", 0)} articles</span></h2>
 <h3 style="font-size:13px;margin:12px 0 4px;color:#333">Screener — most tradable</h3>
-{_table(["Symbol", "Convergence", "P C B", "Value", "Technical", "Turnover", "Liquidity"], us_picks_rows) if us_picks_rows else "<p>no picks (run daily_combined_report.py --market US)</p>"}
+{_table(["Symbol", "CMP", "Convergence", "P C B", "Value", "Technical", "Turnover", "Liquidity"], us_picks_rows) if us_picks_rows else "<p>no picks (run daily_combined_report.py --market US)</p>"}
 {conv_us}
 <h3 style="font-size:13px;margin:14px 0 4px;color:#333">🔥 News picks <span style="font-weight:400;color:#777" class="mut">— buzz, NOT a recommendation</span></h3>
-{_table(["Symbol", "Name", "Sentiment", "Mentions", "Headline"], us_news_rows) if us_news_rows else "<p>n/a</p>"}
+{_table(["Symbol", "Name", "CMP", "Sentiment", "Mentions", "Headline"], us_news_rows) if us_news_rows else "<p>n/a</p>"}
 <h3 style="font-size:13px;margin:14px 0 4px;color:#333">🗞️ Talk on the Street</h3>
-{_table(["Symbol", "Sentiment", "Score", "Articles"], us_talk_rows) if us_talk_rows else "<p class='mut' style='color:#777'>No per-ticker news matches today.</p>"}
+{_table(["Symbol", "CMP", "Sentiment", "Score", "Articles"], us_talk_rows) if us_talk_rows else "<p class='mut' style='color:#777'>No per-ticker news matches today.</p>"}
 {darvas_us}
 
 <h2 style="font-size:16px;border-bottom:2px solid #1a73e8;padding-bottom:3px;margin-top:26px">🌍 Global context</h2>
 <h3 style="font-size:13px;margin:12px 0 4px;color:#333">Momentum — top 15 across 20 markets</h3>
-{_table(["Mkt", "Symbol", "6mo %", "RSI"], g_rows)}
+{_table(["Mkt", "Symbol", "Price*", "6mo %", "RSI"], g_rows)}
 <h3 style="font-size:13px;margin:14px 0 4px;color:#333">Other markets — top tradable mover each <span style="font-weight:400;color:#777" class="mut">(≥$1M/day)</span></h3>
-{_table(["Market", "Symbol", "6mo %", "Liquidity"], other_rows) if other_rows else "<p>n/a</p>"}
+{_table(["Market", "Symbol", "Price*", "6mo %", "Liquidity"], other_rows) if other_rows else "<p>n/a</p>"}
+<p class="mut" style="font-size:11px;color:#b8860b;margin:2px 0">* <b>Price is as of {_g_asof}</b>, not today — the global highlights table is rebuilt on its own slower cadence, so these are NOT current market prices and the 6mo % is measured to that date. India and US CMP above are from today's scan.</p>
 <h3 style="font-size:13px;margin:14px 0 4px;color:#333">20-market 5-year scoreboard</h3>
 {_table(["Mkt", "Index", "5y CAGR%", "1y %", "Sharpe"], p_rows)}
 <h3 style="font-size:13px;margin:14px 0 4px;color:#333">💱 Carry-trade FX <span style="font-weight:400;color:#777" class="mut">— the cross-asset channel into JP/KR/IN equities</span></h3>
