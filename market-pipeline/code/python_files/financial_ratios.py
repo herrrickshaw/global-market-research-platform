@@ -96,7 +96,25 @@ MARKETS = {
     # single-account endpoint) → roce/operating_margin/fcf_yield/d-e stay NULL
     # rather than mislabeling total liabilities as debt.
     "korea": (FUND_DIR / "KR_current.parquet", BHAV / "ohlcv_KOREA.parquet",  "KRW"),
+    # Europe: real filed line items from public.global_fundamentals, staged by
+    # build_eu_fundamentals_store.py. The currency here is a PLACEHOLDER — EU is
+    # seven currencies and the store carries a per-row `currency` column that
+    # overrides this (see build_market). Rows whose filing currency disagreed
+    # with their exchange's quoting currency were dropped at store-build time
+    # rather than FX-converted.
+    "europe": (FUND_DIR / "EU_current.parquet", BHAV / "ohlcv_EUROPE.parquet", "EUR"),
 }
+
+# Exchanges that quote in a MINOR unit. LSE prices in pence: a .L close of 277.5
+# is £2.775. Uncorrected, every UK pe/pb comes out 100x too high and the whole
+# UK book reads as absurdly expensive — an error that looks like a finding.
+# Applied to the close before mcap, so pe, pb, mcap_local and fcf_yield are all
+# consistent with the filing currency.
+_PRICE_DIVISOR = {"L": 100.0}
+
+
+def _price_scale(ticker: str) -> float:
+    return _PRICE_DIVISOR.get(str(ticker).rsplit(".", 1)[-1].upper(), 1.0)
 
 
 def _latest_closes(con, path: Path) -> pd.DataFrame:
@@ -111,12 +129,19 @@ def _latest_closes(con, path: Path) -> pd.DataFrame:
         sym = "regexp_extract(filename, '([^/]+)\\.parquet$', 1)"
     else:
         src, sym = f"read_parquet('{path}')", "Symbol"
+    # NULLs are filtered BEFORE the ranking, not after. Ranked first, rn=1 is
+    # the symbol's last CALENDAR bar, so a trailing null close (a holiday, a
+    # halted session, a feed hiccup) made the whole symbol vanish rather than
+    # falling back to its last real trade. On the European panel that was the
+    # difference between 87 symbols and 996 — an 11x loss that presented as
+    # "Europe has no prices" rather than as an error.
     return con.execute(f"""
         SELECT symbol, close, close_date FROM (
             SELECT {sym} AS symbol, Close AS close, CAST(Date AS DATE) AS close_date,
                    row_number() OVER (PARTITION BY {sym} ORDER BY Date DESC) rn
-            FROM {src})
-        WHERE rn = 1 AND close IS NOT NULL
+            FROM {src}
+            WHERE Close IS NOT NULL)
+        WHERE rn = 1
     """).df()
 
 
@@ -161,7 +186,11 @@ def build_market(con, market: str) -> pd.DataFrame:
     rows = []
     for tkr, f in latest.iterrows():
         c = closes.loc[tkr] if tkr in closes.index else None
-        close = float(c["close"]) if c is not None else None
+        close = float(c["close"]) / _price_scale(tkr) if c is not None else None
+        # Per-row currency when the store carries one (Europe); otherwise the
+        # market's single declared currency. Never mixed, never converted.
+        row_ccy = f.get("currency") if "currency" in latest.columns else None
+        row_ccy = ccy if (row_ccy is None or pd.isna(row_ccy)) else str(row_ccy)
         shares = f.get("shares")
         equity = f.get("stockholders_equity")
         ni, rev, assets = f.get("net_income"), f.get("revenue"), f.get("total_assets")
@@ -180,7 +209,7 @@ def build_market(con, market: str) -> pd.DataFrame:
             cap_employed = equity + (debt if (debt is not None and not pd.isna(debt)) else 0)
 
         rows.append({
-            "market": market, "ticker": tkr, "currency": ccy,
+            "market": market, "ticker": tkr, "currency": row_ccy,
             "fy_end": f.get("fy_end"), "source": f.get("source"),
             "close": close,
             "close_date": (c["close_date"] if c is not None else None),
@@ -305,7 +334,7 @@ def main() -> int:
             show_status(df)
         return 0
 
-    print("=== building financial ratios (india + us) ===")
+    print("=== building financial ratios (india + us + korea + europe) ===")
     df = build(con)
     if df.empty:
         print("no store data — run the off-hours collectors first")
