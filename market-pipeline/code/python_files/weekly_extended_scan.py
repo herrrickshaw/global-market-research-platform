@@ -87,6 +87,28 @@ def run_market(market: str, do_update: bool = True) -> int:
         print(f"[{market}] no data available — skipped")
         return 0
 
+    # Did the refresh actually land? The 2026-08-23 run reported success for all
+    # 15 Tier 3 markets and moved none of them: kit.update() sized its fetch
+    # window off max(last_bar), one lucky symbol said 2 days, it asked for 5
+    # days of history to fill a 23-day hole, and every market "succeeded".
+    # Nothing compared the result against the calendar, so the panels sat at
+    # 2026-07-31 for four weeks while the log read clean every Sunday.
+    #
+    # MEDIAN, never max — the median is the panel, the max is one symbol.
+    try:
+        lasts = sorted(d.index[-1] for d in data.values() if len(d))
+        if lasts:
+            med = lasts[len(lasts) // 2]
+            age = (pd.Timestamp.today().normalize() - med).days
+            mark = "🔴 STALE" if age > 10 else "✅"
+            print(f"[{market}] freshness: median last bar {med:%Y-%m-%d} "
+                  f"({age}d) across {len(lasts)} symbols  {mark}")
+            if age > 10:
+                print(f"[{market}] refresh did NOT land — panel is still {age} "
+                      f"days behind after update()", file=sys.stderr)
+    except Exception as e:                                     # noqa: BLE001
+        print(f"[{market}] freshness check failed: {e}", file=sys.stderr)
+
     try:
         signals_df = kit.screen("darvas", market)
         darvas_signals = dict(zip(signals_df["Symbol"], signals_df.get("Note", "BREAKOUT_BUY")))

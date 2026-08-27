@@ -136,11 +136,23 @@ def update(market: str, verbose: bool = True) -> dict:
     base = load(market)
     if not base:
         return {"market": market, "error": "no seed; run a full fetch first"}
-    last = max((d.index[-1] for d in base.values() if len(d)), default=None)
+    # MEDIAN last bar, never the max. The max is one lucky symbol: on
+    # 2026-08-23 the Tier 3 panels had a handful of names carrying bars to
+    # 08-21 while the other ~95% stopped at 07-31, so max() computed a 2-day
+    # gap, chose period="5d", and asked yfinance for five days of history to
+    # fill a three-and-a-half-week hole. Every market "succeeded" and none of
+    # them caught up, week after week. The median tracks the bulk of the panel,
+    # which is what actually needs refetching.
+    _lasts = sorted(d.index[-1] for d in base.values() if len(d))
+    last = _lasts[len(_lasts) // 2] if _lasts else None
     period = "1mo"
     if last is not None:
         gap = (pd.Timestamp.today().normalize() - last).days
-        period = "5d" if gap <= 7 else ("1mo" if gap <= 35 else "3mo")
+        # Ladder widened at the top: a gap past ~5 weeks needs more than 3mo of
+        # context for clean_ohlcv to stitch, and over-fetching costs one request
+        # of the same size, while under-fetching leaves the hole for next week.
+        period = ("5d" if gap <= 7 else "1mo" if gap <= 25
+                  else "3mo" if gap <= 80 else "6mo")
     if verbose:
         print(f"  update {market}: {len(base)} symbols, last bar {None if last is None else last.date()}, fetching {period}")
     fresh = multi_fetch(list(base.keys()), order=("yahoo", "stooq"),
@@ -167,7 +179,13 @@ def update(market: str, verbose: bool = True) -> dict:
             # single fresh bar in any run before this fix.
             cleaned = clean_ohlcv(df, ticker=sym, min_bars=1)
             df = cleaned if cleaned is not None else df
-            if len(df) > len(old):
+            # Count by LAST DATE, not row count. clean_ohlcv can drop bad bars,
+            # so a symbol that gained three fresh sessions and lost four dirty
+            # ones ends up no longer and was counted as unchanged. The SG
+            # refresh on 2026-08-27 moved every symbol from 07-31 to 08-27 and
+            # still reported "0 symbols got new bars" — a real refresh that read
+            # as a no-op.
+            if len(df) and (not len(old) or df.index[-1] > old.index[-1]):
                 updated += 1
         g = df.reset_index(); g.columns = ["Date", "Open", "High", "Low", "Close", "Volume"]
         for c in ("Open", "High", "Low", "Close"):

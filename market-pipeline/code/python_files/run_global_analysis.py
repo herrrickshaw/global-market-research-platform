@@ -53,10 +53,13 @@ def analyse(markets=None, top_per_market: int = 5, verbose: bool = True,
         data = kit.load(m, min_turnover_usd)
         if not data:
             continue
-        try:
-            asof[m] = max(d.index[-1] for d in data.values() if len(d))
-        except ValueError:
-            pass
+        # MEDIAN, not max — same reason screener_kit.update() uses the median:
+        # a handful of symbols carrying one recent bar must not certify a panel
+        # whose bulk is weeks behind. Using max here reported SG as 13 days old
+        # on 2026-08-27 when the median (and every SG blue chip) sat at 27.
+        _l = sorted(d.index[-1] for d in data.values() if len(d))
+        if _l:
+            asof[m] = _l[len(_l) // 2]
         stocks = [StockData(s, m, ohlcv=d) for s, d in data.items()]
         darvas = kit.screen("darvas", m, min_turnover_usd=min_turnover_usd)
         gcross = kit.screen("golden_crossover", m, min_turnover_usd=min_turnover_usd)
