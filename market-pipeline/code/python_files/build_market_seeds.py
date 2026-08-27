@@ -50,6 +50,71 @@ def _market_of(fname: str) -> str | None:
     return SUFFIX_MARKET.get(suf, SUFFIX_MARKET.get(None) if suf is None else None)
 
 
+# The per-ticker ohlc/ cache holds US tickers only (they carry no yfinance
+# suffix), so _market_of() can never infer JP/KR/EU from it and those markets
+# got no seed. screener_kit._live_path() then fell back to the committed
+# cache_seed/ starter kit and served JUNE data to every global-momentum table
+# without saying so — the whole reason run_global_analysis was 58 days stale on
+# 2026-08-27.
+#
+# Those three markets DO have current data, written daily by the pipeline as
+# whole-market panels under a different filename convention, already in this
+# exact schema (Date/Open/High/Low/Close/Volume/Symbol). Converting them is a
+# rename plus a dtype pass, so they are folded into the same build.
+PANEL_SOURCES = {
+    "JP": "ohlcv_JAPAN.parquet",
+    "KR": "ohlcv_KOREA.parquet",
+    "EU": "ohlcv_EUROPE.parquet",
+}
+
+
+def _build_from_panels(out: Path, cutoff: pd.Timestamp, verbose: bool) -> dict:
+    """cleaned_long_<MKT>.parquet for markets that arrive as whole-market panels."""
+    import os
+    src_dir = Path(os.environ.get(
+        "BHAV_CACHE", Path.home() / "market-pipeline" / "data" / "bhavcopy_cache"))
+    summary = {}
+    for mkt, fname in PANEL_SOURCES.items():
+        p = src_dir / fname
+        if not p.exists():
+            if verbose:
+                print(f"  {mkt}: no panel at {p.name} — skipped")
+            continue
+        try:
+            d = pd.read_parquet(p)
+        except Exception as e:                                 # noqa: BLE001
+            if verbose:
+                print(f"  {mkt}: unreadable panel ({type(e).__name__}) — skipped")
+            continue
+        need = {"Date", "Open", "High", "Low", "Close", "Volume", "Symbol"}
+        if not need.issubset(d.columns):
+            if verbose:
+                print(f"  {mkt}: panel schema mismatch — skipped")
+            continue
+        d = d.copy()
+        d["Date"] = pd.to_datetime(d["Date"], errors="coerce")
+        d = d[d["Date"] >= cutoff].dropna(subset=["Date", "Close"])
+        if d.empty:
+            if verbose:
+                print(f"  {mkt}: panel has no bars after cutoff — skipped")
+            continue
+        for c in ("Open", "High", "Low", "Close"):
+            d[c] = pd.to_numeric(d[c], errors="coerce").astype("float32")
+        d["Volume"] = pd.to_numeric(d["Volume"], errors="coerce").fillna(0).astype("int64")
+        d = d[["Date", "Open", "High", "Low", "Close", "Volume", "Symbol"]]
+        d = d.sort_values(["Symbol", "Date"])
+        path = out / f"cleaned_long_{mkt}.parquet"
+        d.to_parquet(path, compression="zstd", compression_level=9, index=False)
+        mb = path.stat().st_size / 1e6
+        summary[mkt] = {"symbols": d["Symbol"].nunique(), "rows": len(d),
+                        "MB": round(mb, 1), "file": path.name,
+                        "max_date": str(d["Date"].max().date())}
+        if verbose:
+            print(f"  {mkt}: {summary[mkt]['symbols']:>5} symbols, {len(d):>8,} rows "
+                  f"→ {path.name} ({mb:.1f} MB, to {summary[mkt]['max_date']})")
+    return summary
+
+
 def build(days: int = 400, out: Path = SEED_DIR, verbose: bool = True) -> dict:
     if not OHLC_DIR.exists():
         raise FileNotFoundError(f"{OHLC_DIR} not found")
@@ -101,6 +166,8 @@ def build(days: int = 400, out: Path = SEED_DIR, verbose: bool = True) -> dict:
         if verbose:
             print(f"  {mkt}: {summary[mkt]['symbols']:>5} symbols, "
                   f"{len(long):>8,} rows → {path.name} ({mb:.1f} MB)")
+
+    summary.update(_build_from_panels(out, cutoff, verbose))
     return summary
 
 

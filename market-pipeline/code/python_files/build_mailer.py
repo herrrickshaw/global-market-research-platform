@@ -936,13 +936,33 @@ def build():
     # the table says "Price*" and the footnote below stamps the actual date —
     # an unlabelled stale price beside today's CMP is exactly the confusion the
     # brief's freshness rules exist to prevent.
+    # The COLUMN LABEL follows the data. When the highlights are current the
+    # column is CMP like every other table; when they lag it becomes Price* and
+    # earns a warning. A fixed "Price*" would keep crying stale after the
+    # refresh was fixed, and a fixed "CMP" is how a 58-day-old price got
+    # presented as current in the first place.
     try:
         _asof = pd.to_datetime(allh["as_of"]).max()
         _age = (pd.Timestamp.now().normalize() - _asof.normalize()).days
-        _g_asof = (f"{_asof:%d %b %Y}"
-                   + (f" — <b>{_age} days old</b>" if _age > 3 else ""))
     except Exception:                                          # noqa: BLE001
-        _g_asof = "an unknown date"
+        _asof, _age = None, 999
+    _g_stale = _age > 3
+    _g_hdr = "Price*" if _g_stale else "CMP"
+    if _asof is None:
+        _g_note = ('<p class="mut" style="font-size:11px;color:#b8860b;margin:2px 0">'
+                   '* Price date unknown — the global highlights carry no as_of '
+                   'stamp. Treat these as indicative, not current.</p>')
+    elif _g_stale:
+        _g_note = ('<p class="mut" style="font-size:11px;color:#b8860b;margin:2px 0">'
+                   f'* <b>Price is as of {_asof:%d %b %Y} — {_age} days old</b>, not '
+                   'today. These are NOT current market prices and the 6mo % is '
+                   'measured to that date. India and US CMP above are from today\'s '
+                   'scan.</p>')
+    else:
+        _g_note = ('<p class="mut" style="font-size:11px;color:#666;margin:2px 0">'
+                   f'Prices as of {_asof:%d %b %Y}, local currency. Markets close '
+                   'on different days, so a market’s row is stamped to its own last '
+                   'session.</p>')
     g = allh.head(15)
     g_rows = [
         f"<tr><td style='padding:4px 8px'>{r.Market}</td><td>{r.Symbol}</td>"
@@ -1074,10 +1094,10 @@ h3{{font-size:14px;margin:14px 0 6px;color:#333}}
 
 <h2 style="font-size:16px;border-bottom:2px solid #1a73e8;padding-bottom:3px;margin-top:26px">🌍 Global context</h2>
 <h3 style="font-size:13px;margin:12px 0 4px;color:#333">Momentum — top 15 across 20 markets</h3>
-{_table(["Mkt", "Symbol", "Price*", "6mo %", "RSI"], g_rows)}
+{_table(["Mkt", "Symbol", _g_hdr, "6mo %", "RSI"], g_rows)}
 <h3 style="font-size:13px;margin:14px 0 4px;color:#333">Other markets — top tradable mover each <span style="font-weight:400;color:#777" class="mut">(≥$1M/day)</span></h3>
-{_table(["Market", "Symbol", "Price*", "6mo %", "Liquidity"], other_rows) if other_rows else "<p>n/a</p>"}
-<p class="mut" style="font-size:11px;color:#b8860b;margin:2px 0">* <b>Price is as of {_g_asof}</b>, not today — the global highlights table is rebuilt on its own slower cadence, so these are NOT current market prices and the 6mo % is measured to that date. India and US CMP above are from today's scan.</p>
+{_table(["Market", "Symbol", _g_hdr, "6mo %", "Liquidity"], other_rows) if other_rows else "<p>n/a</p>"}
+{_g_note}
 <h3 style="font-size:13px;margin:14px 0 4px;color:#333">20-market 5-year scoreboard</h3>
 {_table(["Mkt", "Index", "5y CAGR%", "1y %", "Sharpe"], p_rows)}
 <h3 style="font-size:13px;margin:14px 0 4px;color:#333">💱 Carry-trade FX <span style="font-weight:400;color:#777" class="mut">— the cross-asset channel into JP/KR/IN equities</span></h3>

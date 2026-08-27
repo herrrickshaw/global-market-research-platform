@@ -135,6 +135,28 @@ NOTES=()
   # and by this point in the run each market's ohlcv_cache is warm from the
   # scans above, so this step is mostly local cache reads plus a small re-seed
   # for symbols still lagging — not four markets' worth of fresh yfinance load.
+  # Placed HERE, immediately after [R1-R3], because those scans are what write
+  # the ohlcv_{JAPAN,KOREA,EUROPE} panels this reads. Rebuilding the per-market
+  # seeds then re-running the global momentum highlights is what keeps the
+  # brief's "Price*" column current.
+  #
+  # Nothing scheduled run_global_analysis.py before 2026-08-27, so it had last
+  # run on 2026-06-30 and every global-momentum row in the brief was 58 days
+  # old. It failed silently rather than loudly because screener_kit._live_path()
+  # falls back to the committed cache_seed/ starter kit when a market's live
+  # cache is missing, and US/JP/KR/EU had no live cache at all — so a stale
+  # answer always existed and nothing ever errored.
+  step "[R3b] global seeds + momentum highlights refresh"
+  # --out must be the LIVE cache, never cache_seed/. Writing to cache_seed
+  # would overwrite the committed starter kit and leave the live cache still
+  # empty, so _live_path() would keep falling back — the bug would look fixed
+  # for one run and silently return.
+  $PY build_market_seeds.py --days 400 \
+      --out "${BHAV_CACHE:-$HOME/market-pipeline/data/bhavcopy_cache}" \
+    || { echo "  global seed rebuild failed (continuing)"; NOTES+=("R3b: seed rebuild"); }
+  $PY run_global_analysis.py \
+    || { echo "  global highlights failed (continuing)"; NOTES+=("R3b: highlights"); }
+
   step "[R4] correlation scans (NSE · Europe · Japan · Korea, parallel)"
   for M in NSE EUROPE JAPAN KOREA; do
     $PY market_correlation_scan.py --market "$M" --output-dir correlation_scan &

@@ -41,6 +41,9 @@ def analyse(markets=None, top_per_market: int = 5, verbose: bool = True,
     only tradable stocks (default $1M/day)."""
     markets = markets or kit.markets()
     per_market, global_rows = {}, []
+    # Real last-bar date per market. See the as_of stamp below for why this is
+    # collected from the data rather than the clock.
+    asof: dict[str, pd.Timestamp] = {}
     if verbose:
         print("=" * 64)
         print("  GLOBAL MULTI-MARKET ANALYSIS — momentum + breakout highlights")
@@ -50,6 +53,10 @@ def analyse(markets=None, top_per_market: int = 5, verbose: bool = True,
         data = kit.load(m, min_turnover_usd)
         if not data:
             continue
+        try:
+            asof[m] = max(d.index[-1] for d in data.values() if len(d))
+        except ValueError:
+            pass
         stocks = [StockData(s, m, ohlcv=d) for s, d in data.items()]
         darvas = kit.screen("darvas", m, min_turnover_usd=min_turnover_usd)
         gcross = kit.screen("golden_crossover", m, min_turnover_usd=min_turnover_usd)
@@ -85,7 +92,35 @@ def analyse(markets=None, top_per_market: int = 5, verbose: bool = True,
     # df-referenceable artifact for later: tidy long parquet + dated stamp
     if not g.empty:
         g = g.copy()
-        g["as_of"] = pd.Timestamp.today().normalize()
+        # as_of is the LAST BAR IN THE DATA, per market — not the run date.
+        #
+        # It used to be pd.Timestamp.today(), which stamped when the script ran
+        # and said nothing about what it read. That is the wrong direction of
+        # error: screener_kit._live_path() silently falls back to the committed
+        # cache_seed/ starter kit when a market's live cache is missing, so on
+        # 2026-08-27 US/JP/KR/EU were being served June data. A run-date stamp
+        # would have relabelled two-month-old prices as today's and the brief
+        # would have printed them as current. Stamping the data means a stale
+        # cache is visible in the artifact itself instead of being papered over.
+        #
+        # Per market, because markets close on different days and one global
+        # min/max would either hide a lagging market or defame a current one.
+        g["as_of"] = g["Market"].map(asof)
+        g["as_of"] = pd.to_datetime(g["as_of"])
+        if verbose:
+            # Tier 1 refreshes daily; the rest ride the Sunday weekly-extended
+            # scan, so a flat threshold would report 15 healthy markets as
+            # broken every weekday. Tolerances match the actual cadences.
+            tier1 = {"IN", "US", "EU", "JP", "KR"}
+            today = pd.Timestamp.today().normalize()
+            stale = {m: d for m, d in asof.items()
+                     if (today - d).days > (5 if m in tier1 else 10)}
+            if stale:
+                print("\n  ⚠️  markets older than their refresh cadence "
+                      "(screener_kit may be serving cache_seed/):")
+                for m, d in sorted(stale.items(), key=lambda kv: kv[1]):
+                    print(f"       {m:<4} last bar {d:%Y-%m-%d}  "
+                          f"({(today - d).days}d old)")
         g.to_parquet(HIGHLIGHTS_PARQUET, compression="zstd", index=False)
     if verbose:
         print(f"\nsaved → global_highlights.xlsx and {HIGHLIGHTS_PARQUET.name}")
