@@ -406,6 +406,20 @@ if __name__ == "__main__":
             + technical_html
             + digest_html)
     subject += digest_subj
+
+    # --tag "<label>" prefixes the subject, e.g. `--tag "TEST 2"` -> "[TEST 2] …".
+    # Readability trials send the same brief again on a day it has already gone
+    # out, and the generated subject is identical every time — two indistinguishable
+    # copies in the inbox, with no way to tell which one the feedback is about.
+    # The tag also keeps a test out of the real morning brief's thread.
+    _tag = ""
+    if "--tag" in sys.argv:
+        _i = sys.argv.index("--tag")
+        if _i + 1 < len(sys.argv):
+            _tag = sys.argv[_i + 1].strip()
+    if _tag:
+        subject = f"[{_tag}] {subject}"
+
     attachments = None
     if digest_full:
         fname = f"watchlist_full_{_dt.date.today():%Y-%m-%d}.html"
