@@ -11,7 +11,9 @@
 #   1. Market snapshot (India/US/Europe vs 200-DMA)
 #   2. India / US / Europe / Japan / Korea — fundamentals screener picks
 #   3. India Cash Conversion Cycle (screener.in 228040)
-#   4. Convergence (fundamentals + positive/negative news agree)
+#   4. Convergence — how many of the 4 independent fundamental screeners
+#      agree, shown as a fraction + a P/C/M/B slot indicator INSIDE the
+#      picks table (no longer a separate section listing the same names)
 #   5. Share Market News Picks — India + US (headline-driven, screener-independent)
 #   6. Talk on the Street — per-ticker sentiment for the fundamental picks
 #   7. Darvas Breakouts — India / US / Europe fresh-breakout fragments
@@ -171,8 +173,62 @@ def _news_rows(market: str, top: int = None):
     return rows
 
 
+# Convergence reads as a fraction in the picks table itself, so the reader maps
+# "how many screeners agree" to a name without crossing to a second section and
+# matching symbols by eye. 4/4 is rare and worth the strongest colour; 1/4 is one
+# screener with an opinion and is deliberately muted rather than hidden.
+_CONV_COL = {4: "#1b5e20", 3: "#2e7d32", 2: "#b8860b", 1: "#999"}
+_N_FUND_SCREENS = 4
+
+
+def _conv_cell(n_fund) -> str:
+    try:
+        n = int(n_fund)
+    except (TypeError, ValueError):
+        return "<td style='color:#999'>—</td>"
+    return (f"<td style='color:{_CONV_COL.get(n, '#999')};font-weight:700;"
+            f"white-space:nowrap'>{n}/{_N_FUND_SCREENS}</td>")
+
+
+# Fixed slot order, so the same screener is always in the same position and the
+# column can be read down rather than across. Spelling the names out repeated a
+# ~30-character string on every row — at 3/4 almost always the same three — which
+# is exactly the kind of cell the eye stops reading.
+_SCREEN_SLOTS = (("Piotroski", "P"), ("CoffeeCan", "C"),
+                 ("MagicFormula", "M"), ("BullCartel", "B"))
+
+
+def _slots_cell(fund_screens, n_fund) -> str:
+    """P C M B with the passing ones lit and the rest dimmed to a dot."""
+    have = {s.strip() for s in str(fund_screens or "").split("+")}
+    col = _CONV_COL.get(_safe_int(n_fund), "#999")
+    marks = []
+    for tag, letter in _SCREEN_SLOTS:
+        if tag in have:
+            marks.append(f"<b style='color:{col}'>{letter}</b>")
+        else:
+            marks.append("<span style='color:#ccc'>·</span>")
+    return ("<td style='font-family:ui-monospace,SFMono-Regular,Menlo,monospace;"
+            "letter-spacing:2px;white-space:nowrap'>" + "".join(marks) + "</td>")
+
+
+def _safe_int(v, default=0):
+    try:
+        return int(v)
+    except (TypeError, ValueError):
+        return default
+
+
 def _market_picks_rows(data: dict, market: str, cap: int = None):
-    """Fundamentals-screener picks rows for India/US, liquidity-annotated."""
+    """Fundamentals-screener picks rows for India/US, liquidity-annotated.
+
+    The Tier column ("Triple Hit"/"Multi-Screen") is gone: it counted technical
+    screens alongside fundamental ones, so CoffeeCan+Darvas+Piotroski — two
+    fundamental screeners and a breakout — ranked as a "Triple Hit" beside a name
+    three fundamental screeners actually agreed on. The fraction cannot lie that
+    way, and the two screen groups are now separate columns so the reader can see
+    which kind of agreement they are looking at.
+    """
     cap = _DETAIL_CAP["picks"] if cap is None else cap
     picks = data.get("picks") or []
     if not picks:
@@ -180,15 +236,27 @@ def _market_picks_rows(data: dict, market: str, cap: int = None):
     p = pd.DataFrame(picks)
     p["Market"] = market
     p = liq.annotate(p)
-    rank = {"Triple Hit": 0, "Multi-Screen": 1, "Single-Screen": 2}
     lr = {"High": 0, "Medium": 1, "Low": 2, "Unknown": 3}
-    p["_o"] = p["Tier"].map(rank).fillna(3)
+    # Pre-ladder payloads have no N_Fund; fall back to the old tier order so an
+    # older combined JSON still renders in a sane sequence instead of blank.
+    if "N_Fund" in p.columns:
+        p["_o"] = -pd.to_numeric(p["N_Fund"], errors="coerce").fillna(0)
+        p["_t"] = -pd.to_numeric(p.get("N_Tech"), errors="coerce").fillna(0)
+    else:
+        p["_o"] = p["Tier"].map({"Triple Hit": 0, "Multi-Screen": 1,
+                                 "Single-Screen": 2}).fillna(3)
+        p["_t"] = 0
     p["_l"] = p["Liquidity"].map(lr).fillna(3)
     rows = []
-    for _, r in p.sort_values(["_o", "_l"]).head(cap).iterrows():
+    for _, r in p.sort_values(["_o", "_t", "_l"]).head(cap).iterrows():
+        fund = r.get("Fund_Screens") or r.get("Screens") or ""
+        tech = r.get("Tech_Screens") or "—"
         rows.append(
             f"<tr><td style='padding:4px 8px'><b>{r.Symbol}</b></td>"
-            f"<td>{r.Tier}</td><td>{r.Screens}</td><td>{_tv(r.get('Turnover_USD'))}</td>"
+            f"{_conv_cell(r.get('N_Fund'))}"
+            f"{_slots_cell(fund, r.get('N_Fund'))}"
+            f"<td style='color:#777'>{tech}</td>"
+            f"<td>{_tv(r.get('Turnover_USD'))}</td>"
             f"<td style='color:{_COL.get(r.Liquidity, '#777')};font-weight:600'>{r.Liquidity}</td></tr>"
         )
     return rows
@@ -283,65 +351,43 @@ def _kr_picks_rows(top: int = 15):
     )
 
 
-_CONV_LEVEL = {4: "4/4 — full", 3: "3/4 — strong", 2: "2/4 — moderate"}
-_CONV_COLOR = {4: "#1b5e20", 3: "#2e7d32", 2: "#f57f17"}
-_CONV_SHOW  = 15
+def _convergence_note(data: dict) -> str:
+    """One line under the picks table: what the fraction means, and how the
+    universe is distributed across the four levels.
 
-
-def _convergence_html(label: str, data: dict) -> str:
+    This replaces the standalone convergence section. That section listed the
+    same names a second time, so the reader had to match symbols by eye between
+    two tables to answer "how much agreement is behind this pick?". The fraction
+    now sits in the row itself and this line supplies the denominator context —
+    one place to look instead of two.
     """
-    Render the convergence ladder: how many of the four independent fundamental
-    screeners agree on each name (4/4, 3/4, 2/4). News sentiment is shown per
-    name when available and omitted when it is not — it is NOT a gate, so a
-    dead Talk-on-the-Street feed no longer empties this whole section.
-    """
-    conv = data.get("convergence") or []
-    if not conv:
-        return (f"<p style='color:#777;font-size:13px'>{label}: no name reached "
-                f"2/4 fundamental screener agreement today.</p>")
-
-    # Older payloads (written before the ladder landed) carry no N_Fund.
-    if not any(c.get("N_Fund") for c in conv):
-        return (f"<p style='color:#777;font-size:13px'>{label}: convergence "
-                f"unavailable — report predates the 2/4·3/4·4/4 ladder.</p>")
-
-    by_level = {}
-    for c in conv:
-        by_level.setdefault(int(c.get("N_Fund") or 0), []).append(c)
-
-    counts = " &middot; ".join(
-        f"<b>{lv}/4:</b> {len(by_level.get(lv, []))}" for lv in (4, 3, 2))
-    parts = [f"<p style='font-size:13px;margin:2px 0'>{label} — {counts} "
-             "<span style='color:#777'>(Piotroski · CoffeeCan · MagicFormula · "
-             "BullCartel)</span></p>"]
-
-    if not data.get("talk"):
-        parts.append("<p style='font-size:11px;color:#f57f17;margin:2px 0'>"
-                     "⚠️ News enrichment unavailable today — levels below are "
-                     "fundamental-only.</p>")
-
-    for lv in (4, 3, 2):
-        grp = by_level.get(lv) or []
-        if not grp:
+    picks = data.get("picks") or []
+    if not picks:
+        return ""
+    counts: dict[int, int] = {}
+    for p in picks:
+        try:
+            n = int(p.get("N_Fund"))
+        except (TypeError, ValueError):
             continue
-        parts.append(
-            f"<p style='font-size:13px;margin:8px 0 2px;color:{_CONV_COLOR[lv]}'>"
-            f"<b>{_CONV_LEVEL[lv]}</b> ({len(grp)})</p>"
-            "<ul style='font-size:13px;margin:2px 0 6px 18px'>")
-        for c in grp[:_CONV_SHOW]:
-            tech = (f" &middot; technical: {c.get('Tech_Confirm')}"
-                    if c.get("N_Tech") else "")
-            n_art = int(c.get("N_Articles") or 0)
-            news = (f" &middot; news {float(c.get('News_Score', 0)):+.2f} "
-                    f"({n_art} articles)" if n_art
-                    else " &middot; <span style='color:#777'>no news data</span>")
-            head = f": {c.get('Top_Headline')}" if c.get("Top_Headline") else ""
-            parts.append(f"<li><b>{c.get('Symbol')}</b> — "
-                         f"{c.get('Fund_Screens', '—')}{tech}{news}{head}</li>")
-        if len(grp) > _CONV_SHOW:
-            parts.append(f"<li style='color:#777'>… {len(grp)-_CONV_SHOW} more</li>")
-        parts.append("</ul>")
-    return "".join(parts)
+        counts[n] = counts.get(n, 0) + 1
+    if not counts:
+        return ("<p class='mut' style='font-size:11px;margin:2px 0;color:#777'>"
+                "Convergence unavailable — this report predates the 4-screener "
+                "ladder.</p>")
+    dist = " &middot; ".join(
+        f"<b style='color:{_CONV_COL[lv]}'>{lv}/4</b> {counts.get(lv, 0)}"
+        for lv in (4, 3, 2, 1))
+    return ("<p class='mut' style='font-size:11px;margin:2px 0;color:#666'>"
+            "<b>Convergence</b> = how many of the four independent fundamental "
+            "screeners agree, read left to right as "
+            "<b style='font-family:ui-monospace,Menlo,monospace'>P</b>iotroski "
+            "<b style='font-family:ui-monospace,Menlo,monospace'>C</b>offee&nbsp;Can "
+            "<b style='font-family:ui-monospace,Menlo,monospace'>M</b>agic&nbsp;Formula "
+            "<b style='font-family:ui-monospace,Menlo,monospace'>B</b>ull&nbsp;Cartel "
+            "(<span style='color:#ccc'>·</span> = did not pass). Technical "
+            "screens sit in their own column and never count toward the "
+            f"fraction. Today: {dist}.</p>")
 
 
 def _talk_rows(data: dict, cap: int = 10):
@@ -767,8 +813,10 @@ def build():
     # 3. Convergence (fundamentals + street agree)
     # split per market: each geography's block owns its own convergence, so
     # "what about India?" is answerable in one place instead of six
-    conv_in = _convergence_html("🇮🇳 India", ind_data)
-    conv_us = _convergence_html("🇺🇸 US", us_data)
+    # Convergence now rides in the picks table itself (see _market_picks_rows);
+    # these are the one-line legend + distribution that sit under each table.
+    conv_in = _convergence_note(ind_data)
+    conv_us = _convergence_note(us_data)
     convergence_html = conv_in + conv_us  # kept for any external caller
 
     # 4. Share Market News Picks — India + US
@@ -891,11 +939,10 @@ h3{{font-size:14px;margin:14px 0 6px;color:#333}}
 <h3 style="font-size:13px;margin:12px 0 4px;color:#333">Screener — most tradable</h3>
 {_fund_coverage_note()}
 {_coverage_scope_note()}
-{_table(["Symbol", "Tier", "Screens", "Turnover", "Liquidity"], ind_picks_rows) if ind_picks_rows else "<p>no picks</p>"}
+{_table(["Symbol", "Convergence", "P C M B", "Technical", "Turnover", "Liquidity"], ind_picks_rows) if ind_picks_rows else "<p>no picks</p>"}
 <h3 style="font-size:13px;margin:14px 0 4px;color:#333">Cash Conversion Cycle <span style="font-weight:400;color:#777" class="mut">(screener.in 228040)</span></h3>
 <p style="font-size:11px;color:#666;margin:2px 0">Lowest/negative CCC = collects from customers before paying suppliers.</p>
 {_table(["Symbol", "Name", "CCC days", "ROCE", "Liquidity"], ccc_rows) if ccc_rows else "<p>n/a</p>"}
-<h3 style="font-size:13px;margin:14px 0 4px;color:#333">⭐ Convergence <span style="font-weight:400;color:#777" class="mut">— how many of the 4 fundamental screeners agree</span></h3>
 {conv_in}
 <h3 style="font-size:13px;margin:14px 0 4px;color:#333">🔥 News picks <span style="font-weight:400;color:#777" class="mut">— buzz, NOT a recommendation</span></h3>
 {_table(["Symbol", "Name", "Sentiment", "Mentions", "Headline"], in_news_rows) if in_news_rows else "<p>n/a</p>"}
@@ -905,8 +952,7 @@ h3{{font-size:14px;margin:14px 0 6px;color:#333}}
 
 <h2 style="font-size:16px;border-bottom:2px solid #1a73e8;padding-bottom:3px;margin-top:26px">🇺🇸 US <span style="font-weight:400;color:#666;font-size:13px">— mood {us_mood["mood"]} ({us_mood["score"]:+.2f}) from {us_mood.get("n_articles", 0)} articles</span></h2>
 <h3 style="font-size:13px;margin:12px 0 4px;color:#333">Screener — most tradable</h3>
-{_table(["Symbol", "Tier", "Screens", "Turnover", "Liquidity"], us_picks_rows) if us_picks_rows else "<p>no picks (run daily_combined_report.py --market US)</p>"}
-<h3 style="font-size:13px;margin:14px 0 4px;color:#333">⭐ Convergence</h3>
+{_table(["Symbol", "Convergence", "P C M B", "Technical", "Turnover", "Liquidity"], us_picks_rows) if us_picks_rows else "<p>no picks (run daily_combined_report.py --market US)</p>"}
 {conv_us}
 <h3 style="font-size:13px;margin:14px 0 4px;color:#333">🔥 News picks <span style="font-weight:400;color:#777" class="mut">— buzz, NOT a recommendation</span></h3>
 {_table(["Symbol", "Name", "Sentiment", "Mentions", "Headline"], us_news_rows) if us_news_rows else "<p>n/a</p>"}

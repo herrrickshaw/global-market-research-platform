@@ -91,6 +91,17 @@ TECHNICAL_SCREENS   = ("Darvas", "GoldenCross")
 # it is a single screener with an opinion.
 CONV_MIN = int(os.environ.get("CONVERGENCE_MIN", "2"))
 
+# Fixed slot order so the same screener is always in the same position and a
+# column of these can be read downward. Matches the mailer's P C M B indicator.
+SCREEN_SLOTS = (("Piotroski", "P"), ("CoffeeCan", "C"),
+                ("MagicFormula", "M"), ("BullCartel", "B"))
+
+
+def _slots(fund_screens) -> str:
+    have = {s.strip() for s in str(fund_screens or "").split("+")}
+    return "".join(letter if tag in have else "·" for tag, letter in SCREEN_SLOTS)
+
+
 CONV_LEVEL = {4: "4/4 — full", 3: "3/4 — strong", 2: "2/4 — moderate"}
 CONV_COLOR = {4: "#1b5e20", 3: "#2e7d32", 2: "#f57f17"}
 
@@ -365,11 +376,16 @@ def print_report(rep: dict):
     if picks.empty:
         print("  No fundamental picks today.")
     else:
-        print(f"  {'Symbol':<14} {'Tier':<14} {'Screens':<28} {'Piotroski'}")
-        print("  " + "─"*66)
+        # Convergence rides in the row, so tier and agreement are read together.
+        # "Triple Hit" counted technical screens alongside fundamental ones and
+        # could not be trusted as a measure of agreement; the fraction can.
+        print(f"  {'Symbol':<14} {'Conv':<6} {'PCMB':<7} {'Technical':<14} {'Piotroski'}")
+        print("  " + "─"*60)
         for _, r in picks.head(25).iterrows():
-            print(f"  {str(r['Symbol']):<14} {str(r['Tier']):<14} "
-                  f"{str(r['Screens']):<28} {r.get('Piotroski','—')}")
+            print(f"  {str(r['Symbol']):<14} "
+                  f"{int(r.get('N_Fund', 0))}/4   "
+                  f"{_slots(r.get('Fund_Screens')):<7} "
+                  f"{str(r.get('Tech_Screens', '—')):<14} {r.get('Piotroski','—')}")
 
     print(f"\n{'='*74}")
     print(f"  🗞️  COMPONENT 2 — TALK ON THE STREET (live news sentiment)")
@@ -425,10 +441,15 @@ def to_html(rep: dict) -> str:
     h = []
     # Component 1
     h.append('<h2>📊 Stock Picks Based on Fundamentals</h2>')
-    h.append('<table><tr><th>Symbol</th><th>Tier</th><th>Screens</th><th>Piotroski</th></tr>')
+    h.append('<table><tr><th>Symbol</th><th>Convergence</th><th>P C M B</th>'
+             '<th>Technical</th><th>Piotroski</th></tr>')
     for _, r in (picks.head(25).iterrows() if not picks.empty else []):
-        h.append(f"<tr><td><b>{r['Symbol']}</b></td><td>{r['Tier']}</td>"
-                 f"<td>{r['Screens']}</td><td>{r.get('Piotroski','—')}</td></tr>")
+        h.append(f"<tr><td><b>{r['Symbol']}</b></td>"
+                 f"<td><b>{int(r.get('N_Fund', 0))}/4</b></td>"
+                 f"<td style='font-family:monospace;letter-spacing:2px'>"
+                 f"{_slots(r.get('Fund_Screens'))}</td>"
+                 f"<td>{r.get('Tech_Screens','—')}</td>"
+                 f"<td>{r.get('Piotroski','—')}</td></tr>")
     h.append('</table>')
     # Component 2
     h.append('<h2>🗞️ Talk on the Street</h2>')
