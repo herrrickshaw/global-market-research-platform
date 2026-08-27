@@ -416,6 +416,34 @@ def _kr_picks_rows(top: int = 15):
     )
 
 
+def _strategy_validation_html() -> str:
+    """Strategy-level convergence: which screens pick names the news covers.
+
+    The name-level ladder asks "does the street agree about THIS stock". This
+    asks the level up — of the names each SCREEN selects, what share does the
+    news touch, versus the market's own base rate. Never fatal: any failure
+    degrades to a one-line note like every other section here.
+    """
+    try:
+        import strategy_news_validation as SV
+    except Exception:                                          # noqa: BLE001
+        return ""
+    parts = []
+    for mkt, flag in (("IN", "🇮🇳 India"), ("US", "🇺🇸 US")):
+        try:
+            res = SV.analyse(mkt)
+            SV.append_history(res["rows"])
+            if res["rows"].empty:
+                continue
+            parts.append(f"<h3 style='font-size:13px;margin:12px 0 4px;color:#333'>"
+                         f"{flag}</h3>" + SV.to_html(res))
+        except Exception as e:                                 # noqa: BLE001
+            parts.append(f"<p class='mut' style='color:#777;font-size:12px'>"
+                         f"{flag}: strategy validation unavailable "
+                         f"({type(e).__name__}).</p>")
+    return "".join(parts)
+
+
 def _convergence_note(data: dict) -> str:
     """One line under the picks table: what the fraction means, and how the
     universe is distributed across the four levels.
@@ -912,6 +940,7 @@ def build():
     # "what about India?" is answerable in one place instead of six
     # Convergence now rides in the picks table itself (see _market_picks_rows);
     # these are the one-line legend + distribution that sit under each table.
+    strategy_validation_html = _strategy_validation_html()
     conv_in = _convergence_note(ind_data)
     conv_us = _convergence_note(us_data)
     convergence_html = conv_in + conv_us  # kept for any external caller
@@ -1092,6 +1121,8 @@ h3{{font-size:14px;margin:14px 0 6px;color:#333}}
 {_table(["Symbol", "CMP", "Sentiment", "Score", "Articles"], us_talk_rows) if us_talk_rows else "<p class='mut' style='color:#777'>No per-ticker news matches today.</p>"}
 {darvas_us}
 
+<h2 style="font-size:16px;border-bottom:2px solid #1a73e8;padding-bottom:3px;margin-top:26px">🔬 Strategy validation <span style="font-weight:400;color:#666;font-size:13px">— which screens pick names the market is talking about</span></h2>
+{strategy_validation_html}
 <h2 style="font-size:16px;border-bottom:2px solid #1a73e8;padding-bottom:3px;margin-top:26px">🌍 Global context</h2>
 <h3 style="font-size:13px;margin:12px 0 4px;color:#333">Momentum — top 15 across 20 markets</h3>
 {_table(["Mkt", "Symbol", _g_hdr, "6mo %", "RSI"], g_rows)}
