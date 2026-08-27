@@ -11,9 +11,9 @@
 #   1. Market snapshot (India/US/Europe vs 200-DMA)
 #   2. India / US / Europe / Japan / Korea — fundamentals screener picks
 #   3. India Cash Conversion Cycle (screener.in 228040)
-#   4. Convergence — how many of the 4 independent fundamental screeners
-#      agree, shown as a fraction + a P/C/M/B slot indicator INSIDE the
-#      picks table (no longer a separate section listing the same names)
+#   4. Convergence — how many of the 3 independent
+#      QUALITY screeners agree (P/C/B slots) INSIDE the picks table, with
+#      Magic Formula (value) and technical screens in their own columns
 #   5. Share Market News Picks — India + US (headline-driven, screener-independent)
 #   6. Talk on the Street — per-ticker sentiment for the fundamental picks
 #   7. Darvas Breakouts — India / US / Europe fresh-breakout fragments
@@ -177,8 +177,8 @@ def _news_rows(market: str, top: int = None):
 # "how many screeners agree" to a name without crossing to a second section and
 # matching symbols by eye. 4/4 is rare and worth the strongest colour; 1/4 is one
 # screener with an opinion and is deliberately muted rather than hidden.
-_CONV_COL = {4: "#1b5e20", 3: "#2e7d32", 2: "#b8860b", 1: "#999"}
-_N_FUND_SCREENS = 4
+_CONV_COL = {3: "#1b5e20", 2: "#2e7d32", 1: "#999"}
+_N_FUND_SCREENS = 3
 
 
 def _conv_cell(n_fund) -> str:
@@ -194,8 +194,7 @@ def _conv_cell(n_fund) -> str:
 # column can be read down rather than across. Spelling the names out repeated a
 # ~30-character string on every row — at 3/4 almost always the same three — which
 # is exactly the kind of cell the eye stops reading.
-_SCREEN_SLOTS = (("Piotroski", "P"), ("CoffeeCan", "C"),
-                 ("MagicFormula", "M"), ("BullCartel", "B"))
+_SCREEN_SLOTS = (("Piotroski", "P"), ("CoffeeCan", "C"), ("BullCartel", "B"))
 
 
 def _slots_cell(fund_screens, n_fund) -> str:
@@ -251,10 +250,16 @@ def _market_picks_rows(data: dict, market: str, cap: int = None):
     for _, r in p.sort_values(["_o", "_t", "_l"]).head(cap).iterrows():
         fund = r.get("Fund_Screens") or r.get("Screens") or ""
         tech = r.get("Tech_Screens") or "—"
+        # Value gets its own cell and its own colour. It is a different question
+        # from the quality fraction beside it (cheap vs good), so it must not be
+        # mistaken for a fourth vote — see VALUE_SCREENS in daily_combined_report.
+        val = ("<td style='color:#6a1b9a;font-weight:700;white-space:nowrap'>MF ✓</td>"
+               if _safe_int(r.get("N_Value")) else "<td style='color:#ccc'>·</td>")
         rows.append(
             f"<tr><td style='padding:4px 8px'><b>{r.Symbol}</b></td>"
             f"{_conv_cell(r.get('N_Fund'))}"
             f"{_slots_cell(fund, r.get('N_Fund'))}"
+            f"{val}"
             f"<td style='color:#777'>{tech}</td>"
             f"<td>{_tv(r.get('Turnover_USD'))}</td>"
             f"<td style='color:{_COL.get(r.Liquidity, '#777')};font-weight:600'>{r.Liquidity}</td></tr>"
@@ -375,19 +380,24 @@ def _convergence_note(data: dict) -> str:
         return ("<p class='mut' style='font-size:11px;margin:2px 0;color:#777'>"
                 "Convergence unavailable — this report predates the 4-screener "
                 "ladder.</p>")
+    n_mf = sum(1 for p in picks if _safe_int(p.get("N_Value")))
+    mono = "font-family:ui-monospace,Menlo,monospace"
     dist = " &middot; ".join(
-        f"<b style='color:{_CONV_COL[lv]}'>{lv}/4</b> {counts.get(lv, 0)}"
-        for lv in (4, 3, 2, 1))
+        f"<b style='color:{_CONV_COL[lv]}'>{lv}/3</b> {counts.get(lv, 0)}"
+        for lv in (3, 2, 1))
     return ("<p class='mut' style='font-size:11px;margin:2px 0;color:#666'>"
-            "<b>Convergence</b> = how many of the four independent fundamental "
-            "screeners agree, read left to right as "
-            "<b style='font-family:ui-monospace,Menlo,monospace'>P</b>iotroski "
-            "<b style='font-family:ui-monospace,Menlo,monospace'>C</b>offee&nbsp;Can "
-            "<b style='font-family:ui-monospace,Menlo,monospace'>M</b>agic&nbsp;Formula "
-            "<b style='font-family:ui-monospace,Menlo,monospace'>B</b>ull&nbsp;Cartel "
-            "(<span style='color:#ccc'>·</span> = did not pass). Technical "
-            "screens sit in their own column and never count toward the "
-            f"fraction. Today: {dist}.</p>")
+            "<b>Convergence</b> = how many of the three <b>quality</b> screeners "
+            "agree — all three judge the business from its financials with no "
+            "reference to price — read left to right as "
+            f"<b style='{mono}'>P</b>iotroski "
+            f"<b style='{mono}'>C</b>offee&nbsp;Can "
+            f"<b style='{mono}'>B</b>ull&nbsp;Cartel "
+            "(<span style='color:#ccc'>·</span> = did not pass). "
+            "<b style='color:#6a1b9a'>MF ✓</b> (Magic Formula) is kept in its own "
+            "column because it gates on <i>earnings yield</i> — it asks whether a "
+            "name is <b>cheap</b>, not whether it is <b>good</b>, so it is not a "
+            "fourth vote. Technical screens are separate for the same reason. "
+            f"Today: {dist} &middot; <b style='color:#6a1b9a'>MF ✓</b> {n_mf}.</p>")
 
 
 def _talk_rows(data: dict, cap: int = 10):
@@ -939,7 +949,7 @@ h3{{font-size:14px;margin:14px 0 6px;color:#333}}
 <h3 style="font-size:13px;margin:12px 0 4px;color:#333">Screener — most tradable</h3>
 {_fund_coverage_note()}
 {_coverage_scope_note()}
-{_table(["Symbol", "Convergence", "P C M B", "Technical", "Turnover", "Liquidity"], ind_picks_rows) if ind_picks_rows else "<p>no picks</p>"}
+{_table(["Symbol", "Convergence", "P C B", "Value", "Technical", "Turnover", "Liquidity"], ind_picks_rows) if ind_picks_rows else "<p>no picks</p>"}
 <h3 style="font-size:13px;margin:14px 0 4px;color:#333">Cash Conversion Cycle <span style="font-weight:400;color:#777" class="mut">(screener.in 228040)</span></h3>
 <p style="font-size:11px;color:#666;margin:2px 0">Lowest/negative CCC = collects from customers before paying suppliers.</p>
 {_table(["Symbol", "Name", "CCC days", "ROCE", "Liquidity"], ccc_rows) if ccc_rows else "<p>n/a</p>"}
@@ -952,7 +962,7 @@ h3{{font-size:14px;margin:14px 0 6px;color:#333}}
 
 <h2 style="font-size:16px;border-bottom:2px solid #1a73e8;padding-bottom:3px;margin-top:26px">🇺🇸 US <span style="font-weight:400;color:#666;font-size:13px">— mood {us_mood["mood"]} ({us_mood["score"]:+.2f}) from {us_mood.get("n_articles", 0)} articles</span></h2>
 <h3 style="font-size:13px;margin:12px 0 4px;color:#333">Screener — most tradable</h3>
-{_table(["Symbol", "Convergence", "P C M B", "Technical", "Turnover", "Liquidity"], us_picks_rows) if us_picks_rows else "<p>no picks (run daily_combined_report.py --market US)</p>"}
+{_table(["Symbol", "Convergence", "P C B", "Value", "Technical", "Turnover", "Liquidity"], us_picks_rows) if us_picks_rows else "<p>no picks (run daily_combined_report.py --market US)</p>"}
 {conv_us}
 <h3 style="font-size:13px;margin:14px 0 4px;color:#333">🔥 News picks <span style="font-weight:400;color:#777" class="mut">— buzz, NOT a recommendation</span></h3>
 {_table(["Symbol", "Name", "Sentiment", "Mentions", "Headline"], us_news_rows) if us_news_rows else "<p>n/a</p>"}

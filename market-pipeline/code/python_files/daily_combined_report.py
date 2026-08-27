@@ -75,26 +75,52 @@ SCREENER_SHEETS = {
 }
 
 # ── Convergence grading ───────────────────────────────────────────────────────
-# The FOUR independent fundamental screeners. Convergence is graded as how many
-# of these four agree on a name: 2/4, 3/4, 4/4 — so the reader picks a
-# confidence level instead of being handed one binary verdict.
+# Convergence is "how many screens that ask the SAME question agree", graded
+# 1/3 · 2/3 · 3/3, so the reader picks a confidence level instead of being
+# handed one binary verdict. Everything that asks a DIFFERENT question is
+# reported in its own column and never inflates the fraction:
 #
-# Technical screens are counted SEPARATELY and never inflate the score. A Darvas
-# breakout is not independent evidence of value or quality — it reads price,
-# which the fundamental four do not. Conflating them is what made
-# "CoffeeCan+Darvas+Piotroski" (2 fundamental screeners) rank as a "Triple Hit"
-# alongside a name three fundamental screeners actually agreed on.
-FUNDAMENTAL_SCREENS = ("Piotroski", "CoffeeCan", "MagicFormula", "BullCartel")
-TECHNICAL_SCREENS   = ("Darvas", "GoldenCross")
+#   quality  (the fraction)  Piotroski · CoffeeCan · BullCartel   no price term
+#   value    (own column)    MagicFormula                         earnings yield
+#   technical(own column)    Darvas · GoldenCross                 pure price
+#
+# Mixing them is what made "CoffeeCan+Darvas+Piotroski" — two quality screens
+# and a breakout — rank as a "Triple Hit" beside a name three quality screens
+# actually agreed on.
+#
+# The three screens that ask THE SAME QUESTION — "is this business healthy?" —
+# and answer it from the financials alone, with no reference to the share price:
+#   Piotroski   F-score >= 7            accounting quality / improvement
+#   CoffeeCan   Rev CAGR>10%, ROCE>15%, D/E<1, no loss year   durable quality
+#   BullCartel  YoY qtrly sales>15%, profit>20%               earnings momentum
+# Agreement among these is apples-to-apples and is what the fraction counts.
+QUALITY_SCREENS = ("Piotroski", "CoffeeCan", "BullCartel")
 
-# Floor for appearing in the convergence table at all. 1/4 is not convergence,
-# it is a single screener with an opinion.
+# Magic Formula is NOT one of them and is reported separately. It gates on
+# earnings yield > 8% alongside ROIC > 15%, and earnings yield is EBIT/EV — a
+# PRICE term. It is the only screen here that asks "is it cheap?" rather than
+# "is it good?", so a quality screen and Magic Formula disagreeing is the normal
+# case, not a weak signal: cheap names and high-quality names are usually
+# different names. Counting it as a fourth vote made every 3/4 in India read as
+# "one screener dissented" when nothing had dissented — the value screen was
+# simply answering a different question. It also made 4/4 unreachable: on
+# 2026-08-27 India had 41 names at 3/4, every one of them PC·B, and zero at 4/4.
+VALUE_SCREENS = ("MagicFormula",)
+
+TECHNICAL_SCREENS = ("Darvas", "GoldenCross")
+
+# Kept as the name the rest of the module reads, now pointing at the quality
+# three only — the set over which "N of N agree" is a meaningful statement.
+FUNDAMENTAL_SCREENS = QUALITY_SCREENS
+
+# Floor for the convergence LIST (the picks table shows every level, including
+# 1/3, since the fraction is visible there and a weak signal can be shown as
+# weak). 1/3 is not convergence, it is one screener with an opinion.
 CONV_MIN = int(os.environ.get("CONVERGENCE_MIN", "2"))
 
 # Fixed slot order so the same screener is always in the same position and a
-# column of these can be read downward. Matches the mailer's P C M B indicator.
-SCREEN_SLOTS = (("Piotroski", "P"), ("CoffeeCan", "C"),
-                ("MagicFormula", "M"), ("BullCartel", "B"))
+# column of these can be read downward. Matches the mailer's P C B indicator.
+SCREEN_SLOTS = (("Piotroski", "P"), ("CoffeeCan", "C"), ("BullCartel", "B"))
 
 
 def _slots(fund_screens) -> str:
@@ -102,8 +128,8 @@ def _slots(fund_screens) -> str:
     return "".join(letter if tag in have else "·" for tag, letter in SCREEN_SLOTS)
 
 
-CONV_LEVEL = {4: "4/4 — full", 3: "3/4 — strong", 2: "2/4 — moderate"}
-CONV_COLOR = {4: "#1b5e20", 3: "#2e7d32", 2: "#f57f17"}
+CONV_LEVEL = {3: "3/3 — full", 2: "2/3 — partial", 1: "1/3 — single"}
+CONV_COLOR = {3: "#1b5e20", 2: "#2e7d32", 1: "#999"}
 
 # Cap the rendered convergence list; the counts-per-level line reports the rest.
 CONV_SHOW = int(os.environ.get("CONVERGENCE_SHOW", "25"))
@@ -186,8 +212,10 @@ def get_fundamental_picks(market: str, run_fresh: bool = False) -> pd.DataFrame:
         n = len([s for s in screens if s not in ("TripleHit","MultiScreen")])
         # Independent fundamental agreement (0-4) vs price-based confirmation
         # (0-2), kept apart on purpose — see FUNDAMENTAL_SCREENS above.
-        n_fund = len(screens & set(FUNDAMENTAL_SCREENS))
+        n_fund = len(screens & set(QUALITY_SCREENS))
         n_tech = len(screens & set(TECHNICAL_SCREENS))
+        # Tracked alongside, never summed into n_fund — see VALUE_SCREENS.
+        n_value = len(screens & set(VALUE_SCREENS))
         if "TripleHit" in screens:
             tier = "Triple Hit"
         elif "MultiScreen" in screens or n >= 3:
@@ -199,9 +227,10 @@ def get_fundamental_picks(market: str, run_fresh: bool = False) -> pd.DataFrame:
             "Screens": "+".join(sorted(s for s in screens
                                        if s not in ("TripleHit","MultiScreen"))) or "—",
             "N_Screens": n,
-            "N_Fund": n_fund, "N_Tech": n_tech,
-            "Fund_Screens": "+".join(sorted(screens & set(FUNDAMENTAL_SCREENS))) or "—",
+            "N_Fund": n_fund, "N_Tech": n_tech, "N_Value": n_value,
+            "Fund_Screens": "+".join(sorted(screens & set(QUALITY_SCREENS))) or "—",
             "Tech_Screens": "+".join(sorted(screens & set(TECHNICAL_SCREENS))) or "—",
+            "Value_Screens": "+".join(sorted(screens & set(VALUE_SCREENS))) or "—",
             "Piotroski": e["piotroski"], "LTP": e["ltp"],
         })
 
@@ -211,8 +240,8 @@ def get_fundamental_picks(market: str, run_fresh: bool = False) -> pd.DataFrame:
         # decides which names reach Talk-on-the-Street (build_report sends the
         # top 25), so the news enrichment lands on the most convergent names
         # rather than on whatever the old conflated Tier happened to float up.
-        df = df.sort_values(["N_Fund","N_Tech","N_Screens"],
-                            ascending=[False,False,False])
+        df = df.sort_values(["N_Fund","N_Value","N_Tech","N_Screens"],
+                            ascending=[False,False,False,False])
     n_triple = int((df["Tier"]=="Triple Hit").sum()) if not df.empty else 0
     n_multi  = int((df["Tier"]=="Multi-Screen").sum()) if not df.empty else 0
     print(f"  [Component 1] {len(df)} UNIQUE fundamental picks across all screeners "
@@ -321,6 +350,8 @@ def find_convergence(picks: pd.DataFrame, talk: dict) -> pd.DataFrame:
             "Fund_Screens": p.get("Fund_Screens", "—"),
             "Tech_Confirm": p.get("Tech_Screens", "—"),
             "N_Tech": int(p.get("N_Tech", 0) or 0),
+            "Value_Screens": p.get("Value_Screens", "—"),
+            "N_Value": int(p.get("N_Value", 0) or 0),
             "Tier": p.get("Tier", ""),
             "News": label if has_news else "— no news data",
             "News_Score": float(t.get("score", 0.0)) if has_news else 0.0,
@@ -379,12 +410,13 @@ def print_report(rep: dict):
         # Convergence rides in the row, so tier and agreement are read together.
         # "Triple Hit" counted technical screens alongside fundamental ones and
         # could not be trusted as a measure of agreement; the fraction can.
-        print(f"  {'Symbol':<14} {'Conv':<6} {'PCMB':<7} {'Technical':<14} {'Piotroski'}")
+        print(f"  {'Symbol':<14} {'Conv':<6} {'PCB':<6} {'Value':<7} {'Technical':<14} {'Piotroski'}")
         print("  " + "─"*60)
         for _, r in picks.head(25).iterrows():
             print(f"  {str(r['Symbol']):<14} "
-                  f"{int(r.get('N_Fund', 0))}/4   "
-                  f"{_slots(r.get('Fund_Screens')):<7} "
+                  f"{int(r.get('N_Fund', 0))}/3   "
+                  f"{_slots(r.get('Fund_Screens')):<6} "
+                  f"{('MF ✓' if r.get('N_Value') else '·'):<7} "
                   f"{str(r.get('Tech_Screens', '—')):<14} {r.get('Piotroski','—')}")
 
     print(f"\n{'='*74}")
@@ -441,13 +473,14 @@ def to_html(rep: dict) -> str:
     h = []
     # Component 1
     h.append('<h2>📊 Stock Picks Based on Fundamentals</h2>')
-    h.append('<table><tr><th>Symbol</th><th>Convergence</th><th>P C M B</th>'
-             '<th>Technical</th><th>Piotroski</th></tr>')
+    h.append('<table><tr><th>Symbol</th><th>Convergence</th><th>P C B</th>'
+             '<th>Value</th><th>Technical</th><th>Piotroski</th></tr>')
     for _, r in (picks.head(25).iterrows() if not picks.empty else []):
         h.append(f"<tr><td><b>{r['Symbol']}</b></td>"
-                 f"<td><b>{int(r.get('N_Fund', 0))}/4</b></td>"
+                 f"<td><b>{int(r.get('N_Fund', 0))}/3</b></td>"
                  f"<td style='font-family:monospace;letter-spacing:2px'>"
                  f"{_slots(r.get('Fund_Screens'))}</td>"
+                 f"<td>{'MF ✓' if r.get('N_Value') else '·'}</td>"
                  f"<td>{r.get('Tech_Screens','—')}</td>"
                  f"<td>{r.get('Piotroski','—')}</td></tr>")
     h.append('</table>')
