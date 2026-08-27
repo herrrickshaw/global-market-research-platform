@@ -27,9 +27,13 @@ LOG = get_logger("data_sufficiency")
 FH = "/Users/umashankar/repos/global-stock-screener/cache_seed/fundamentals_history"
 WH = str(_wh.ohlcv())
 FUND = {"IN": "IN", "US": "US", "KR": "KR_deep", "JP": "JP_edinet", "EU": "EU", "CN": "CN_full"}
-# minimum non-overlapping obs for a credible de-overlapped t-stat
-MIN_NONOVERLAP = 15
-MIN_UNIVERSE_COV = 0.60          # fundamentals should cover ≥60% of tradeable universe
+# Sourced from the tamper-evident evaluation contract rather than re-declared
+# here. These two literals used to live in this file as the only machine-readable
+# copy of the sufficiency gate, which meant the gate could be nudged in a diff
+# that looked like ordinary tuning. eval_contract.verify() runs on import and
+# raises if either has moved without a CHANGELOG entry and a new hash.
+from eval_contract import MIN_NONOVERLAP_OBS as MIN_NONOVERLAP   # noqa: E402
+from eval_contract import MIN_LIQUID_COVERAGE as MIN_UNIVERSE_COV  # noqa: E402
 
 
 def liquid_universe(mkt: str) -> tuple:
