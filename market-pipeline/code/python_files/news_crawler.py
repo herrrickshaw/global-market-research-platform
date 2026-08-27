@@ -51,6 +51,7 @@ Usage:
 from __future__ import annotations
 
 import argparse
+import os
 import re
 import sys
 import time
@@ -185,17 +186,47 @@ class ScraplingProvider(NewsProvider):
     env_key = ""              # no API key, no quota
     min_interval = 1.5        # polite floor between article fetches
 
+    # Wall-clock ceiling for ALL body fetches this provider will ever do, across
+    # every ticker in the run. Body fetching is the most expensive thing in the
+    # sentiment pipeline by an order of magnitude: measured 2026-08-27 at 9.8s
+    # per ticker (8 articles x (1.5s polite floor + per-host crawl-delay + up to
+    # `timeout`s of network)), so 25 picks costs ~245s on its own. The caller's
+    # whole Talk-on-the-Street budget is 300s, and when it is exceeded
+    # get_street_talk returns {} — which emptied the entire convergence section
+    # on 2026-08-27 and read in the brief as "no matching news coverage" rather
+    # than "the check never ran".
+    #
+    # So bodies are now best-effort under a deadline. Past it, discovery still
+    # runs and articles still score — on their HEADLINE, the fallback this class
+    # already supports (see `got_body` in fetch_news). Sentiment gets noisier for
+    # the tail of the ticker list; it does not vanish for all of them.
+    BODY_BUDGET = float(os.environ.get("SCRAPLING_BODY_BUDGET", "120"))
+
     def __init__(self, max_articles: int = 8, fetch_bodies: bool = True,
-                 timeout: int = 12):
+                 timeout: int = 12, body_budget: float = None):
         super().__init__()
         self.max_articles = max_articles
         self.fetch_bodies = fetch_bodies
         self.timeout = timeout
+        self.body_budget = (self.BODY_BUDGET if body_budget is None
+                            else float(body_budget))
+        self._deadline = None         # set on first fetch_news call
+        self._fetched = False         # did the last _extract_body hit network?
         self._robots: dict = {}       # host -> (RobotFileParser | None, delay)
         self._host_last: dict = {}    # host -> last fetch time
         self._pool: dict = {}         # market -> publisher-feed entries
         self.stats = {"discovered": 0, "bodies": 0, "robots_blocked": 0,
-                      "fetch_failed": 0, "search_topup": 0}
+                      "fetch_failed": 0, "search_topup": 0,
+                      "budget_skipped": 0}
+
+    # ── budget ──────────────────────────────────────────────────────────────
+    def _budget_left(self) -> bool:
+        """False once the body-fetch deadline has passed (headline fallback)."""
+        if self.body_budget <= 0:
+            return True                       # 0/negative disables the ceiling
+        if self._deadline is None:
+            self._deadline = time.time() + self.body_budget
+        return time.time() < self._deadline
 
     # ── availability ────────────────────────────────────────────────────────
     @property
@@ -242,11 +273,24 @@ class ScraplingProvider(NewsProvider):
 
     # ── body extraction ─────────────────────────────────────────────────────
     def _extract_body(self, url: str) -> str:
-        """Full article text, or '' if unavailable/disallowed."""
+        """Full article text, or '' if unavailable/disallowed/out of budget.
+
+        Sets self._fetched to whether this call actually touched the network,
+        so the caller knows if the polite floor is owed. A refusal (robots, or
+        out of budget) costs nobody anything and owes no delay.
+        """
+        self._fetched = False
+        # Checked BEFORE robots and throttle: once the deadline has passed we
+        # want to spend no network and no sleep at all, just fall back to the
+        # headline. See BODY_BUDGET.
+        if not self._budget_left():
+            self.stats["budget_skipped"] += 1
+            return ""
         if not self._may_fetch(url):
             self.stats["robots_blocked"] += 1
             return ""
         self._host_throttle(url)
+        self._fetched = True
         try:
             r = requests.get(url, timeout=self.timeout,
                              headers={"User-Agent": UA})
@@ -333,6 +377,13 @@ class ScraplingProvider(NewsProvider):
         # company rather than any headline containing the token
         term = f'"{alias[0]}"' if len(alias[0]) > len(ticker) else f'"{ticker}"'
         q = urllib.parse.quote_plus(f"{term} {hint}")
+        # One real request per ticker, so it owes the polite floor. This used to
+        # be paid incidentally by the per-article _throttle() in _add(); that
+        # now fires only when a body was actually fetched, so without this the
+        # search endpoint would see 25 back-to-back requests. Charged once per
+        # search rather than once per returned headline: same politeness toward
+        # the host, ~8x less sleep.
+        self._throttle()
         try:
             feed = feedparser.parse(
                 SEARCH_FEED.format(q=q, hl=hl, gl=gl, ceid=ceid))
@@ -387,6 +438,10 @@ class ScraplingProvider(NewsProvider):
             seen.add(key)
             self.stats["discovered"] += 1
 
+            # Reset here, not only inside _extract_body: on the else-branch that
+            # call never happens and a stale True would charge a polite delay
+            # for a fetch nobody made.
+            self._fetched = False
             body = self._extract_body(link) if (allow_body and self.fetch_bodies
                                                 and link) else ""
             got_body = len(body) > 200
@@ -403,7 +458,13 @@ class ScraplingProvider(NewsProvider):
                 summary=(body[:400] if body else
                          _STRIP.sub(" ", getattr(e, "summary", ""))[:400]),
             ))
-            self._throttle()
+            # The polite floor exists to space out ARTICLE FETCHES. When no
+            # fetch happened — headline-only search entries, a robots refusal,
+            # or past the body deadline — the entry came off an already
+            # downloaded feed, so sleeping here would burn the caller's
+            # remaining budget to be polite to nobody.
+            if getattr(self, "_fetched", False):
+                self._throttle()
 
         for e in self._discover_publisher(ticker, market):
             _add(e, allow_body=True)

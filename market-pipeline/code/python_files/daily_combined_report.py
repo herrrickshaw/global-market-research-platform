@@ -74,6 +74,29 @@ SCREENER_SHEETS = {
     "Darvas_Signals":    "Darvas",
 }
 
+# ── Convergence grading ───────────────────────────────────────────────────────
+# The FOUR independent fundamental screeners. Convergence is graded as how many
+# of these four agree on a name: 2/4, 3/4, 4/4 — so the reader picks a
+# confidence level instead of being handed one binary verdict.
+#
+# Technical screens are counted SEPARATELY and never inflate the score. A Darvas
+# breakout is not independent evidence of value or quality — it reads price,
+# which the fundamental four do not. Conflating them is what made
+# "CoffeeCan+Darvas+Piotroski" (2 fundamental screeners) rank as a "Triple Hit"
+# alongside a name three fundamental screeners actually agreed on.
+FUNDAMENTAL_SCREENS = ("Piotroski", "CoffeeCan", "MagicFormula", "BullCartel")
+TECHNICAL_SCREENS   = ("Darvas", "GoldenCross")
+
+# Floor for appearing in the convergence table at all. 1/4 is not convergence,
+# it is a single screener with an opinion.
+CONV_MIN = int(os.environ.get("CONVERGENCE_MIN", "2"))
+
+CONV_LEVEL = {4: "4/4 — full", 3: "3/4 — strong", 2: "2/4 — moderate"}
+CONV_COLOR = {4: "#1b5e20", 3: "#2e7d32", 2: "#f57f17"}
+
+# Cap the rendered convergence list; the counts-per-level line reports the rest.
+CONV_SHOW = int(os.environ.get("CONVERGENCE_SHOW", "25"))
+
 
 def get_fundamental_picks(market: str, run_fresh: bool = False) -> pd.DataFrame:
     """
@@ -150,6 +173,10 @@ def get_fundamental_picks(market: str, run_fresh: bool = False) -> pd.DataFrame:
     for sym, e in agg.items():
         screens = e["screens"]
         n = len([s for s in screens if s not in ("TripleHit","MultiScreen")])
+        # Independent fundamental agreement (0-4) vs price-based confirmation
+        # (0-2), kept apart on purpose — see FUNDAMENTAL_SCREENS above.
+        n_fund = len(screens & set(FUNDAMENTAL_SCREENS))
+        n_tech = len(screens & set(TECHNICAL_SCREENS))
         if "TripleHit" in screens:
             tier = "Triple Hit"
         elif "MultiScreen" in screens or n >= 3:
@@ -161,14 +188,20 @@ def get_fundamental_picks(market: str, run_fresh: bool = False) -> pd.DataFrame:
             "Screens": "+".join(sorted(s for s in screens
                                        if s not in ("TripleHit","MultiScreen"))) or "—",
             "N_Screens": n,
+            "N_Fund": n_fund, "N_Tech": n_tech,
+            "Fund_Screens": "+".join(sorted(screens & set(FUNDAMENTAL_SCREENS))) or "—",
+            "Tech_Screens": "+".join(sorted(screens & set(TECHNICAL_SCREENS))) or "—",
             "Piotroski": e["piotroski"], "LTP": e["ltp"],
         })
 
     df = pd.DataFrame(picks)
     if not df.empty:
-        tier_rank = {"Triple Hit":0, "Multi-Screen":1, "Single-Screen":2}
-        df["_r"] = df["Tier"].map(tier_rank)
-        df = df.sort_values(["_r","N_Screens"], ascending=[True,False]).drop("_r",axis=1)
+        # Rank by INDEPENDENT fundamental agreement first. This ordering also
+        # decides which names reach Talk-on-the-Street (build_report sends the
+        # top 25), so the news enrichment lands on the most convergent names
+        # rather than on whatever the old conflated Tier happened to float up.
+        df = df.sort_values(["N_Fund","N_Tech","N_Screens"],
+                            ascending=[False,False,False])
     n_triple = int((df["Tier"]=="Triple Hit").sum()) if not df.empty else 0
     n_multi  = int((df["Tier"]=="Multi-Screen").sum()) if not df.empty else 0
     print(f"  [Component 1] {len(df)} UNIQUE fundamental picks across all screeners "
@@ -245,31 +278,63 @@ def get_street_talk(symbols: list, market: str) -> tuple:
 
 def find_convergence(picks: pd.DataFrame, talk: dict) -> pd.DataFrame:
     """
-    Highlight stocks that are BOTH a fundamental pick AND positive in the news.
-    These are the highest-conviction convergence signals.
+    Grade every pick by how many of the four INDEPENDENT fundamental screeners
+    agree on it — 4/4, 3/4, 2/4 — so the reader chooses a confidence level
+    rather than being handed one binary verdict.
+
+    News is an ENRICHMENT COLUMN, never a gate. The previous version joined
+    picks against `talk` and skipped any name `talk` did not cover, so when
+    Talk-on-the-Street timed out (it returns {} on timeout) EVERY pick was
+    skipped and the section rendered "no matching news coverage" — which reads
+    as a finding when it actually means the check never ran. On 2026-08-27 that
+    hid HINDCOPPER, a 3/4 name the independent buzz feed had already scored
+    POSITIVE. Fundamental agreement is computed from the scan and is always
+    available, so the ladder now survives a dead news feed.
     """
+    if picks.empty:
+        return pd.DataFrame()
+
     rows = []
     for _, p in picks.iterrows():
-        sym = p["Symbol"]
-        t = talk.get(sym)
-        if not t or t["label"] == "NO_DATA":
+        n_fund = int(p.get("N_Fund", 0) or 0)
+        if n_fund < CONV_MIN:
             continue
-        agree = (t["label"] == "POSITIVE")   # fundamentals are bullish by construction
+        t = talk.get(p["Symbol"]) or {}
+        label = t.get("label", "NO_DATA")
+        has_news = bool(t) and label != "NO_DATA"
+        heads = t.get("headlines") or []
         rows.append({
-            "Symbol": sym, "Tier": p["Tier"],
-            "Fundamental": "STRONG", "News": t["label"],
-            "News_Score": t["score"], "N_Articles": t["n_articles"],
-            "Convergence": "✅ BOTH BULLISH" if agree else
-                           ("⚠️ NEWS NEGATIVE" if t["label"]=="NEGATIVE" else "— news neutral"),
-            "Top_Headline": t["headlines"][0]["title"][:80] if t["headlines"] else "",
+            "Symbol": p["Symbol"],
+            "Level": CONV_LEVEL.get(n_fund, f"{n_fund}/4"),
+            "N_Fund": n_fund,
+            "Fund_Screens": p.get("Fund_Screens", "—"),
+            "Tech_Confirm": p.get("Tech_Screens", "—"),
+            "N_Tech": int(p.get("N_Tech", 0) or 0),
+            "Tier": p.get("Tier", ""),
+            "News": label if has_news else "— no news data",
+            "News_Score": float(t.get("score", 0.0)) if has_news else 0.0,
+            "N_Articles": int(t.get("n_articles", 0)) if has_news else 0,
+            "Top_Headline": heads[0]["title"][:80] if heads else "",
+            # Retained so anything still filtering on the old string keeps working.
+            "Convergence": ("✅ BOTH BULLISH" if label == "POSITIVE" else
+                            "⚠️ NEWS NEGATIVE" if label == "NEGATIVE" else
+                            "— news neutral" if has_news else "— no news data"),
         })
+
     df = pd.DataFrame(rows)
     if not df.empty:
-        # Sort: convergent (both bullish) first, then by news score
-        df["_rank"] = df["Convergence"].map(
-            {"✅ BOTH BULLISH":0, "— news neutral":1, "⚠️ NEWS NEGATIVE":2})
-        df = df.sort_values(["_rank","News_Score"], ascending=[True,False]).drop("_rank",axis=1)
+        # Strongest fundamental agreement first; within a level, technical
+        # confirmation then news score break the tie.
+        df = df.sort_values(["N_Fund","N_Tech","News_Score"],
+                            ascending=[False,False,False])
     return df
+
+
+def convergence_counts(conv: pd.DataFrame) -> dict:
+    """{4: n, 3: n, 2: n} — how many names sit at each confidence level."""
+    if conv.empty:
+        return {}
+    return {int(k): int(v) for k, v in conv["N_Fund"].value_counts().items()}
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -323,22 +388,32 @@ def print_report(rep: dict):
                 print(f"  {sym:<14} {t['label']:<10} {t['score']:>+7.2f} {t['n_articles']:>9}")
 
     print(f"\n{'='*74}")
-    print(f"  ⭐ CONVERGENCE — WHERE FUNDAMENTALS & THE STREET AGREE")
+    print(f"  ⭐ CONVERGENCE — HOW MANY OF THE 4 FUNDAMENTAL SCREENERS AGREE")
     print(f"{'='*74}")
     conv = rep["convergence"]
     if conv.empty:
-        print("  No picks had matching news coverage today.")
+        print(f"  No name reached {CONV_MIN}/4 fundamental screener agreement today.")
     else:
-        both = conv[conv["Convergence"]=="✅ BOTH BULLISH"]
-        print(f"  🎯 {len(both)} HIGH-CONVICTION (fundamentally strong AND positive news):")
-        for _, r in both.iterrows():
-            print(f"    ✅ {r['Symbol']:<12} [{r['Tier']}] news {r['News_Score']:+.2f} "
-                  f"({r['N_Articles']} art) — {r['Top_Headline'][:55]}")
-        warn = conv[conv["Convergence"]=="⚠️ NEWS NEGATIVE"]
-        if not warn.empty:
-            print(f"\n  ⚠️  {len(warn)} CAUTION (strong fundamentals BUT negative news):")
-            for _, r in warn.iterrows():
-                print(f"    ⚠️  {r['Symbol']:<12} news {r['News_Score']:+.2f} — {r['Top_Headline'][:55]}")
+        counts = convergence_counts(conv)
+        print("  " + " · ".join(f"{lv}/4: {counts.get(lv,0)}" for lv in (4,3,2))
+              + f"  (screeners: {', '.join(FUNDAMENTAL_SCREENS)})")
+        if not talk:
+            print("  ⚠️  news enrichment unavailable — levels below are fundamental-only")
+        for lv in (4, 3, 2):
+            grp = conv[conv["N_Fund"] == lv]
+            if grp.empty:
+                continue
+            print(f"\n  ── {CONV_LEVEL[lv]} ({len(grp)}) "
+                  + "─"*max(0, 48-len(CONV_LEVEL[lv])))
+            for _, r in grp.head(CONV_SHOW).iterrows():
+                tech = f" +{r['Tech_Confirm']}" if r["N_Tech"] else ""
+                news = (f"news {r['News_Score']:+.2f} ({r['N_Articles']} art)"
+                        if r["N_Articles"] else "no news data")
+                print(f"    {r['Symbol']:<12} {r['Fund_Screens']:<34}{tech:<16} {news}")
+                if r["Top_Headline"]:
+                    print(f"                 └─ {r['Top_Headline'][:60]}")
+            if len(grp) > CONV_SHOW:
+                print(f"    … {len(grp)-CONV_SHOW} more at this level")
 
     print(f"\n  {DISCLAIMER}\n")
 
@@ -371,24 +446,36 @@ def to_html(rep: dict) -> str:
         h.append(f"<tr><td><b>{sym}</b></td><td style='color:{col}'>{t['label']}</td>"
                  f"<td>{t['score']:+.2f}</td><td>{t['n_articles']}</td></tr>")
     h.append('</table>')
-    # Convergence
-    h.append('<h2>⭐ Convergence — Fundamentals &amp; The Street Agree</h2>')
+    # Convergence — graded by how many of the four fundamental screeners agree
+    h.append('<h2>⭐ Convergence — How Many of the 4 Fundamental Screeners Agree</h2>')
     if not conv.empty:
-        both = conv[conv["Convergence"]=="✅ BOTH BULLISH"]
-        if not both.empty:
-            h.append('<p><b>🎯 High-conviction (strong fundamentals AND positive news):</b></p><ul>')
-            for _, r in both.iterrows():
-                h.append(f"<li><b>{r['Symbol']}</b> [{r['Tier']}] — news {r['News_Score']:+.2f} "
-                         f"({r['N_Articles']} articles): {r['Top_Headline']}</li>")
-            h.append('</ul>')
-        warn = conv[conv["Convergence"]=="⚠️ NEWS NEGATIVE"]
-        if not warn.empty:
-            h.append('<p><b>⚠️ Caution (strong fundamentals BUT negative news):</b></p><ul>')
-            for _, r in warn.iterrows():
-                h.append(f"<li><b>{r['Symbol']}</b> — news {r['News_Score']:+.2f}: {r['Top_Headline']}</li>")
+        counts = convergence_counts(conv)
+        h.append('<p>' + " &middot; ".join(
+            f'<b>{lv}/4:</b> {counts.get(lv,0)}' for lv in (4,3,2))
+            + f' <span style="color:#777">({", ".join(FUNDAMENTAL_SCREENS)})</span></p>')
+        if not talk:
+            h.append('<p style="color:#f57f17">⚠️ News enrichment unavailable — '
+                     'levels below are fundamental-only.</p>')
+        for lv in (4, 3, 2):
+            grp = conv[conv["N_Fund"] == lv]
+            if grp.empty:
+                continue
+            h.append(f'<p style="color:{CONV_COLOR[lv]}"><b>{CONV_LEVEL[lv]}</b> '
+                     f'({len(grp)})</p><ul>')
+            for _, r in grp.head(CONV_SHOW).iterrows():
+                tech = (f" &middot; technical: {r['Tech_Confirm']}"
+                        if r["N_Tech"] else "")
+                news = (f" &middot; news {r['News_Score']:+.2f} "
+                        f"({r['N_Articles']} articles)" if r["N_Articles"]
+                        else ' &middot; <span style="color:#777">no news data</span>')
+                head = f": {r['Top_Headline']}" if r["Top_Headline"] else ""
+                h.append(f"<li><b>{r['Symbol']}</b> — {r['Fund_Screens']}"
+                         f"{tech}{news}{head}</li>")
+            if len(grp) > CONV_SHOW:
+                h.append(f'<li style="color:#777">… {len(grp)-CONV_SHOW} more</li>')
             h.append('</ul>')
     else:
-        h.append('<p>No fundamental picks had news coverage today.</p>')
+        h.append(f'<p>No name reached {CONV_MIN}/4 fundamental screener agreement today.</p>')
     h.append(f'<p style="font-size:11px;color:#bf360c">{DISCLAIMER}</p>')
     return "\n".join(h)
 

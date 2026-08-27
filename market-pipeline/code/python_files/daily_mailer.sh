@@ -71,12 +71,23 @@ cd "$(dirname "$0")"
 # caffeinate -w ties the assertion to this shell's lifetime, so it releases on
 # exit however we exit — no re-exec, no trap, nothing left holding the machine
 # awake if the run dies. -i prevents idle sleep (what the log shows: "Sleep
-# Service Back to Sleep", PrevIdle), -m keeps the disk spun up. -s is
-# deliberately omitted: it only applies on AC and this Mac runs the 03:00 slot
-# on battery ("Using BATT" in every one of those 37 events).
+# Service Back to Sleep", PrevIdle), -m keeps the disk spun up.
+#
+# -s was previously omitted on the grounds that it only applies on AC. That is
+# true — `man caffeinate`: "valid only when system is running on AC power" — but
+# omitting it buys nothing, and it is the only flag that blocks the sleep that
+# actually costs us time. 2026-08-27 measured the send phase at 121.7 min wall
+# for ~5 min of compute: 11 "Entering Sleep state due to 'Maintenance Sleep' …
+# Using Batt" events, 116.9 min asleep, which tripped both CAP_ENSURE_FRESH and
+# the [11/13] cap purely on wall-clock. So -s is now included: it is a no-op on
+# battery and correct on AC.
+#
+# ⚠️ ON BATTERY THIS DOES NOT HELP. -i cannot block Maintenance Sleep; nothing
+# caffeinate offers can. Running the 03:00/06:30 slots on AC is the only real
+# fix for the 2h send phase — see the 2026-08-27 audit.
 if command -v caffeinate >/dev/null 2>&1; then
-  caffeinate -i -m -w "$$" &
-  echo "  power assertion held for pid $$ (caffeinate -i -m)"
+  caffeinate -s -i -m -w "$$" &
+  echo "  power assertion held for pid $$ (caffeinate -s -i -m)"
 fi
 
 # Never inherit python3 from the caller's PATH. A manual run from a plain shell

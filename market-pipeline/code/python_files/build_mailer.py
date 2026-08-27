@@ -283,35 +283,63 @@ def _kr_picks_rows(top: int = 15):
     )
 
 
+_CONV_LEVEL = {4: "4/4 — full", 3: "3/4 — strong", 2: "2/4 — moderate"}
+_CONV_COLOR = {4: "#1b5e20", 3: "#2e7d32", 2: "#f57f17"}
+_CONV_SHOW  = 15
+
+
 def _convergence_html(label: str, data: dict) -> str:
+    """
+    Render the convergence ladder: how many of the four independent fundamental
+    screeners agree on each name (4/4, 3/4, 2/4). News sentiment is shown per
+    name when available and omitted when it is not — it is NOT a gate, so a
+    dead Talk-on-the-Street feed no longer empties this whole section.
+    """
     conv = data.get("convergence") or []
-    both = [c for c in conv if "BOTH BULLISH" in str(c.get("Convergence", ""))]
-    caut = [c for c in conv if "NEGATIVE" in str(c.get("Convergence", ""))]
-    if not both and not caut:
-        return f"<p style='color:#777;font-size:13px'>{label}: no fundamental picks had matching news coverage today.</p>"
-    parts = []
-    if both:
+    if not conv:
+        return (f"<p style='color:#777;font-size:13px'>{label}: no name reached "
+                f"2/4 fundamental screener agreement today.</p>")
+
+    # Older payloads (written before the ladder landed) carry no N_Fund.
+    if not any(c.get("N_Fund") for c in conv):
+        return (f"<p style='color:#777;font-size:13px'>{label}: convergence "
+                f"unavailable — report predates the 2/4·3/4·4/4 ladder.</p>")
+
+    by_level = {}
+    for c in conv:
+        by_level.setdefault(int(c.get("N_Fund") or 0), []).append(c)
+
+    counts = " &middot; ".join(
+        f"<b>{lv}/4:</b> {len(by_level.get(lv, []))}" for lv in (4, 3, 2))
+    parts = [f"<p style='font-size:13px;margin:2px 0'>{label} — {counts} "
+             "<span style='color:#777'>(Piotroski · CoffeeCan · MagicFormula · "
+             "BullCartel)</span></p>"]
+
+    if not data.get("talk"):
+        parts.append("<p style='font-size:11px;color:#f57f17;margin:2px 0'>"
+                     "⚠️ News enrichment unavailable today — levels below are "
+                     "fundamental-only.</p>")
+
+    for lv in (4, 3, 2):
+        grp = by_level.get(lv) or []
+        if not grp:
+            continue
         parts.append(
-            f"<p style='font-size:13px'><b>🎯 {label} high-conviction</b> "
-            "(strong fundamentals AND positive news):</p><ul style='font-size:13px;margin:4px 0 8px 18px'>"
-        )
-        for c in both:
-            parts.append(
-                f"<li><b>{c.get('Symbol')}</b> [{c.get('Tier')}] — news "
-                f"{float(c.get('News_Score', 0)):+.2f} ({c.get('N_Articles', 0)} articles): "
-                f"{c.get('Top_Headline', '')}</li>"
-            )
-        parts.append("</ul>")
-    if caut:
-        parts.append(
-            f"<p style='font-size:13px'><b>⚠️ {label} caution</b> "
-            "(strong fundamentals BUT negative news):</p><ul style='font-size:13px;margin:4px 0 8px 18px'>"
-        )
-        for c in caut:
-            parts.append(
-                f"<li><b>{c.get('Symbol')}</b> — news {float(c.get('News_Score', 0)):+.2f}: "
-                f"{c.get('Top_Headline', '')}</li>"
-            )
+            f"<p style='font-size:13px;margin:8px 0 2px;color:{_CONV_COLOR[lv]}'>"
+            f"<b>{_CONV_LEVEL[lv]}</b> ({len(grp)})</p>"
+            "<ul style='font-size:13px;margin:2px 0 6px 18px'>")
+        for c in grp[:_CONV_SHOW]:
+            tech = (f" &middot; technical: {c.get('Tech_Confirm')}"
+                    if c.get("N_Tech") else "")
+            n_art = int(c.get("N_Articles") or 0)
+            news = (f" &middot; news {float(c.get('News_Score', 0)):+.2f} "
+                    f"({n_art} articles)" if n_art
+                    else " &middot; <span style='color:#777'>no news data</span>")
+            head = f": {c.get('Top_Headline')}" if c.get("Top_Headline") else ""
+            parts.append(f"<li><b>{c.get('Symbol')}</b> — "
+                         f"{c.get('Fund_Screens', '—')}{tech}{news}{head}</li>")
+        if len(grp) > _CONV_SHOW:
+            parts.append(f"<li style='color:#777'>… {len(grp)-_CONV_SHOW} more</li>")
         parts.append("</ul>")
     return "".join(parts)
 
@@ -867,7 +895,7 @@ h3{{font-size:14px;margin:14px 0 6px;color:#333}}
 <h3 style="font-size:13px;margin:14px 0 4px;color:#333">Cash Conversion Cycle <span style="font-weight:400;color:#777" class="mut">(screener.in 228040)</span></h3>
 <p style="font-size:11px;color:#666;margin:2px 0">Lowest/negative CCC = collects from customers before paying suppliers.</p>
 {_table(["Symbol", "Name", "CCC days", "ROCE", "Liquidity"], ccc_rows) if ccc_rows else "<p>n/a</p>"}
-<h3 style="font-size:13px;margin:14px 0 4px;color:#333">⭐ Convergence <span style="font-weight:400;color:#777" class="mut">— fundamentals &amp; the street agree</span></h3>
+<h3 style="font-size:13px;margin:14px 0 4px;color:#333">⭐ Convergence <span style="font-weight:400;color:#777" class="mut">— how many of the 4 fundamental screeners agree</span></h3>
 {conv_in}
 <h3 style="font-size:13px;margin:14px 0 4px;color:#333">🔥 News picks <span style="font-weight:400;color:#777" class="mut">— buzz, NOT a recommendation</span></h3>
 {_table(["Symbol", "Name", "Sentiment", "Mentions", "Headline"], in_news_rows) if in_news_rows else "<p>n/a</p>"}
