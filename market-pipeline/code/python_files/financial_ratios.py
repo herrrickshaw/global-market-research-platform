@@ -102,7 +102,12 @@ MARKETS = {
     # overrides this (see build_market). Rows whose filing currency disagreed
     # with their exchange's quoting currency were dropped at store-build time
     # rather than FX-converted.
-    "europe": (FUND_DIR / "EU_current.parquet", BHAV / "ohlcv_EUROPE.parquet", "EUR"),
+    "europe": (FUND_DIR / "EU_current.parquet",
+               # TWO panels: the scan universe, plus a supplement for the
+               # tickers the scan does not cover. The filings span a larger
+               # set than europe_broad_list.csv, and pe/pb need both sides.
+               (BHAV / "ohlcv_EUROPE.parquet",
+                BHAV / "ohlcv_EUROPE_supplement.parquet"), "EUR"),
 }
 
 # Exchanges that quote in a MINOR unit. LSE prices in pence: a .L close of 277.5
@@ -124,7 +129,16 @@ def _latest_closes(con, path: Path) -> pd.DataFrame:
     of per-ticker parquets, where the symbol is the filename and there is no
     Symbol column at all.
     """
-    if path.is_dir():
+    if isinstance(path, (list, tuple)):
+        # Union several long-format panels; the ranking below then picks each
+        # symbol's newest bar across all of them, so a supplement never shadows
+        # a fresher primary and vice versa.
+        present = [str(p) for p in path if Path(p).exists()]
+        if not present:
+            return pd.DataFrame(columns=["symbol", "close", "close_date"])
+        src = "read_parquet([" + ", ".join(f"'{p}'" for p in present) + "])"
+        sym = "Symbol"
+    elif path.is_dir():
         src = f"read_parquet('{path}/*.parquet', filename=true)"
         sym = "regexp_extract(filename, '([^/]+)\\.parquet$', 1)"
     else:

@@ -35,6 +35,14 @@ RC=$?
 # (9 slots/week), after which only >30d-stale names refetch. Same store shape
 # as IN_current so every India-store consumer reads it unchanged.
 "$PY" us_fundamentals_edgar.py --limit 1500 --rate 0.25 || echo "US EDGAR collection failed (continuing)"
+# Europe staging, BEFORE the ratio rebuild that consumes it. Stages the real
+# filed line items out of public.global_fundamentals into EU_current.parquet,
+# then fetches closes for the tickers the European SCAN universe does not price
+# — the filings span a larger set than europe_broad_list.csv, and pe/pb need
+# both sides. That one gap was the whole of Europe's ratio shortfall: adding it
+# took europe pe 376 -> 790 and pb 411 -> 1,048.
+"$PY" build_eu_fundamentals_store.py --with-prices \
+  || echo "EU fundamentals staging failed (continuing on the previous store)"
 # Rebuild the India+US ratio table (PE/PB/ROE/ROCE/D-E/margins/FCF yield) from
 # whatever the stores now hold + latest closes. /usr/bin/python3, NOT the venv —
 # duckdb lives there (the same split documented in daily_pipeline step 15).

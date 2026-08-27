@@ -136,13 +136,91 @@ def build(dry_run: bool = False) -> dict:
     return summary
 
 
+BHAV = Path("/Users/umashankar/market-pipeline/data/bhavcopy_cache")
+SUPPLEMENT = BHAV / "ohlcv_EUROPE_supplement.parquet"
+
+
+def fetch_missing_prices(batch: int = 80, period: str = "1mo",
+                         verbose: bool = True) -> dict:
+    """Close history for EU tickers the scan panel does not price.
+
+    ohlcv_EUROPE.parquet is built from the European SCAN universe
+    (europe_broad_list.csv, 996 symbols). The filings cover a different and
+    larger set, so 687 tickers had fundamentals and no price — and pe/pb need
+    both. That single gap was the whole of Europe's ratio shortfall: 417 of the
+    687 have shares and positive net income, i.e. they would price immediately.
+
+    Fetched with yfinance DIRECTLY rather than through data_sources.fetch().
+    That path returns 0/8 on these tickers — and 0/4 on SAP.DE, BMW.DE,
+    NOKIA.HE and NOVO-B.CO, which are four of the largest listings in Europe —
+    while a plain yf.download of the same symbols resolves 58/60. The multi
+    source layer is broken for European symbols; that is a separate bug and is
+    NOT fixed here, it is only routed around, deliberately and visibly.
+    """
+    import pandas as _pd
+    import yfinance as yf
+    import duckdb
+    import financial_ratios as FR
+
+    con = duckdb.connect()
+    store = _pd.read_parquet(OUT).sort_values(["ticker", "fy_end"])
+    latest = store.groupby("ticker").tail(1)
+    priced = set(FR._latest_closes(con, BHAV / "ohlcv_EUROPE.parquet")["symbol"])
+    missing = [t for t in latest["ticker"] if t not in priced]
+    if verbose:
+        print(f"  {len(missing)} EU tickers have fundamentals but no price — fetching")
+
+    frames, ok = [], 0
+    for i in range(0, len(missing), batch):
+        chunk = missing[i:i + batch]
+        try:
+            d = yf.download(chunk, period=period, progress=False,
+                            group_by="ticker", threads=True, auto_adjust=False)
+        except Exception as e:                                 # noqa: BLE001
+            if verbose:
+                print(f"    batch {i//batch+1}: {type(e).__name__} — skipped")
+            continue
+        for t in chunk:
+            try:
+                sub = d[t] if t in d.columns.get_level_values(0) else None
+            except Exception:                                  # noqa: BLE001
+                sub = None
+            if sub is None or "Close" not in sub or not sub["Close"].notna().any():
+                continue
+            g = sub.dropna(subset=["Close"]).reset_index()[
+                ["Date", "Open", "High", "Low", "Close", "Volume"]].copy()
+            g["Symbol"] = t
+            frames.append(g)
+            ok += 1
+        if verbose:
+            print(f"    batch {i//batch+1}/{(len(missing)-1)//batch+1}: {ok} resolved so far")
+
+    if not frames:
+        return {"missing": len(missing), "resolved": 0, "written": None}
+    out = _pd.concat(frames, ignore_index=True)
+    for c in ("Open", "High", "Low", "Close"):
+        out[c] = _pd.to_numeric(out[c], errors="coerce").astype("float32")
+    out["Volume"] = _pd.to_numeric(out["Volume"], errors="coerce").fillna(0).astype("int64")
+    out.to_parquet(SUPPLEMENT, compression="zstd", index=False)
+    return {"missing": len(missing), "resolved": ok,
+            "symbols": int(out["Symbol"].nunique()),
+            "max_date": str(_pd.to_datetime(out["Date"]).max().date()),
+            "written": str(SUPPLEMENT)}
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[1])
     ap.add_argument("--dry-run", action="store_true")
+    ap.add_argument("--with-prices", action="store_true",
+                    help="also fetch closes for tickers the scan panel misses")
     a = ap.parse_args()
     s = build(a.dry_run)
     for k, v in s.items():
         print(f"  {k}: {v}")
+    if a.with_prices and not a.dry_run:
+        print("\n  ── supplementary price fetch ──")
+        for k, v in fetch_missing_prices().items():
+            print(f"  {k}: {v}")
     return 0
 
 
