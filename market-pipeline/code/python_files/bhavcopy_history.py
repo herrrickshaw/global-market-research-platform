@@ -301,8 +301,21 @@ def fetch_history(n_days: int = 400, workers: int = 8, exchanges=("NSE", "BSE"),
         print(f"  assembled cache: {len(have_dates)} dates known, "
               f"{len(no_data)} dead dates skipped, {len(missing)} new date(s) to fetch")
 
-    # FAST PATH: nothing new to fetch and a cleaned cache exists → serve it
-    if not missing and CLEANED.exists():
+    # FAST PATH: nothing new to fetch and a cleaned cache exists → serve it.
+    #
+    # `missing` being empty only means ASSEMBLED has every date we want. It says
+    # nothing about CLEANED, which is rebuilt by the pivot at the bottom of this
+    # function — so the two can disagree whenever the pivot does not finish.
+    # 2026-08-29: step [3/13] appended 2026-08-28 to assembled (293 dates) and was
+    # then killed by its wall-clock cap mid-pivot, leaving cleaned at 268 dates /
+    # 2026-08-27. From then on `missing` was empty on every run, this fast path
+    # served the stale frame, and the mailer's self-heal — which calls right back
+    # into here — "repaired" nothing in 5 seconds. The whole pipeline ran on
+    # 27-Aug prices; both send gates caught it and suppressed the brief.
+    #
+    # _cleaned_behind_assembled() already guarded the post-fetch fast path below
+    # against exactly this. It was never wired into this one.
+    if not missing and CLEANED.exists() and not _cleaned_behind_assembled(cached, want_dates):
         try:
             out = _from_cleaned(min_bars)
             if verbose:
@@ -311,6 +324,8 @@ def fetch_history(n_days: int = 400, workers: int = 8, exchanges=("NSE", "BSE"),
         except Exception as e:
             if verbose:
                 print(f"  (cleaned cache unusable, rebuilding: {e})")
+    elif not missing and CLEANED.exists() and verbose:
+        print("  cleaned cache is behind assembled — rebuilding instead of serving it")
 
     frames = []  # (exchange, day, df) for the missing days only
 
