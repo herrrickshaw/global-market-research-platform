@@ -212,7 +212,24 @@ _kill_tree() {
   kill "-$sig" "$root" 2>/dev/null || true
 }
 
+# Seconds of AWAKE time since boot. CLOCK_UPTIME_RAW does not advance while the
+# system is suspended, so (wall delta - awake delta) is exactly how long the
+# machine slept inside a step. Darwin has no shell primitive for this.
+#
+# Fallback is `date +%s`, which makes awake == wall and therefore slept == 0 —
+# i.e. every timeout classifies as a real timeout, the pre-2026-08-29 behaviour.
+# Degrading to the old, louder reading is the right failure mode here.
+# Render a duration the way the reader needs it: minutes once there are minutes
+# to speak of, seconds below that. CAP_DEPS is 120s, where "0m of 2m" is noise.
+_dur() { if [ "$1" -ge 120 ]; then echo "$(( $1 / 60 ))m"; else echo "$1s"; fi; }
+
+_awake_secs() {
+  "$PY" -c 'import time; print(int(time.clock_gettime(time.CLOCK_UPTIME_RAW)))' \
+    2>/dev/null || date +%s
+}
+
 TIMED_OUT=()
+SUSPENDED=()
 cap() {
   local secs="$1" label="$2"; shift 2
   "$@" &
@@ -221,12 +238,34 @@ cap() {
   # 2026-08-15, when the Mac slept 37 times mid-run, a 61-minute step [3/13]
   # never reached CAP_BHAVCOPY=2400 and no TIMEOUT was ever logged. Comparing
   # timestamps counts suspended time the way an observer does.
-  local pid=$! started waited=0
+  local pid=$! started waited=0 awake_started
   started=$(date +%s)
+  awake_started=$(_awake_secs)
   while kill -0 "$pid" 2>/dev/null; do
     waited=$(( $(date +%s) - started ))
     if [ "$waited" -ge "$secs" ]; then
-      echo "  ⏱  TIMEOUT: '$label' exceeded ${secs}s — killing it and continuing"
+      # Classify BEFORE killing. caffeinate -s -i -m cannot block Maintenance
+      # Sleep on battery, so a step can burn its whole wall-clock budget while
+      # getting almost no CPU: measured 2026-08-29, step [3/13] spent 3,649s of
+      # its 3,662s suspended — about 13 seconds of wake time in 61 minutes, for
+      # work profiled at ~29s. Calling that "India: bhavcopy refresh failed"
+      # sends the operator hunting for an unbounded call that does not exist.
+      #
+      # The kill itself is unchanged and unconditional: a suspended step still
+      # has to release $LOCKDIR, or the 06:30 send finds the lock held and
+      # exits 0 with no brief (the 2026-08-07 silent failure).
+      local awake slept
+      awake=$(( $(_awake_secs) - awake_started ))
+      slept=$(( waited - awake ))
+      [ "$slept" -lt 0 ] && slept=0
+      if [ "$slept" -ge $(( waited / 2 )) ]; then
+        echo "  💤 SUSPENDED: '$label' hit the ${secs}s ceiling, but the machine slept"
+        echo "     $(_dur "$slept") of $(_dur "$waited") — only ${awake}s of wake time. Not a code fault."
+        SUSPENDED+=("$label (asleep $(_dur "$slept") of $(_dur "$waited"), ${awake}s awake)")
+      else
+        echo "  ⏱  TIMEOUT: '$label' exceeded ${secs}s — killing it and continuing"
+        TIMED_OUT+=("$label (>${secs}s)")
+      fi
       _kill_tree TERM "$pid"
       sleep 5
       if kill -0 "$pid" 2>/dev/null; then
@@ -234,7 +273,6 @@ cap() {
         _kill_tree KILL "$pid"
       fi
       wait "$pid" 2>/dev/null
-      TIMED_OUT+=("$label (>${secs}s)")
       return 124
     fi
     sleep "$CAP_POLL"
@@ -539,6 +577,15 @@ FAILURES=()
   # at an unbounded call rather than a bug in the report itself.
   if [ ${#TIMED_OUT[@]} -gt 0 ]; then
     FAILURES+=("TIMEOUT: ${TIMED_OUT[*]}")
+  fi
+
+  # A suspended step is still a failure — the pipeline fell back to cached data
+  # and the operator must know the day is stale — but it is not a BROKEN step,
+  # and the distinction changes what they should do about it. The fix for this
+  # class is AC power for the 03:00/06:30 slots; nothing caffeinate offers
+  # blocks Maintenance Sleep on battery, so there is no code change to hunt for.
+  if [ ${#SUSPENDED[@]} -gt 0 ]; then
+    FAILURES+=("SUSPENDED — machine asleep, not a code fault (run on AC): ${SUSPENDED[*]}")
   fi
 
   if [ ${#FAILURES[@]} -gt 0 ]; then
