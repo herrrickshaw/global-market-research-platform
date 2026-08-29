@@ -212,6 +212,10 @@ _kill_tree() {
   kill "-$sig" "$root" 2>/dev/null || true
 }
 
+# Render a duration the way the reader needs it: minutes once there are minutes
+# to speak of, seconds below that. CAP_DEPS is 120s, where "0m of 2m" is noise.
+_dur() { if [ "$1" -ge 120 ]; then echo "$(( $1 / 60 ))m"; else echo "$1s"; fi; }
+
 # Seconds of AWAKE time since boot. CLOCK_UPTIME_RAW does not advance while the
 # system is suspended, so (wall delta - awake delta) is exactly how long the
 # machine slept inside a step. Darwin has no shell primitive for this.
@@ -219,10 +223,6 @@ _kill_tree() {
 # Fallback is `date +%s`, which makes awake == wall and therefore slept == 0 —
 # i.e. every timeout classifies as a real timeout, the pre-2026-08-29 behaviour.
 # Degrading to the old, louder reading is the right failure mode here.
-# Render a duration the way the reader needs it: minutes once there are minutes
-# to speak of, seconds below that. CAP_DEPS is 120s, where "0m of 2m" is noise.
-_dur() { if [ "$1" -ge 120 ]; then echo "$(( $1 / 60 ))m"; else echo "$1s"; fi; }
-
 _awake_secs() {
   "$PY" -c 'import time; print(int(time.clock_gettime(time.CLOCK_UPTIME_RAW)))' \
     2>/dev/null || date +%s
