@@ -62,7 +62,9 @@ section_start "mailer"
       $PY send_mailer.py "$@" || FAILURES+=("mailer: build/send")
   else
       echo "  ❌ external validation FAILED — sending SUPPRESSED, saving draft instead"
-      FAILURES+=("mailer: NOT SENT — brief failed screener.in validation (see above)")
+      # Source-agnostic on purpose: screener.in stopped being a witness on
+      # 2026-08-18 and this label went on naming it. See daily_mailer.sh.
+      FAILURES+=("mailer: NOT SENT — brief failed external price validation (see above)")
       $PY send_mailer.py --draft || FAILURES+=("mailer: draft save")
   fi
 

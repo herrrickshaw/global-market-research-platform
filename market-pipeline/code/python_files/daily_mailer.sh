@@ -510,7 +510,19 @@ FAILURES=()
   else
       # Name the ACTUAL blocker. On 2026-07-28 the reconcile blocked the send and
       # the alert said "failed screener.in validation" — validation had PASSED 6/6.
-      if [ "$VALIDATE_OK" -ne 0 ]; then WHY="brief failed screener.in validation"
+      #
+      # 2026-08-29: that same string went stale a second way. screener.in was
+      # dropped as a witness on 2026-08-18 (the gate has run on yfinance +
+      # alphavantage ever since), but the label kept naming it — so every alert for
+      # 11 days blamed a source the gate no longer consults, and the gate read as
+      # circular against our own screener data. It is not: our prices come from
+      # NSE/BSE bhavcopy and no witness derives from it.
+      #
+      # So do NOT hardcode a source name here. The witness set is owned by
+      # price_sources.SOURCES and will change again; validate_brief already prints
+      # the live list ("validating … against yfinance, alphavantage, twelvedata")
+      # directly above this line. A label that cannot go stale beats a specific one.
+      if [ "$VALIDATE_OK" -ne 0 ]; then WHY="brief failed external price validation (sources listed above)"
       else WHY="price reconcile flagged $RECONCILE_FAIL market(s) (validation itself PASSED)"; fi
       echo "  ❌ send SUPPRESSED — $WHY; saving draft instead"
       FAILURES+=("mailer: NOT SENT — $WHY")

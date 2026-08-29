@@ -202,7 +202,7 @@ def activity(state: ActivityState) -> dict:
 
 
 def gates(state: ActivityState) -> dict:
-    """The mailer gate: screener.in validation vs price reconcile. Different faults."""
+    """The mailer gate: external price validation vs reconcile. Different faults."""
     out = []
     for r in state["runs"]:
         if r["job"] not in ("dailybrief", "ingest"):

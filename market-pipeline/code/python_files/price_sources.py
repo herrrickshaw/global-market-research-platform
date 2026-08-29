@@ -274,6 +274,62 @@ def _alphavantage(sym: str, asof: _dt.date) -> dict:
         return {"error": f"av: {str(e)[:60]}"}
 
 
+def _twelvedata(sym: str, asof: _dt.date) -> dict:
+    """Twelve Data daily bars — the tie-breaker. Reaches NSE directly.
+
+    Registered to fix the failure mode that suppressed the 2026-08-29 brief: with
+    exactly two witnesses, validate_brief's majority rule makes a 1-1 split a
+    MISMATCH, so ONE stale witness is enough to block a correct send. That morning
+    yfinance had not yet rolled forward to the 28-Aug session and was serving the
+    27-Aug close under it; our scan and Alpha Vantage both had 28-Aug and agreed to
+    0.03% on INFY. The jury split 1-1 and the send was suppressed on data that the
+    official NSE bhavcopy later confirmed was correct. A third voice ends that.
+
+    Note this witness quotes NSE, the same exchange as the scan, unlike Alpha
+    Vantage's BSE path — so expect ~0% basis here, not the 0.1-0.3% that is normal
+    there. That costs some exchange diversity, but the pair already covers both
+    exchanges; what was missing was a third VOTE, and Twelve Data is the only
+    surveyed provider that covers India live (see the findings block below).
+
+    🔴 NEEDS TWELVEDATA_KEY in the canonical credential store. Absent, this returns
+    an error and validate_brief drops it from the quorum entirely — it does not vote
+    "no". So registering it before the key exists is inert, never harmful.
+
+    Free tier is 800 requests/day and 8/minute; the gate samples ~6 names per run,
+    so unlike the Alpha Vantage key this one is in no danger of being starved by a
+    second caller.
+    """
+    k = _key("TWELVEDATA_KEY")
+    if not k:
+        return {"error": "no TWELVEDATA_KEY"}
+    try:
+        r = _get("https://api.twelvedata.com/time_series?" + urlencode({
+            "symbol": sym, "exchange": "NSE", "interval": "1day",
+            "outputsize": "30", "apikey": k}))
+        if r.status_code != 200:
+            return {"error": f"http {r.status_code}"}
+        j = r.json()
+        vals = j.get("values")
+        if not vals:
+            # Twelve Data reports quota and unknown symbols as status:error with a
+            # 200 body, same shape as Alpha Vantage's prose notes. Redact before
+            # returning: this string is written verbatim into source_accuracy.db by
+            # record(), and that ledger lives in a repo whose origin is PUBLIC.
+            note = str(j.get("message") or j.get("status") or "no values")[:200]
+            note = note.replace(k, "<redacted>")
+            note = re.sub(r"[A-Za-z0-9_\-]{16,}", "<redacted>", note)
+            return {"error": f"td: {note[:70]}"}
+        rows = {v["datetime"][:10]: v for v in vals if v.get("datetime")}
+        days = [d for d in rows if d <= asof.isoformat()]
+        if not days:
+            return {"error": "no rows on/before asof"}
+        d = max(days)
+        return {"price": float(rows[d]["close"]),
+                "date": _dt.date.fromisoformat(d)}
+    except Exception as e:                                     # noqa: BLE001
+        return {"error": f"td: {str(e)[:60]}"}
+
+
 def _screener(sym: str, asof: _dt.date) -> dict:
     """screener.in's header. Kept as one voice among several, no longer the only one.
 
@@ -346,22 +402,29 @@ def _screener(sym: str, asof: _dt.date) -> dict:
 #                 add a column to the ledger without adding a witness. bsedata is
 #                 live-quote only (fails the date-anchored rule) and last released
 #                 2024. investpy has been dead since Investing.com blocked it in
-#                 2022. twelvedata is alive and covers India but needs an account
-#                 that does not exist yet — the one worth signing up for.
+#                 2022. twelvedata is alive and covers India — REGISTERED
+#                 2026-08-29 (free tier 800/day, 8/min; needs TWELVEDATA_KEY).
 #
-# Two witnesses, same count as before, but a better pair: both now answer with the
-# last COMPLETED session, so unlike screener.in they can testify DURING market
-# hours — the defect that suppressed the 2026-08-11 brief. That took a second fix:
-# yfinance appeared to have this property and did not (it served today's live tick
-# under today's date until 2026-08-18). The pair is also exchange-diverse (Yahoo→NSE,
-# Alpha Vantage→BSE), so a single-exchange feed problem no longer convinces
-# everyone at once.
+# All three answer with the last COMPLETED session, so unlike screener.in they can
+# testify DURING market hours — the defect that suppressed the 2026-08-11 brief.
+# That took a second fix: yfinance appeared to have this property and did not (it
+# served today's live tick under today's date until 2026-08-18). The set is also
+# exchange-diverse (Yahoo→NSE, Alpha Vantage→BSE, Twelve Data→NSE), so a
+# single-exchange feed problem no longer convinces everyone at once.
 #
-# 🔴 A TIE IS A MISMATCH (validate_brief's majority rule), so with exactly two
-# witnesses one odd vote suppresses the send. That was equally true of the old
-# pair, but it is the reason to add a third rather than settle here: Twelve Data
-# is the cheapest route to breaking ties.
-SOURCES = {"yfinance": _yfinance, "alphavantage": _alphavantage}
+# 🔴 WHY THREE. A TIE IS A MISMATCH (validate_brief's majority rule), so with two
+# witnesses ONE odd vote suppresses the send — and on 2026-08-29 that fired against
+# a CORRECT brief: yfinance was still on the 27-Aug close while the scan and Alpha
+# Vantage both had 28-Aug and agreed to 0.03% on INFY. Official NSE bhavcopy later
+# confirmed the scan. The gate had already earned its keep that same morning by
+# catching a genuinely stale scan, so the answer was a third voice, not a weaker
+# gate. Two is the count at which being right and being outvoted look identical.
+#
+# ⚠️ Until TWELVEDATA_KEY exists in the credential store, _twelvedata returns an
+# error and validate_brief drops it from the quorum — the gate is back to two
+# witnesses and the tie problem above is NOT yet fixed in practice.
+SOURCES = {"yfinance": _yfinance, "alphavantage": _alphavantage,
+           "twelvedata": _twelvedata}
 
 
 # ─── ledger ───────────────────────────────────────────────────────────────────
