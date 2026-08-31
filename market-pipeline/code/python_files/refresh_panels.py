@@ -149,10 +149,21 @@ def purge_invalid(market: str) -> None:
 def refresh(market: str, backfill_days: int = 0) -> None:
     con = duckdb.connect()
     src = f"{WH}/ohlcv/{market}/*.parquet"
-    syms, dmax = con.execute(
-        f"SELECT list(DISTINCT Symbol), max(Date) FROM read_parquet('{src}')"
-    ).fetchone()
-    dmax = pd.Timestamp(dmax)
+    per_sym = con.execute(
+        f"SELECT Symbol, max(Date) m FROM read_parquet('{src}') GROUP BY 1"
+    ).fetchall()
+    syms = [r[0] for r in per_sym]
+    sym_maxes = sorted(pd.Timestamp(r[1]) for r in per_sym)
+    dmax = sym_maxes[-1]
+    # ensure_fresh's own catalog probe (data_catalog.py:_probe_parquet) grades
+    # this panel on the MEDIAN per-symbol last-bar date, not the panel-wide max
+    # — one caught-up symbol was enough for the check below to call the whole
+    # panel "fresh" while most of it sat behind. 2026-08-30: US held median
+    # 08-27 (2,849/9,938 symbols) against an expected 08-28 while this check
+    # passed on 08-28 because 3,567 symbols already had it — silently skipping
+    # the fetch that would have closed the gap. Match the probe's own yardstick
+    # so the two can no longer disagree.
+    dmedian = sym_maxes[len(sym_maxes) // 2]
     # --backfill-days re-fetches a window that is ALREADY covered, so evicted
     # invalid bars can be refilled. Without it, dropping a bad row just leaves a
     # hole: the normal path only ever fetches forward from dmax+1.
@@ -185,9 +196,9 @@ def refresh(market: str, backfill_days: int = 0) -> None:
             target = _ms.expected_session(market)
         except Exception:                       # keep the old behaviour if absent
             target = (pd.Timestamp.now().normalize() - pd.Timedelta(days=1)).date()
-        if dmax.date() >= target:
-            print(f"  {market}: already fresh (holds {dmax.date()}, "
-                  f"expected session {target})")
+        if dmedian.date() >= target:
+            print(f"  {market}: already fresh (median holds {dmedian.date()}, "
+                  f"max {dmax.date()}, expected session {target})")
             return
 
     frames = []
