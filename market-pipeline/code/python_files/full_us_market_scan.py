@@ -100,6 +100,16 @@ try:
 except ImportError:
     sys.exit("❌  pip install yfinance")
 
+# Exchange calendar — used only to name the session the panel SHOULD end on.
+# Optional: without it the staleness check degrades to silence, which is the
+# behaviour that existed before it, so nothing gets worse.
+try:
+    import exchange_calendars as _xcals
+    _XCAL_OK = True
+except ImportError:
+    _xcals = None
+    _XCAL_OK = False
+
 try:
     from ncdssdk import NCDSClient as _NCDSClient
     _NCDS_AVAILABLE = True
@@ -438,6 +448,66 @@ def bulk_download_ohlc(tickers: list[str], period: str = "1y") -> dict[str, pd.D
     return result
 
 
+# ── data-session guard ────────────────────────────────────────────────────────
+
+def check_panel_session(ohlc: dict[str, pd.DataFrame]) -> dict:
+    """Say out loud which session the fetched panel actually ends on, and whether
+    that is the session NYSE last completed.
+
+    🔴 WHY THIS EXISTS. On 2026-08-31 the brief was suppressed because NVDA and
+    AMZN reconciled 4.79% / 3.82% against fresh quotes. Neither was drifting —
+    the scan was quoting THURSDAY 2026-08-27's closes. yfinance had served a
+    Friday 2026-08-28 row whose Close was NaN for every US name checked (SPY,
+    MSFT, AAPL, NVDA, AMZN). `.dropna(how="all")` at the fetch dropped that row,
+    `.iloc[-1]` then handed back Thursday, and NOTHING in the log said a session
+    was missing. The send gate caught it — but as "2/8 names look stale", which
+    is a far slower thing to diagnose than "the panel is one session behind".
+
+    🔴 THIS DOES NOT RAISE, DELIBERATELY. daily_mailer.sh guards the scan step
+    with `|| echo "scan failed (will use latest cache)"`, so raising here would
+    discard the whole scan and fall back to an OLDER cached workbook — strictly
+    worse than the problem being reported. Blocking is the send gate's job
+    (step [13/13]); this one only has to make the cause legible at the point it
+    happens. Report, never block.
+    """
+    if not ohlc:
+        return {}
+    dates = [df.index[-1].date() for df in ohlc.values() if len(df)]
+    if not dates:
+        return {}
+    # Modal, not max: one ticker with a stray bar must not vouch for the panel.
+    panel_asof = pd.Series(dates).mode().iloc[0]
+    share = sum(1 for d in dates if d == panel_asof) / len(dates)
+    info = {"panel_asof": panel_asof, "share": share, "expected": None, "behind": None}
+
+    if not _XCAL_OK:
+        print(f"  panel as-of {panel_asof} ({share:.0%} of names); "
+              f"exchange_calendars absent — cannot verify against NYSE")
+        return info
+
+    cal    = _xcals.get_calendar("XNYS")
+    now_et = pd.Timestamp.now(tz="America/New_York")
+    sess   = cal.sessions_in_range((now_et - pd.Timedelta(days=12)).date(), now_et.date())
+    done   = [s for s in sess if cal.session_close(s) <= now_et]
+    if not done:
+        return info
+    expected = done[-1].date()
+    behind   = sum(1 for s in done if s.date() > panel_asof)
+    info.update(expected=expected, behind=behind)
+
+    if behind:
+        print(f"  🔴 STALE SESSION — panel ends {panel_asof} but NYSE last completed "
+              f"{expected} ({behind} session(s) missing upstream).")
+        print(f"     {share:.0%} of {len(dates)} names share that end date, so this is "
+              f"the whole panel, not a few bad tickers.")
+        print(f"     Prices below are {expected}'s ONLY if the source backfills; as "
+              f"fetched they are {panel_asof}'s. The send gate will reconcile.")
+    else:
+        print(f"  panel as-of {panel_asof} = NYSE last completed session "
+              f"({share:.0%} of {len(dates)} names) ✓")
+    return info
+
+
 # ── Darvas Box ─────────────────────────────────────────────────────────────────
 
 # unified in scan_core.py (2026-07-27) — thin wrapper, call sites unchanged
@@ -739,7 +809,9 @@ def main(nasdaq_only: bool = False, top: int = 0, run_scans: bool = True,
     # ── Stage 2: bulk OHLC download ──────────────────────────────────────────
     print("Stage 2 — Bulk OHLC download (1-year window; needed for Golden Crossover 200 DMA) …")
     ohlc_data = bulk_download_ohlc(all_symbols, period="1y")
-    print(f"  → {len(ohlc_data)} tickers with usable data\n")
+    print(f"  → {len(ohlc_data)} tickers with usable data")
+    check_panel_session(ohlc_data)
+    print()
 
     # Stage 3: Darvas Box + Golden Crossover on every ticker (no extra API calls)
     print("Stage 3 — Darvas Box + Golden Crossover screen (all stocks) …")

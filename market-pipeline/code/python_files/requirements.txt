@@ -4,7 +4,12 @@
 #  are the niche ones — see colab_quickstart.ipynb for the exact Colab cell.)
 
 # core data
-pandas>=2.0
+# 🔴 PINNED, NOT >=2.0. On 2026-08-30 an unrelated `openai` install resolved this
+# range to pandas 3.0.5, which made to_excel()'s sheet_name keyword-only and broke
+# 29 call sites across 8 modules. The India scan then wrote a 3 KB stub instead of
+# a 338 KB workbook every run, silently, until the send gate caught the stale
+# prices downstream. Matches the pin requirements-docker.txt already carried.
+pandas==2.3.3
 numpy>=1.24
 pyarrow>=14.0
 requests>=2.31
