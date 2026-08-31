@@ -5,32 +5,24 @@ AARNAV,IN,signal,piotroski+debt 2026-07-21,2026-07-21,30.73
 AARTISURF,IN,held,Aarti Surfactants,,
 ABREL,IN,watch,nan | renamed from CENTURYTEX (2026-07-23),2026-07-23,1398.1
 ACCELYA,IN,value-hold,value-cluster PE13.3 ROE46% (validated reversion) 2026-07-24,2026-07-24,1158.9
-ADANIGREEN,IN,evicted,evicted 2026-07-31 after 6 sessions in sell zone,,
 ADANIPORTS,IN,sold,,,
 ADANIPOWER,IN,evicted,evicted 2026-07-29 after 6 sessions in sell zone,,
-AGARIND,IN,watch,,,
 AGI,IN,signal,piotroski+debt 2026-07-21,2026-07-21,686.4
 AJANTPHARM,IN,signal,piotroski+debt 2026-07-21,2026-07-21,3575.3
 AJAXENGG,IN,signal,golden_cross 2026-07-15 (backfilled),2026-07-15,615.2
 AKUMS,IN,watch,,,
 AMANTA,IN,signal,piotroski+debt 2026-07-21,2026-07-21,168.45
 ANANTRAJ,IN,watch,,,
-ANTELOPUS,IN,signal,piotroski+debt 2026-07-21,2026-07-21,868.45
-ANUP,IN,signal,piotroski+debt 2026-07-21,2026-07-21,2139.3999
+ANTELOPUS,IN,evicted,piotroski+debt 2026-07-21 | evicted 2026-08-29 after 7 sessions in sell zone,2026-07-21,868.45
 ANURAS,IN,sold,,,
 APOLLO,IN,sold,,,
-APTUS,IN,signal,golden_cross 2026-07-17 (backfilled),2026-07-17,306.85
 ARE&M,IN,watch,nan | renamed from AMARAJABAT (2026-07-23),2026-07-23,876.4
 ARIHANTSUP,IN,watch,,,
 ASAHIINDIA,IN,watch,,,
-ASHAPURMIN,IN,playbook,trend+value/quality (LONG),2026-07-25,676.7
 ASIANHOTNR,IN,signal,piotroski+debt 2026-07-21,2026-07-21,294.55
 ASMTEC,IN,sold,,,
-ASTERDM,IN,signal,value_rerating 2026-07-23,2026-07-23,799.5
-AVL,IN,playbook,trend+value/quality (LONG),2026-07-25,635.35
 AWHCL,IN,sold,,,
 AWL,IN,sold,,,
-AXISBANK,IN,evicted,evicted 2026-07-27 after 6 sessions in sell zone,,
 AYMSYNTEX,IN,signal,piotroski+debt 2026-07-21,2026-07-21,234.37
 AZAD,IN,watch,,,
 BAJFINANCE,IN,watch,,,
@@ -41,15 +33,12 @@ BCPL,IN,sold,,,
 BEARDSELL,IN,evicted,evicted 2026-07-24 after 6 sessions in sell zone,,
 BECTORFOOD,IN,watch,,,
 BEL,IN,sold,,,
-BHARTIARTL,IN,watch,,,
 BHEL,IN,sold,,,
 BIHSPONG,IN,sold,,,
-BIOCON,IN,watch,,,
 BLISSGVS,IN,justified,175.8% 6m mom @ 2026-07-22,2026-07-22,448.15
 BLSE,IN,watch,,,
 BLUEJET,IN,signal,golden_cross 2026-07-17 (backfilled),2026-07-17,584.55
 BPCL,IN,watch,,,
-BRITANNIA,IN,watch,,,
 CAPLIPOINT,IN,sold,,,
 CARRARO,IN,held,Carraro India,,
 CASTROLIND,IN,held,Castrol India,,
@@ -59,25 +48,16 @@ CEWATER,IN,held,Concord Enviro Systems,,
 CGPOWER,IN,sold,,,
 CHENNPETRO,IN,watch,,,
 CHOLAFIN,IN,signal,golden_cross 2026-07-17 (backfilled),2026-07-17,1804.9
-CIEINDIA,IN,evicted,nan | renamed from MAHINDCIE (2026-07-23) | evicted 2026-07-31 after 6 sessions in sell zone,2026-07-23,419.0
-CIPLA,IN,watch,,,
-COALINDIA,IN,value-hold,value-cluster PE8.5 ROE26% (validated reversion) 2026-07-24,2026-07-24,427.4
-COASTCORP,IN,evicted,evicted 2026-07-29 after 6 sessions in sell zone,,
 COCHINSHIP,IN,sold,,,
 COFFEEDAY,IN,evicted,evicted 2026-07-27 after 6 sessions in sell zone,,
-COLPAL,IN,watch,,,
 CONCOR,IN,watch,nan | symbol corrected from CONCORDENV (2026-07-23),2026-07-23,480.5
 CORDSCABLE,IN,signal,golden_cross 2026-07-13 (backfilled),2026-07-13,204.1
-COROMANDEL,IN,watch,,,
 CPPLUS,IN,justified,142.7% 6m mom @ 2026-07-22,2026-07-22,3446.3
 CREDITACC,IN,sold,,,
 CRISIL,IN,sold,,,
 CROMPTON,IN,sold,,,
-CUMMINSIND,IN,watch,,,
 CUPID,IN,sold,,,
-DATAMATICS,IN,signal,golden_cross 2026-07-15 (backfilled),2026-07-15,853.5
 DEEDEV,IN,justified,209.9% 6m mom @ 2026-07-22,2026-07-22,661.25
-DEEPAKFERT,IN,watch,,,
 DEEPAKNTR,IN,watch,,,
 DEEPINDS,IN,watch,,,
 DELHIVERY,IN,evicted,evicted 2026-07-29 after 6 sessions in sell zone,,
@@ -96,7 +76,6 @@ ESCORTS,IN,watch,,,
 ETERNAL,IN,watch,nan | renamed from ZOMATO (2026-07-23),2026-07-23,287.1
 EXIDEIND,IN,watch,,,
 FCL,IN,signal,value_rerating 2026-07-23,2026-07-23,39.88
-FDC,IN,signal,golden_cross 2026-07-17 (backfilled),2026-07-17,420.1
 FEDFINA,IN,sold,,,
 FORTIS,IN,sold,,,
 FOSECOIND,IN,evicted,golden_cross 2026-07-17 (backfilled) | evicted 2026-07-31 after 6 sessions in sell zone,2026-07-17,5058.0
@@ -106,33 +85,20 @@ GANDHAR,IN,watch,,,
 GANESHHOU,IN,signal,golden_cross 2026-07-15 (backfilled),2026-07-15,847.95
 GANGAFORGE,IN,evicted,nan | symbol corrected from GANGAFORG (2026-07-23) | evicted 2026-07-23 after 11 sessions in sell zone,2026-07-23,
 GARFIBRES,IN,signal,golden_cross 2026-07-15 (backfilled),2026-07-15,770.15
-GATEWAY,IN,evicted,evicted 2026-07-27 after 6 sessions in sell zone,,
-GESHIP,IN,signal,value_rerating 2026-07-24,2026-07-24,1435.2
 GICRE,IN,sold,,,
-GMBREW,IN,evicted,evicted 2026-07-23 after 9 sessions in sell zone,,
-GMRAIRPORT,IN,watch,nan | renamed from GMRINFRA (2026-07-23),2026-07-23,107.37
 GODAVARIB,IN,sold,,,
 GODREJAGRO,IN,watch,,,
 GOLDBEES,IN,sold,,,
-GREAVESCOT,IN,watch,,,
-GREENLAM,IN,signal,golden_cross 2026-07-15 (backfilled),2026-07-15,252.45
 GRWRHITECH,IN,justified,97.2% of 52w-hi @ 2026-07-24,2026-07-24,6903.0
-GUJENERGY,IN,evicted,evicted 2026-07-23 after 6 sessions in sell zone | renamed from GUJGASLTD (2026-07-23),,
 GVPIL,IN,evicted,nan | renamed from GEPIL (2026-07-23) | evicted 2026-07-28 after 6 sessions in sell zone,2026-07-23,776.95
 GVPIL,IN,evicted,164.4% 6m mom @ 2026-07-22 | evicted 2026-07-28 after 6 sessions in sell zone,2026-07-22,805.05
 GVT&D,IN,evicted,nan | renamed from GET&D (2026-07-23) | evicted 2026-07-24 after 6 sessions in sell zone,2026-07-23,4328.5
 HAL,IN,watch,,,
-HARIOMPIPE,IN,signal,golden_cross 2026-07-17 (backfilled),2026-07-17,403.55
-HARRMALAYA,IN,watch,,,
-HATHWAY,IN,evicted,evicted 2026-07-28 after 6 sessions in sell zone,,
 HATSUN,IN,evicted,evicted 2026-07-29 after 6 sessions in sell zone,,
 HAVELLS,IN,watch,,,
 HCLTECH,IN,sold,,,
-HDFCBANK,IN,evicted,evicted 2026-07-27 after 6 sessions in sell zone,,
 HDFCLIFE,IN,sold,,,
 HFCL,IN,justified,96.4% of 52w-hi @ 2026-07-22,2026-07-22,217.9
-HINDPETRO,IN,watch,,,
-HITECH,IN,evicted,evicted 2026-07-23 after 7 sessions in sell zone,,
 HMVL,IN,sold,,,
 HOMEFIRST,IN,signal,golden_cross 2026-07-15 (backfilled),2026-07-15,1247.1
 HONASA,IN,watch,,,
@@ -141,17 +107,11 @@ ICICIBANK,IN,watch,,,
 IDBI,IN,watch,,,
 IDEA,IN,evicted,evicted 2026-07-31 after 6 sessions in sell zone,,
 IDFCFIRSTB,IN,watch,,,
-IGARASHI,IN,signal,golden_cross 2026-07-15 (backfilled),2026-07-15,465.9
 IIFL,IN,watch,,,
-IKIO,IN,signal,golden_cross 2026-07-20 (backfilled),2026-07-20,214.37
 IMFA,IN,playbook,trend+value/quality (LONG),2026-07-25,1370.0
-INDHOTEL,IN,signal,golden_cross 2026-07-20 (backfilled),2026-07-20,725.05
-INDIACEM,IN,watch,,,
 INDIAGLYCO,IN,watch,,,
 INDIGOPNTS,IN,watch,,,
-INDNIPPON,IN,playbook,trend+value/quality (LONG),2026-07-25,1213.7
 INDOFARM,IN,held,Indo Farm Equipment,,
-INDOSTAR,IN,signal,golden_cross 2026-07-13 (backfilled),2026-07-13,269.35
 INDOTECH,IN,watch,,,
 INDSUCR,IN,sold,,,
 INDSWFTLAB,IN,watch,,,
@@ -159,18 +119,13 @@ INDUSINDBK,IN,sold,,,
 IOC,IN,sold,,,
 IOLCP,IN,watch,,,
 IRFC,IN,sold,,,
-ITDC,IN,watch,,,
 ITI,IN,sold,,,
-IXIGO,IN,watch,,,
 J&KBANK,IN,sold,,,
-JAYBARMARU,IN,playbook,trend+value/quality (LONG),2026-07-25,168.07
 JINDALSAW,IN,watch,,,
 JINDWORLD,IN,signal,golden_cross 2026-07-17 (backfilled),2026-07-17,32.2
 JKPAPER,IN,watch,,,
-JKTYRE,IN,evicted,evicted 2026-07-27 after 6 sessions in sell zone,,
-JLHL,IN,signal,golden_cross 2026-07-20 (backfilled),2026-07-20,1558.1
 JNKINDIA,IN,signal,value_rerating 2026-07-23,2026-07-23,473.75
-JSWENERGY,IN,watch,,,
+JSWENERGY,IN,evicted,evicted 2026-08-29 after 9 sessions in sell zone,,
 JUBLFOOD,IN,sold,,,
 KECL,IN,watch,,,
 KLRFM,IN,sold,,,
@@ -181,21 +136,15 @@ KRBL,IN,evicted,evicted 2026-07-23 after 7 sessions in sell zone,,
 KRISHIVAL,IN,signal,golden_cross 2026-07-15 (backfilled),2026-07-15,399.65
 KTKBANK,IN,signal,value_rerating 2026-07-23,2026-07-23,276.25
 LAFFANSQ,IN,sold,,,
-LATENTVIEW,IN,watch,,,
-LIBERTSHOE,IN,watch,,,
 M&M,IN,sold,,,
 M&MFIN,IN,watch,,,
 MADRASFERT,IN,evicted,evicted 2026-07-27 after 6 sessions in sell zone,,
 MAHESHWARI,IN,signal,golden_cross 2026-07-13 (backfilled),2026-07-13,
 MAHLIFE,IN,sold,,,
 MAITHANALL,IN,evicted,golden_cross 2026-07-20 (backfilled) | evicted 2026-07-27 after 6 sessions in sell zone,2026-07-20,1012.5
-MAPMYINDIA,IN,watch,,,
-MARICO,IN,watch,,,
 MARINE,IN,watch,,,
-MARUTI,IN,watch,,,
 MASTEK,IN,sold,,,
 MATRIMONY,IN,watch,,,
-MAYURUNIQ,IN,playbook,trend+value/quality (LONG),2026-07-25,798.15
 MGL,IN,evicted,evicted 2026-07-23 after 6 sessions in sell zone,,
 MOTHERSON,IN,watch,,,
 MPSLTD,IN,watch,,,
@@ -204,10 +153,8 @@ MTARTECH,IN,evicted,evicted 2026-07-23 after 8 sessions in sell zone,,
 NATCOPHARM,IN,evicted,evicted 2026-07-23 after 6 sessions in sell zone,,
 NATIONALUM,IN,value-hold,value-cluster PE12.1 ROE30% (validated reversion) 2026-07-24,2026-07-24,343.9
 NAUKRI,IN,watch,,,
-NAVKARCORP,IN,signal,golden_cross 2026-07-20 (backfilled),2026-07-20,104.31
 NAZARA,IN,watch,,,
 NBCC,IN,sold,,,
-NDRAUTO,IN,signal,golden_cross 2026-07-15 (backfilled),2026-07-15,821.0
 NDTV,IN,sold,,,
 NETWORK18,IN,sold,,,
 NH,IN,sold,,,
@@ -221,7 +168,6 @@ OFSS,IN,watch,,,
 OIL,IN,watch,,,
 OLAELEC,IN,evicted,nan | symbol corrected from OLAELECTRIC (2026-07-23) | evicted 2026-07-24 after 6 sessions in sell zone,2026-07-23,37.0
 OMAXE,IN,watch,,,
-ONMOBILE,IN,signal,golden_cross 2026-07-17 (backfilled),2026-07-17,63.15
 PARAGMILK,IN,evicted,evicted 2026-07-23 after 7 sessions in sell zone,,
 PATANJALI,IN,sold,,,
 PETRONET,IN,watch,,,
@@ -237,37 +183,26 @@ PREMIERENE,IN,evicted,evicted 2026-07-29 after 6 sessions in sell zone,,
 PREMIERPOL,IN,signal,value_rerating 2026-07-23,2026-07-23,79.48
 PRICOLLTD,IN,signal,golden_cross 2026-07-17 (backfilled),2026-07-17,615.3
 PRINCEPIPE,IN,evicted,golden_cross 2026-07-20 (backfilled) | evicted 2026-07-24 after 6 sessions in sell zone,2026-07-20,267.5
-PROTEAN,IN,watch,,,
 PROZONER,IN,sold,,,
 PSUBNKBEES,IN,held,Nippon PSU Bank BEES ETF,,
 PUNJABCHEM,IN,watch,,,
 PVRINOX,IN,watch,nan | renamed from PVR (2026-07-23),2026-07-23,1007.4
-RAIN,IN,watch,,,
 RAMCOIND,IN,signal,golden_cross 2026-07-17 (backfilled),2026-07-17,353.45
 RAYMOND,IN,watch,,,
-RAYMONDREL,IN,watch,,,
+RAYMONDREL,IN,evicted,evicted 2026-08-29 after 14 sessions in sell zone,,
 RCF,IN,sold,,,
-RECLTD,IN,watch,,,
 REDINGTON,IN,watch,,,
 RELIANCE,IN,evicted,evicted 2026-07-28 after 6 sessions in sell zone,,
 RENUKA,IN,sold,,,
-RESPONIND,IN,evicted,golden_cross 2026-07-15 (backfilled) | evicted 2026-07-28 after 6 sessions in sell zone,2026-07-15,190.53
-ROTO,IN,signal,golden_cross 2026-07-17 (backfilled),2026-07-17,65.05
 RRKABEL,IN,sold,,,
 SAGILITY,IN,watch,,,
 SAIL,IN,sold,,,
 SANGHVIMOV,IN,playbook,trend+value/quality (LONG),2026-07-25,429.75
 SAPPHIRE,IN,watch,,,
-SATIN,IN,signal,value_rerating 2026-07-23,2026-07-23,251.85
-SBILIFE,IN,watch,,,
 SBIN,IN,evicted,evicted 2026-07-29 after 6 sessions in sell zone,,
-SCHNEIDER,IN,watch,,,
 SEAMECLTD,IN,playbook,trend+value/quality (LONG),2026-07-25,1370.7
 SENORES,IN,held,Senores Pharmaceuticals,,
-SHAKTIPUMP,IN,evicted,evicted 2026-07-24 after 6 sessions in sell zone,,
 SIEMENS,IN,watch,,,
-SIGNATURE,IN,value-hold,value-cluster PE9.8 ROE59% (validated reversion) 2026-07-24,2026-07-24,768.35
-SOUTHBANK,IN,watch,,,
 SPCENET,IN,evicted,evicted 2026-07-24 after 6 sessions in sell zone,,
 SPLPETRO,IN,held,Supreme Petrochem,,
 SPORTKING,IN,justified,100.0% of 52w-hi @ 2026-07-22,2026-07-22,200.92
@@ -277,8 +212,6 @@ STLTECH,IN,justified,495.1% 6m mom @ 2026-07-22,2026-07-22,552.95
 STOVEKRAFT,IN,watch,,,
 STYLEBAAZA,IN,sold,,,
 SUMICHEM,IN,sold,,,
-SUNDROP,IN,watch,nan | renamed from ATFL (2026-07-23),2026-07-23,692.4
-SUNPHARMA,IN,watch,,,
 SUNTV,IN,sold,,,
 SUZLON,IN,held,Suzlon Energy,,
 SWIGGY,IN,watch,,,
@@ -289,7 +222,6 @@ TATAELXSI,IN,sold,,,
 TCPLPACK,IN,watch,,,
 TEJASNET,IN,evicted,evicted 2026-07-28 after 6 sessions in sell zone,,
 TFCILTD,IN,signal,value_rerating 2026-07-23,2026-07-23,81.81
-THERMAX,IN,evicted,evicted 2026-07-31 after 6 sessions in sell zone,,
 TITAGARH,IN,sold,,,
 TITAN,IN,watch,,,
 TMB,IN,playbook,trend+value/quality (LONG),2026-07-25,810.65
@@ -297,9 +229,7 @@ TNPETRO,IN,held,Tamilnadu Petroproducts,,
 TNPL,IN,held,TN Newsprint & Papers,,
 TRACXN,IN,sold,,,
 TRITURBINE,IN,sold,,,
-TRIVENI,IN,evicted,evicted 2026-07-29 after 6 sessions in sell zone,,
 TVSMOTOR,IN,watch,,,
-UCOBANK,IN,watch,,,
 UDS,IN,signal,golden_cross 2026-07-20 (backfilled),2026-07-20,193.52
 UJJIVANSFB,IN,sold,,,
 UNICHEMLAB,IN,signal,golden_cross 2026-07-13 (backfilled),2026-07-13,596.95
@@ -307,29 +237,24 @@ UNIMECH,IN,held,Unimech Aerospace,,
 UNIONBANK,IN,watch,,,
 UNIPARTS,IN,playbook,trend+value/quality (LONG),2026-07-25,676.35
 VADILALIND,IN,watch,,,
-VAIBHAVGBL,IN,signal,golden_cross 2026-07-13 (backfilled),2026-07-13,255.88
 VEDL,IN,value-hold,value-cluster PE5.9 ROE43% (validated reversion) 2026-07-24,2026-07-24,264.65
 VENTIVE,IN,held,Ventive Hospitality,,
 VIJAYA,IN,watch,,,
-VIKRAMSOLR,IN,evicted,evicted 2026-07-23 after 8 sessions in sell zone,,
 VINCOFE,IN,signal,golden_cross 2026-07-20 (backfilled),2026-07-20,158.93
 VINYLINDIA,IN,sold,,,
 VMART,IN,watch,,,
-VOLTAS,IN,watch,,,
 WABAG,IN,watch,,,
 WELSPLSOL,IN,sold,,,
 WELSPUNLIV,IN,sold,,,
 WINDLAS,IN,signal,golden_cross 2026-07-17 (backfilled),2026-07-17,844.25
 WSTCSTPAPR,IN,watch,,,
 YASHO,IN,justified,100.0% of 52w-hi @ 2026-07-22,2026-07-22,3218.2
-YESBANK,IN,evicted,evicted 2026-07-31 after 6 sessions in sell zone,,
 ZEEL,IN,watch,,,
 ZEEMEDIA,IN,sold,,,
 A,US,held,,,
 AAPL,US,held,,,
 ABT,US,held,,,
 ACCO,US,playbook,cheap-vs-market (LONG),2026-07-25,4.07
-ACI,US,evicted,22.4 RSI @ 2026-07-24 | evicted 2026-07-28 after 6 sessions in sell zone,2026-07-24,11.03
 ACN,US,value-hold,value-cluster PE11.5 ROE25% (validated reversion) 2026-07-24,2026-07-24,146.99
 ACP,US,evicted,technical 2026-07-21 | evicted 2026-07-31 after 6 sessions in sell zone,2026-07-21,5.31
 ACVA,US,signal,recurring x2 +7.0% since 2026-07-21,2026-07-21,7.93
@@ -337,7 +262,6 @@ ADM,US,sold,,,
 AFGB,US,playbook,cheap-vs-market (LONG),2026-07-25,20.72
 AFGC,US,playbook,cheap-vs-market (LONG),2026-07-25,17.85
 AFYA,US,evicted,tuned-model 2026-07-24 | evicted 2026-07-24 after 9 sessions in sell zone,2026-07-24,
-AGIO,US,signal,golden_cross 2026-07-15 (backfilled),2026-07-15,39.87
 AGM-PD,US,signal,technical 2026-07-22,2026-07-22,21.66
 AIA,US,held,,,
 ALC,US,value-hold,value-cluster PE9.2 ROE30% (validated reversion) 2026-07-24,2026-07-24,67.91
@@ -346,13 +270,9 @@ AMD,US,held,,,
 AMGN,US,held,,,
 AMZN,US,held,,,
 ANF,US,value-hold,value-cluster PE8.0 ROE36% (validated reversion) 2026-07-24,2026-07-24,93.81
-ANSC,US,signal,technical 2026-07-22,2026-07-22,11.45
 AOS,US,signal,tuned-model 2026-07-24,2026-07-24,60.78
-APM,US,signal,golden_cross 2026-07-20 (backfilled),2026-07-20,8.83
-ARL,US,evicted,golden_cross 2026-07-14 (backfilled) | evicted 2026-07-27 after 6 sessions in sell zone,2026-07-14,18.37
 ARM,US,sold,,,
 ASBP,US,signal,golden_cross 2026-07-13 (backfilled),2026-07-13,5.97
-ASLE,US,evicted,tuned-model 2026-07-24 | evicted 2026-07-24 after 12 sessions in sell zone,2026-07-24,
 ASML,US,held,,,
 ATRA,US,evicted,golden_cross 2026-07-20 (backfilled) | evicted 2026-07-23 after 7 sessions in sell zone,2026-07-20,8.29
 AVGO,US,held,,,
@@ -377,7 +297,6 @@ CL,US,held,,,
 CLBK,US,evicted,21.5 RSI @ 2026-07-22 | evicted 2026-07-28 after 6 sessions in sell zone,2026-07-22,11.045
 CLH,US,held,,,
 CME,US,held,"weak 2026-07-27 (prediction audit: bear-state, drift<0) — held, not purged",2026-07-27,255.36
-CMSC,US,playbook,cheap-vs-market (LONG),2026-07-25,21.91
 CNH,US,signal,golden_cross 2026-07-14 (backfilled),2026-07-14,10.57
 COP,US,held,,,
 CORN,US,held,,,
@@ -396,9 +315,8 @@ DELL,US,held,,,
 DFP,US,signal,golden_cross 2026-07-14 (backfilled),2026-07-14,21.07
 DHR,US,held,,,
 DIS,US,held,"weak 2026-07-27 (prediction audit: bear-state, drift<0) — held, not purged",2026-07-27,96.65
-DLY,US,signal,golden_cross 2026-07-13 (backfilled),2026-07-13,14.08
+DLY,US,evicted,golden_cross 2026-07-13 (backfilled) | evicted 2026-08-29 after 6 sessions in sell zone,2026-07-13,14.08
 DNUT,US,sold,,,
-DORM,US,signal,golden_cross 2026-07-14 (backfilled),2026-07-14,137.55
 DT,US,signal,golden_cross 2026-07-20 (backfilled),2026-07-20,44.71
 DXC,US,held,,,
 ECL,US,held,,,
@@ -419,7 +337,6 @@ EWT,US,held,,,
 EWY,US,held,,,
 EXFY,US,signal,golden_cross 2026-07-15 (backfilled),2026-07-15,1.76
 F,US,sold,,,
-FBIO,US,signal,recurring x2 +6.0% since 2026-07-21,2026-07-21,3.53
 FDP,US,held,"weak 2026-07-27 (prediction audit: bear-state, drift<0) — held, not purged",2026-07-27,
 FDX,US,held,"weak 2026-07-27 (prediction audit: bear-state, drift<0) — held, not purged",2026-07-27,310.79
 FERG,US,evicted,tuned-model 2026-07-24 | evicted 2026-07-27 after 6 sessions in sell zone,2026-07-24,230.67
@@ -429,7 +346,7 @@ FLS,US,held,"weak 2026-07-27 (prediction audit: bear-state, drift<0) — held, n
 FORR,US,signal,golden_cross 2026-07-14 (backfilled),2026-07-14,10.41
 FRSH,US,sold,,,
 FSLR,US,held,"weak 2026-07-27 (prediction audit: bear-state, drift<0) — held, not purged",2026-07-27,205.83
-FTK,US,signal,recurring x2 +6.5% since 2026-07-21,2026-07-21,27.28
+FTK,US,evicted,recurring x2 +6.5% since 2026-07-21 | evicted 2026-08-29 after 6 sessions in sell zone,2026-07-21,27.28
 FWONA,US,signal,golden_cross 2026-07-20 (backfilled),2026-07-20,91.17
 FWONK,US,signal,golden_cross 2026-07-20 (backfilled),2026-07-20,99.2
 GEN,US,signal,golden_cross 2026-07-14 (backfilled),2026-07-14,26.45
@@ -439,7 +356,6 @@ GLNG,US,held,"weak 2026-07-27 (prediction audit: bear-state, drift<0) — held, 
 GLW,US,held,"weak 2026-07-27 (prediction audit: bear-state, drift<0) — held, not purged",2026-07-27,143.36
 GNK,US,held,,,
 GOOG,US,held,"weak 2026-07-27 (prediction audit: bear-state, drift<0) — held, not purged",2026-07-27,326.57
-GREE,US,signal,golden_cross 2026-07-13 (backfilled),2026-07-13,2.03
 GREEL,US,signal,technical 2026-07-21,2026-07-21,24.7
 GRN,US,signal,technical 2026-07-21,2026-07-21,33.035
 GTLB,US,held,,,
@@ -448,21 +364,16 @@ HELP,US,signal,recurring x2 +13.9% since 2026-07-21,2026-07-21,8.1
 HES,US,sold,,,
 HQY,US,signal,golden_cross 2026-07-20 (backfilled),2026-07-20,98.88
 HRI,US,signal,recurring x2 +10.6% since 2026-07-21,2026-07-21,147.36
-HRL,US,signal,golden_cross 2026-07-13 (backfilled),2026-07-13,24.46
 HSBC,US,held,,,
 HUM,US,sold,,,
-HVII,US,signal,technical 2026-07-22,2026-07-22,10.475
 IART,US,sold,,,
 IBEX,US,value-hold,value-cluster PE11.7 ROE27% (validated reversion) 2026-07-24,2026-07-24,33.46
 IBM,US,held,"weak 2026-07-27 (prediction audit: bear-state, drift<0) — held, not purged",2026-07-27,216.28
 ICUI,US,signal,golden_cross 2026-07-14 (backfilled),2026-07-14,157.96
-IFBD,US,signal,golden_cross 2026-07-15 (backfilled),2026-07-15,1.16
 IGI,US,evicted,golden_cross 2026-07-14 (backfilled) | evicted 2026-07-29 after 6 sessions in sell zone,2026-07-14,16.02
-INDP,US,signal,golden_cross 2026-07-20 (backfilled),2026-07-20,2.46
 INFY,US,held,,,
 INTC,US,held,"weak 2026-07-27 (prediction audit: bear-state, drift<0) — held, not purged",2026-07-27,91.67
 IONS,US,evicted,24.3 RSI @ 2026-07-22 | evicted 2026-07-23 after 9 sessions in sell zone,2026-07-22,53.43
-IOTR,US,signal,golden_cross 2026-07-20 (backfilled),2026-07-20,3.37
 IOVA,US,signal,recurring x2 +9.2% since 2026-07-21,2026-07-21,5.48
 IPHA,US,signal,golden_cross 2026-07-13 (backfilled),2026-07-13,1.79
 IR,US,held,,,
@@ -482,10 +393,8 @@ KMB,US,signal,golden_cross 2026-07-20 (backfilled),2026-07-20,108.48
 KO,US,held,,,
 KR,US,held,"weak 2026-07-27 (prediction audit: bear-state, drift<0) — held, not purged",2026-07-27,57.98
 KSA,US,held,,,
-KSS,US,signal,recurring x2 +7.6% since 2026-07-21,2026-07-21,18.13
 LINK,US,signal,golden_cross 2026-07-15 (backfilled),2026-07-15,4.27
 LIT,US,sold,,,
-LMFA,US,signal,golden_cross 2026-07-13 (backfilled),2026-07-13,2.84
 LNG,US,held,,,
 LULU,US,value-hold,value-cluster PE7.8 ROE32% (validated reversion) 2026-07-24,2026-07-24,114.28
 LYB,US,held,"weak 2026-07-27 (prediction audit: bear-state, drift<0) — held, not purged",2026-07-27,58.62
@@ -509,7 +418,6 @@ MTCH,US,held,,,
 MTD,US,held,,,
 MU,US,sold,,,
 NAAS,US,signal,golden_cross 2026-07-20 (backfilled),2026-07-20,3.16
-NAMSW,US,evicted,golden_cross 2026-07-14 (backfilled) | evicted 2026-07-23 after 6 sessions in sell zone,2026-07-14,20.56
 NEXT,US,held,,,
 NKE,US,sold,,,
 NMIH,US,signal,golden_cross 2026-07-20 (backfilled),2026-07-20,42.63
@@ -520,28 +428,22 @@ NVO,US,held,,,
 OILU,US,signal,recurring x2 +7.3% since 2026-07-21,2026-07-21,42.5
 ON,US,sold,,,
 ONCH,US,signal,golden_cross 2026-07-20 (backfilled),2026-07-20,10.29
-OTLK,US,signal,golden_cross 2026-07-15 (backfilled),2026-07-15,1.56
 OXY,US,held,,,
 PAG,US,signal,recurring x2 +10.2% since 2026-07-21,2026-07-21,195.19
 PCYO,US,evicted,tuned-model 2026-07-24 | evicted 2026-07-27 after 6 sessions in sell zone,2026-07-24,10.68
-PEG,US,evicted,tuned-model 2026-07-24 | evicted 2026-07-24 after 7 sessions in sell zone,2026-07-24,
 PEGA,US,held,,,
 PFE,US,sold,,,
 PG,US,held,,,
 PLSE,US,signal,recurring x2 +14.2% since 2026-07-21,2026-07-21,30.26
 PMA,US,evicted,golden_cross 2026-07-15 (backfilled) | evicted 2026-07-31 after 6 sessions in sell zone,2026-07-15,1.37
 PML,US,evicted,golden_cross 2026-07-13 (backfilled) | evicted 2026-07-29 after 6 sessions in sell zone,2026-07-13,7.52
-PRPL,US,signal,golden_cross 2026-07-20 (backfilled),2026-07-20,6.5
 PZZA,US,sold,,,
 QCLN,US,sold,,,
-RCL,US,signal,golden_cross 2026-07-20 (backfilled),2026-07-20,286.16
-RDY,US,evicted,24.5 RSI @ 2026-07-23 | evicted 2026-07-23 after 8 sessions in sell zone,2026-07-23,
+RCL,US,evicted,golden_cross 2026-07-20 (backfilled) | evicted 2026-08-30 after 8 sessions in sell zone,2026-07-20,286.16
 RGP,US,evicted,recurring x2 +5.4% since 2026-07-21 | evicted 2026-07-31 after 6 sessions in sell zone,2026-07-21,4.66
 RIO,US,held,"weak 2026-07-27 (prediction audit: bear-state, drift<0) — held, not purged",2026-07-27,91.95
 RKLB,US,held,"weak 2026-07-27 (prediction audit: bear-state, drift<0) — held, not purged",2026-07-27,66.94
-RPAY,US,signal,golden_cross 2026-07-15 (backfilled),2026-07-15,4.09
-RRR,US,signal,golden_cross 2026-07-13 (backfilled),2026-07-13,64.41
-RTB,US,signal,golden_cross 2026-07-13 (backfilled),2026-07-13,14.96
+RTB,US,evicted,golden_cross 2026-07-13 (backfilled) | evicted 2026-08-29 after 6 sessions in sell zone,2026-07-13,14.96
 RWR,US,held,,,
 SAP,US,held,"weak 2026-07-27 (prediction audit: bear-state, drift<0) — held, not purged",2026-07-27,171.01
 SBCF,US,signal,golden_cross 2026-07-20 (backfilled),2026-07-20,33.5
@@ -551,7 +453,6 @@ SHEL,US,held,,,
 SLN,US,signal,recurring x2 +9.6% since 2026-07-21,2026-07-21,10.85
 SM,US,signal,recurring x2 +7.1% since 2026-07-21,2026-07-21,32.22
 SMJF,US,signal,technical 2026-07-22,2026-07-22,5.53
-SNEX,US,evicted,24.7 RSI @ 2026-07-22 | evicted 2026-07-23 after 7 sessions in sell zone,2026-07-22,74.53
 SOXL,US,held,,,
 SPGI,US,held,,,
 SSL,US,sold,,,
@@ -568,11 +469,9 @@ TPC,US,signal,recurring x2 +7.7% since 2026-07-21,2026-07-21,86.78
 TSLA,US,held,"weak 2026-07-27 (prediction audit: bear-state, drift<0) — held, not purged",2026-07-27,309.22
 TSM,US,held,"weak 2026-07-27 (prediction audit: bear-state, drift<0) — held, not purged",2026-07-27,399.09
 TTE,US,held,"weak 2026-07-27 (prediction audit: bear-state, drift<0) — held, not purged",2026-07-27,84.16
-TTWO,US,signal,golden_cross 2026-07-15 (backfilled),2026-07-15,243.8
 TXN,US,held,"weak 2026-07-27 (prediction audit: bear-state, drift<0) — held, not purged",2026-07-27,279.41
 UBS,US,held,,,
 UGI,US,held,,,
-UPBD,US,signal,golden_cross 2026-07-13 (backfilled),2026-07-13,21.15
 USA,US,signal,golden_cross 2026-07-14 (backfilled),2026-07-14,5.82
 USO,US,signal,recurring x2 +11.4% since 2026-07-21,2026-07-21,125.51
 V,US,held,,,
@@ -583,7 +482,6 @@ VRNS,US,signal,golden_cross 2026-07-14 (backfilled),2026-07-14,47.33
 VVV,US,held,,,
 VZ,US,held,"weak 2026-07-27 (prediction audit: bear-state, drift<0) — held, not purged",2026-07-27,47.32
 WBD,US,sold,,,
-WBX,US,signal,golden_cross 2026-07-20 (backfilled),2026-07-20,4.15
 WIT,US,held,"weak 2026-07-27 (prediction audit: bear-state, drift<0) — held, not purged",2026-07-27,1.91
 WKHS,US,sold,,,
 WM,US,held,,,
@@ -593,11 +491,6 @@ XNCR,US,signal,recurring x2 +8.7% since 2026-07-21,2026-07-21,20.45
 XOM,US,held,,,
 ZBIO,US,signal,recurring x2 +5.4% since 2026-07-21,2026-07-21,32.36
 CHTR,US,playbook,cheap-vs-market (LONG),2026-07-27,129.22
-NXTT,US,playbook,cheap-vs-market (LONG),2026-07-27,0.77
-SOJE,US,playbook,cheap-vs-market (LONG),2026-07-27,16.67
-SHOE,US,playbook,cheap-vs-market (LONG),2026-07-27,14.73
-WKC,US,signal,recurring x2 +11.5% since 2026-07-21,2026-07-21,35.7
-FTCI,US,evicted,23.7 RSI @ 2026-07-28 | evicted 2026-07-28 after 9 sessions in sell zone,2026-07-28,
 APCOTEXIND,IN,playbook,trend+value/quality (LONG),2026-07-28,588.5
 CONFIPET,IN,playbook,trend+value/quality (LONG),2026-07-28,81.04
 GAEL,IN,playbook,trend+value/quality (LONG),2026-07-28,157.31
@@ -608,5 +501,37 @@ PAY,US,signal,recurring x2 +15.1% since 2026-07-21,2026-07-21,29.67
 DIACABS,IN,justified,100.0% of 52w-hi @ 2026-07-29,2026-07-29,337.45
 AEROFLEX,IN,justified,164.2% 6m mom @ 2026-07-29,2026-07-29,450.6
 AIIL,IN,signal,value_rerating 2026-07-29,2026-07-29,557.7
-SUMEETINDS,IN,signal,value_rerating 2026-07-31,2026-07-31,24.69
 TALBROAUTO,IN,playbook,trend+value/quality (LONG),2026-07-31,399.05
+ATUL,IN,evicted,piotroski+debt 2026-08-29 | evicted 2026-08-29 after 8 sessions in sell zone,2026-08-29,6585.0
+AARON,IN,signal,piotroski+debt 2026-08-29,2026-08-29,135.71
+TRNZ,US,signal,technical 2026-08-29,2026-08-29,25.4
+TWO-PC,US,signal,technical 2026-08-29,2026-08-29,25.27
+TWO-PA,US,signal,technical 2026-08-29,2026-08-29,25.23
+ETB,US,signal,technical 2026-08-29,2026-08-29,15.82
+RMNI,US,signal,technical 2026-08-29,2026-08-29,5.65
+CANBK,IN,signal,value_rerating 2026-08-29,2026-08-29,128.14
+LGBBROSLTD,IN,signal,value_rerating 2026-08-29,2026-08-29,1684.4
+GHCL,IN,signal,value_rerating 2026-08-29,2026-08-29,440.15
+STYLAMIND,IN,playbook,trend+value/quality (LONG),2026-08-29,3471.0
+NITINSPIN,IN,playbook,trend+value/quality (LONG),2026-08-29,620.45
+GNA,IN,playbook,trend+value/quality (LONG),2026-08-29,546.8
+VINDHYATEL,IN,playbook,trend+value/quality (LONG),2026-08-29,2530.5
+MSTCLTD,IN,playbook,trend+value/quality (LONG),2026-08-29,722.25
+AEROENTER,IN,playbook,trend+value/quality (LONG),2026-08-29,142.66
+GHCLTEXTIL,IN,playbook,trend+value/quality (LONG),2026-08-30,130.79
+ANUP,IN,signal,piotroski+debt 2026-08-31,2026-08-31,1801.3
+9820,JP,signal,technical 2026-08-31,2026-08-31,3840.0
+JXG,US,signal,technical 2026-08-31,2026-08-31,8.91
+206650,KR,signal,technical 2026-08-31,2026-08-31,9510.0
+9340,JP,signal,technical 2026-08-31,2026-08-31,770.0
+65950,KR,signal,technical 2026-08-31,2026-08-31,1219.0
+8628,JP,signal,technical 2026-08-31,2026-08-31,1211.0
+3121,JP,signal,technical 2026-08-31,2026-08-31,273.0
+3712,JP,signal,technical 2026-08-31,2026-08-31,1073.0
+NCEW,US,signal,technical 2026-08-31,2026-08-31,18.39
+78520,KR,signal,technical 2026-08-31,2026-08-31,12670.0
+4490,KR,signal,technical 2026-08-31,2026-08-31,66300.0
+4770,KR,signal,technical 2026-08-31,2026-08-31,1945.0
+MXE,US,signal,technical 2026-08-31,2026-08-31,13.42
+SCCD,US,signal,technical 2026-08-31,2026-08-31,24.89
+MLPB,US,signal,technical 2026-08-31,2026-08-31,31.31

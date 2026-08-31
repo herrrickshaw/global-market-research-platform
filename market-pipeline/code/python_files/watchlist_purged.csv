@@ -580,4 +580,269 @@ MSW,US,signal,golden_cross 2026-07-15 (backfilled),2026-07-15,1.41,2026-07-31,no
 2112.T,JP,playbook,value-reversion (LONG),2026-07-31,,2026-07-31,"market not covered: fundamentals are quality scores in `pb` (4 distinct values), not ratios"
 7231.T,JP,playbook,value-reversion (LONG),2026-07-31,2922.0,2026-07-31,"market not covered: fundamentals are quality scores in `pb` (4 distinct values), not ratios"
 BBVA.MC,EU,playbook,12M-momentum (LONG),2026-07-31,22.94,2026-07-31,market not covered: fundamentals are quality scores in `pb`; ratios table has no EU rows
-CANBK,IN,signal,value_rerating 2026-07-31,2026-07-31,124.72,2026-07-31
+CANBK,IN,signal,value_rerating 2026-07-31,2026-07-31,124.72,2026-07-31,
+PANNERGY.BD,EU,signal,technical 2026-08-29,2026-08-29,3050.0,2026-08-29,market not covered: fundamentals are quality scores in `pb`; ratios table has no EU rows
+7646,JP,signal,technical 2026-08-29,2026-08-29,1899.0,2026-08-29,"market not covered: fundamentals are quality scores in `pb` (4 distinct values), not ratios"
+11560,KR,signal,technical 2026-08-29,2026-08-29,26800.0,2026-08-29,"market not covered: fundamentals are quality scores in `roe` (80/55/40/20), not ratios"
+178780,KR,signal,technical 2026-08-29,2026-08-29,2440.0,2026-08-29,"market not covered: fundamentals are quality scores in `roe` (80/55/40/20), not ratios"
+10640,KR,signal,technical 2026-08-29,2026-08-29,2060.0,2026-08-29,"market not covered: fundamentals are quality scores in `roe` (80/55/40/20), not ratios"
+9633,JP,signal,technical 2026-08-29,2026-08-29,1977.0,2026-08-29,"market not covered: fundamentals are quality scores in `pb` (4 distinct values), not ratios"
+2764,JP,signal,technical 2026-08-29,2026-08-29,160.0,2026-08-29,"market not covered: fundamentals are quality scores in `pb` (4 distinct values), not ratios"
+2488,JP,signal,technical 2026-08-29,2026-08-29,1520.0,2026-08-29,"market not covered: fundamentals are quality scores in `pb` (4 distinct values), not ratios"
+5283,JP,signal,technical 2026-08-29,2026-08-29,3240.0,2026-08-29,"market not covered: fundamentals are quality scores in `pb` (4 distinct values), not ratios"
+84440,KR,signal,technical 2026-08-29,2026-08-29,1196.0,2026-08-29,"market not covered: fundamentals are quality scores in `roe` (80/55/40/20), not ratios"
+58400,KR,signal,technical 2026-08-29,2026-08-29,5820.0,2026-08-29,"market not covered: fundamentals are quality scores in `roe` (80/55/40/20), not ratios"
+APM,US,signal,golden_cross 2026-07-20 (backfilled),2026-07-20,8.83,2026-08-29,not in SEC EDGAR ticker registry (delisted/renamed)
+GREE,US,signal,golden_cross 2026-07-13 (backfilled),2026-07-13,2.03,2026-08-29,not in SEC EDGAR ticker registry (delisted/renamed)
+LMFA,US,signal,golden_cross 2026-07-13 (backfilled),2026-07-13,2.84,2026-08-29,not in SEC EDGAR ticker registry (delisted/renamed)
+290560.KQ,KR,playbook,cheap∩hi-ROE (LONG),2026-08-29,1504.0,2026-08-29,"market not covered: fundamentals are quality scores in `roe` (80/55/40/20), not ratios"
+071320.KS,KR,playbook,cheap∩hi-ROE (LONG),2026-08-29,73400.0,2026-08-29,"market not covered: fundamentals are quality scores in `roe` (80/55/40/20), not ratios"
+100220.KS,KR,playbook,cheap∩hi-ROE (LONG),2026-08-29,4940.0,2026-08-29,"market not covered: fundamentals are quality scores in `roe` (80/55/40/20), not ratios"
+298000.KS,KR,playbook,cheap∩hi-ROE (LONG),2026-08-29,59500.0,2026-08-29,"market not covered: fundamentals are quality scores in `roe` (80/55/40/20), not ratios"
+227840.KS,KR,playbook,cheap∩hi-ROE (LONG),2026-08-29,13070.0,2026-08-29,"market not covered: fundamentals are quality scores in `roe` (80/55/40/20), not ratios"
+088130.KQ,KR,playbook,cheap∩hi-ROE (LONG),2026-08-29,5450.0,2026-08-29,"market not covered: fundamentals are quality scores in `roe` (80/55/40/20), not ratios"
+090150.KQ,KR,playbook,cheap∩hi-ROE (LONG),2026-08-29,5930.0,2026-08-29,"market not covered: fundamentals are quality scores in `roe` (80/55/40/20), not ratios"
+284740.KS,KR,playbook,cheap∩hi-ROE (LONG),2026-08-29,22900.0,2026-08-29,"market not covered: fundamentals are quality scores in `roe` (80/55/40/20), not ratios"
+136490.KS,KR,playbook,cheap∩hi-ROE (LONG),2026-08-29,10090.0,2026-08-29,"market not covered: fundamentals are quality scores in `roe` (80/55/40/20), not ratios"
+069730.KS,KR,playbook,cheap∩hi-ROE (LONG),2026-08-29,5390.0,2026-08-29,"market not covered: fundamentals are quality scores in `roe` (80/55/40/20), not ratios"
+154040.KQ,KR,playbook,cheap∩hi-ROE (LONG),2026-08-29,1079.0,2026-08-29,"market not covered: fundamentals are quality scores in `roe` (80/55/40/20), not ratios"
+105550.KQ,KR,playbook,cheap∩hi-ROE (LONG),2026-08-29,2055.0,2026-08-29,"market not covered: fundamentals are quality scores in `roe` (80/55/40/20), not ratios"
+314930.KQ,KR,playbook,expensive∩lo-ROE (SHORT),2026-08-29,7340.0,2026-08-29,"market not covered: fundamentals are quality scores in `roe` (80/55/40/20), not ratios"
+089030.KQ,KR,playbook,expensive∩lo-ROE (SHORT),2026-08-29,49050.0,2026-08-29,"market not covered: fundamentals are quality scores in `roe` (80/55/40/20), not ratios"
+163730.KQ,KR,playbook,expensive∩lo-ROE (SHORT),2026-08-29,10090.0,2026-08-29,"market not covered: fundamentals are quality scores in `roe` (80/55/40/20), not ratios"
+448730.KS,KR,playbook,expensive∩lo-ROE (SHORT),2026-08-29,5510.0,2026-08-29,"market not covered: fundamentals are quality scores in `roe` (80/55/40/20), not ratios"
+417310.KS,KR,playbook,expensive∩lo-ROE (SHORT),2026-08-29,2320.0,2026-08-29,"market not covered: fundamentals are quality scores in `roe` (80/55/40/20), not ratios"
+098460.KQ,KR,playbook,expensive∩lo-ROE (SHORT),2026-08-29,29100.0,2026-08-29,"market not covered: fundamentals are quality scores in `roe` (80/55/40/20), not ratios"
+066980.KQ,KR,playbook,expensive∩lo-ROE (SHORT),2026-08-29,1560.0,2026-08-29,"market not covered: fundamentals are quality scores in `roe` (80/55/40/20), not ratios"
+416180.KQ,KR,playbook,expensive∩lo-ROE (SHORT),2026-08-29,26100.0,2026-08-29,"market not covered: fundamentals are quality scores in `roe` (80/55/40/20), not ratios"
+093370.KS,KR,playbook,expensive∩lo-ROE (SHORT),2026-08-29,12830.0,2026-08-29,"market not covered: fundamentals are quality scores in `roe` (80/55/40/20), not ratios"
+130660.KS,KR,playbook,expensive∩lo-ROE (SHORT),2026-08-29,12650.0,2026-08-29,"market not covered: fundamentals are quality scores in `roe` (80/55/40/20), not ratios"
+123690.KS,KR,playbook,expensive∩lo-ROE (SHORT),2026-08-29,6600.0,2026-08-29,"market not covered: fundamentals are quality scores in `roe` (80/55/40/20), not ratios"
+125020.KQ,KR,playbook,expensive∩lo-ROE (SHORT),2026-08-29,5850.0,2026-08-29,"market not covered: fundamentals are quality scores in `roe` (80/55/40/20), not ratios"
+8338.T,JP,playbook,value-reversion (LONG),2026-08-29,757.0,2026-08-29,"market not covered: fundamentals are quality scores in `pb` (4 distinct values), not ratios"
+8387.T,JP,playbook,value-reversion (LONG),2026-08-29,3615.0,2026-08-29,"market not covered: fundamentals are quality scores in `pb` (4 distinct values), not ratios"
+7280.T,JP,playbook,value-reversion (LONG),2026-08-29,1344.0,2026-08-29,"market not covered: fundamentals are quality scores in `pb` (4 distinct values), not ratios"
+1718.T,JP,playbook,value-reversion (LONG),2026-08-29,6840.0,2026-08-29,"market not covered: fundamentals are quality scores in `pb` (4 distinct values), not ratios"
+7102.T,JP,playbook,value-reversion (LONG),2026-08-29,3750.0,2026-08-29,"market not covered: fundamentals are quality scores in `pb` (4 distinct values), not ratios"
+7463.T,JP,playbook,value-reversion (LONG),2026-08-29,965.0,2026-08-29,"market not covered: fundamentals are quality scores in `pb` (4 distinct values), not ratios"
+2112.T,JP,playbook,value-reversion (LONG),2026-08-29,479.0,2026-08-29,"market not covered: fundamentals are quality scores in `pb` (4 distinct values), not ratios"
+7231.T,JP,playbook,value-reversion (LONG),2026-08-29,3080.0,2026-08-29,"market not covered: fundamentals are quality scores in `pb` (4 distinct values), not ratios"
+CWR.L,EU,playbook,12M-momentum (LONG),2026-08-29,392.8,2026-08-29,market not covered: fundamentals are quality scores in `pb`; ratios table has no EU rows
+CMCX.L,EU,playbook,12M-momentum (LONG),2026-08-29,732.0,2026-08-29,market not covered: fundamentals are quality scores in `pb`; ratios table has no EU rows
+CCC.L,EU,playbook,12M-momentum (LONG),2026-08-29,5670.0,2026-08-29,market not covered: fundamentals are quality scores in `pb`; ratios table has no EU rows
+ASML.AS,EU,playbook,12M-momentum (LONG),2026-08-29,1494.4,2026-08-29,market not covered: fundamentals are quality scores in `pb`; ratios table has no EU rows
+GEKTERNA.AT,EU,playbook,12M-momentum (LONG),2026-08-29,47.0,2026-08-29,market not covered: fundamentals are quality scores in `pb`; ratios table has no EU rows
+ENQ.L,EU,playbook,12M-momentum (LONG),2026-08-29,25.15,2026-08-29,market not covered: fundamentals are quality scores in `pb`; ratios table has no EU rows
+ATYM.L,EU,playbook,12M-momentum (LONG),2026-08-29,1109.0,2026-08-29,market not covered: fundamentals are quality scores in `pb`; ratios table has no EU rows
+HFD.L,EU,playbook,12M-momentum (LONG),2026-08-29,273.5,2026-08-29,market not covered: fundamentals are quality scores in `pb`; ratios table has no EU rows
+HOC.L,EU,playbook,12M-momentum (LONG),2026-08-29,667.5,2026-08-29,market not covered: fundamentals are quality scores in `pb`; ratios table has no EU rows
+GLEN.L,EU,playbook,12M-momentum (LONG),2026-08-29,595.6,2026-08-29,market not covered: fundamentals are quality scores in `pb`; ratios table has no EU rows
+EMG.L,EU,playbook,12M-momentum (LONG),2026-08-29,309.0,2026-08-29,market not covered: fundamentals are quality scores in `pb`; ratios table has no EU rows
+ELPE.AT,EU,playbook,12M-momentum (LONG),2026-08-29,15.47,2026-08-29,market not covered: fundamentals are quality scores in `pb`; ratios table has no EU rows
+AGARIND,IN,evicted,prediction-filter 2026-08-29: WEAK (bear Markov state + negative Kalman drift),,,,
+ANUP,IN,evicted,prediction-filter 2026-08-29: WEAK (bear Markov state + negative Kalman drift),2026-07-21,2139.3999,,
+APTUS,IN,evicted,prediction-filter 2026-08-29: WEAK (bear Markov state + negative Kalman drift),2026-07-17,306.85,,
+ASHAPURMIN,IN,evicted,prediction-filter 2026-08-29: WEAK (bear Markov state + negative Kalman drift),2026-07-25,676.7,,
+ASTERDM,IN,evicted,prediction-filter 2026-08-29: WEAK (bear Markov state + negative Kalman drift),2026-07-23,799.5,,
+AVL,IN,evicted,prediction-filter 2026-08-29: WEAK (bear Markov state + negative Kalman drift),2026-07-25,635.35,,
+BHARTIARTL,IN,evicted,prediction-filter 2026-08-29: WEAK (bear Markov state + negative Kalman drift),,,,
+BIOCON,IN,evicted,prediction-filter 2026-08-29: WEAK (bear Markov state + negative Kalman drift),,,,
+BRITANNIA,IN,evicted,prediction-filter 2026-08-29: WEAK (bear Markov state + negative Kalman drift),,,,
+CIPLA,IN,evicted,prediction-filter 2026-08-29: WEAK (bear Markov state + negative Kalman drift),,,,
+COALINDIA,IN,evicted,prediction-filter 2026-08-29: WEAK (bear Markov state + negative Kalman drift),2026-07-24,427.4,,
+COLPAL,IN,evicted,prediction-filter 2026-08-29: WEAK (bear Markov state + negative Kalman drift),,,,
+COROMANDEL,IN,evicted,prediction-filter 2026-08-29: WEAK (bear Markov state + negative Kalman drift),,,,
+CUMMINSIND,IN,evicted,prediction-filter 2026-08-29: WEAK (bear Markov state + negative Kalman drift),,,,
+DATAMATICS,IN,evicted,prediction-filter 2026-08-29: WEAK (bear Markov state + negative Kalman drift),2026-07-15,853.5,,
+DEEPAKFERT,IN,evicted,prediction-filter 2026-08-29: WEAK (bear Markov state + negative Kalman drift),,,,
+FDC,IN,evicted,prediction-filter 2026-08-29: WEAK (bear Markov state + negative Kalman drift),2026-07-17,420.1,,
+GESHIP,IN,evicted,prediction-filter 2026-08-29: WEAK (bear Markov state + negative Kalman drift),2026-07-24,1435.2,,
+GMRAIRPORT,IN,evicted,prediction-filter 2026-08-29: WEAK (bear Markov state + negative Kalman drift),2026-07-23,107.37,,
+GREAVESCOT,IN,evicted,prediction-filter 2026-08-29: WEAK (bear Markov state + negative Kalman drift),,,,
+GREENLAM,IN,evicted,prediction-filter 2026-08-29: WEAK (bear Markov state + negative Kalman drift),2026-07-15,252.45,,
+HARIOMPIPE,IN,evicted,prediction-filter 2026-08-29: WEAK (bear Markov state + negative Kalman drift),2026-07-17,403.55,,
+HARRMALAYA,IN,evicted,prediction-filter 2026-08-29: WEAK (bear Markov state + negative Kalman drift),,,,
+HINDPETRO,IN,evicted,prediction-filter 2026-08-29: WEAK (bear Markov state + negative Kalman drift),,,,
+IGARASHI,IN,evicted,prediction-filter 2026-08-29: WEAK (bear Markov state + negative Kalman drift),2026-07-15,465.9,,
+IKIO,IN,evicted,prediction-filter 2026-08-29: WEAK (bear Markov state + negative Kalman drift),2026-07-20,214.37,,
+INDHOTEL,IN,evicted,prediction-filter 2026-08-29: WEAK (bear Markov state + negative Kalman drift),2026-07-20,725.05,,
+INDIACEM,IN,evicted,prediction-filter 2026-08-29: WEAK (bear Markov state + negative Kalman drift),,,,
+INDNIPPON,IN,evicted,prediction-filter 2026-08-29: WEAK (bear Markov state + negative Kalman drift),2026-07-25,1213.7,,
+INDOSTAR,IN,evicted,prediction-filter 2026-08-29: WEAK (bear Markov state + negative Kalman drift),2026-07-13,269.35,,
+ITDC,IN,evicted,prediction-filter 2026-08-29: WEAK (bear Markov state + negative Kalman drift),,,,
+IXIGO,IN,evicted,prediction-filter 2026-08-29: WEAK (bear Markov state + negative Kalman drift),,,,
+JAYBARMARU,IN,evicted,prediction-filter 2026-08-29: WEAK (bear Markov state + negative Kalman drift),2026-07-25,168.07,,
+JLHL,IN,evicted,prediction-filter 2026-08-29: WEAK (bear Markov state + negative Kalman drift),2026-07-20,1558.1,,
+LATENTVIEW,IN,evicted,prediction-filter 2026-08-29: WEAK (bear Markov state + negative Kalman drift),,,,
+LIBERTSHOE,IN,evicted,prediction-filter 2026-08-29: WEAK (bear Markov state + negative Kalman drift),,,,
+MAPMYINDIA,IN,evicted,prediction-filter 2026-08-29: WEAK (bear Markov state + negative Kalman drift),,,,
+MARICO,IN,evicted,prediction-filter 2026-08-29: WEAK (bear Markov state + negative Kalman drift),,,,
+MARUTI,IN,evicted,prediction-filter 2026-08-29: WEAK (bear Markov state + negative Kalman drift),,,,
+MAYURUNIQ,IN,evicted,prediction-filter 2026-08-29: WEAK (bear Markov state + negative Kalman drift),2026-07-25,798.15,,
+NAVKARCORP,IN,evicted,prediction-filter 2026-08-29: WEAK (bear Markov state + negative Kalman drift),2026-07-20,104.31,,
+NDRAUTO,IN,evicted,prediction-filter 2026-08-29: WEAK (bear Markov state + negative Kalman drift),2026-07-15,821.0,,
+ONMOBILE,IN,evicted,prediction-filter 2026-08-29: WEAK (bear Markov state + negative Kalman drift),2026-07-17,63.15,,
+PROTEAN,IN,evicted,prediction-filter 2026-08-29: WEAK (bear Markov state + negative Kalman drift),,,,
+RAIN,IN,evicted,prediction-filter 2026-08-29: WEAK (bear Markov state + negative Kalman drift),,,,
+RECLTD,IN,evicted,prediction-filter 2026-08-29: WEAK (bear Markov state + negative Kalman drift),,,,
+ROTO,IN,evicted,prediction-filter 2026-08-29: WEAK (bear Markov state + negative Kalman drift),2026-07-17,65.05,,
+SATIN,IN,evicted,prediction-filter 2026-08-29: WEAK (bear Markov state + negative Kalman drift),2026-07-23,251.85,,
+SBILIFE,IN,evicted,prediction-filter 2026-08-29: WEAK (bear Markov state + negative Kalman drift),,,,
+SCHNEIDER,IN,evicted,prediction-filter 2026-08-29: WEAK (bear Markov state + negative Kalman drift),,,,
+SIGNATURE,IN,evicted,prediction-filter 2026-08-29: WEAK (bear Markov state + negative Kalman drift),2026-07-24,768.35,,
+SOUTHBANK,IN,evicted,prediction-filter 2026-08-29: WEAK (bear Markov state + negative Kalman drift),,,,
+SUNDROP,IN,evicted,prediction-filter 2026-08-29: WEAK (bear Markov state + negative Kalman drift),2026-07-23,692.4,,
+SUNPHARMA,IN,evicted,prediction-filter 2026-08-29: WEAK (bear Markov state + negative Kalman drift),,,,
+UCOBANK,IN,evicted,prediction-filter 2026-08-29: WEAK (bear Markov state + negative Kalman drift),,,,
+VAIBHAVGBL,IN,evicted,prediction-filter 2026-08-29: WEAK (bear Markov state + negative Kalman drift),2026-07-13,255.88,,
+VOLTAS,IN,evicted,prediction-filter 2026-08-29: WEAK (bear Markov state + negative Kalman drift),,,,
+AGIO,US,evicted,prediction-filter 2026-08-29: WEAK (bear Markov state + negative Kalman drift),2026-07-15,39.87,,
+CMSC,US,evicted,prediction-filter 2026-08-29: WEAK (bear Markov state + negative Kalman drift),2026-07-25,21.91,,
+DORM,US,evicted,prediction-filter 2026-08-29: WEAK (bear Markov state + negative Kalman drift),2026-07-14,137.55,,
+FBIO,US,evicted,prediction-filter 2026-08-29: WEAK (bear Markov state + negative Kalman drift),2026-07-21,3.53,,
+HRL,US,evicted,prediction-filter 2026-08-29: WEAK (bear Markov state + negative Kalman drift),2026-07-13,24.46,,
+HVII,US,evicted,prediction-filter 2026-08-29: WEAK (bear Markov state + negative Kalman drift),2026-07-22,10.475,,
+IFBD,US,evicted,prediction-filter 2026-08-29: WEAK (bear Markov state + negative Kalman drift),2026-07-15,1.16,,
+INDP,US,evicted,prediction-filter 2026-08-29: WEAK (bear Markov state + negative Kalman drift),2026-07-20,2.46,,
+IOTR,US,evicted,prediction-filter 2026-08-29: WEAK (bear Markov state + negative Kalman drift),2026-07-20,3.37,,
+KSS,US,evicted,prediction-filter 2026-08-29: WEAK (bear Markov state + negative Kalman drift),2026-07-21,18.13,,
+OTLK,US,evicted,prediction-filter 2026-08-29: WEAK (bear Markov state + negative Kalman drift),2026-07-15,1.56,,
+PRPL,US,evicted,prediction-filter 2026-08-29: WEAK (bear Markov state + negative Kalman drift),2026-07-20,6.5,,
+RPAY,US,evicted,prediction-filter 2026-08-29: WEAK (bear Markov state + negative Kalman drift),2026-07-15,4.09,,
+RRR,US,evicted,prediction-filter 2026-08-29: WEAK (bear Markov state + negative Kalman drift),2026-07-13,64.41,,
+TTWO,US,evicted,prediction-filter 2026-08-29: WEAK (bear Markov state + negative Kalman drift),2026-07-15,243.8,,
+UPBD,US,evicted,prediction-filter 2026-08-29: WEAK (bear Markov state + negative Kalman drift),2026-07-13,21.15,,
+WBX,US,evicted,prediction-filter 2026-08-29: WEAK (bear Markov state + negative Kalman drift),2026-07-20,4.15,,
+NXTT,US,evicted,prediction-filter 2026-08-29: WEAK (bear Markov state + negative Kalman drift),2026-07-27,0.77,,
+SOJE,US,evicted,prediction-filter 2026-08-29: WEAK (bear Markov state + negative Kalman drift),2026-07-27,16.67,,
+SHOE,US,evicted,prediction-filter 2026-08-29: WEAK (bear Markov state + negative Kalman drift),2026-07-27,14.73,,
+WKC,US,evicted,prediction-filter 2026-08-29: WEAK (bear Markov state + negative Kalman drift),2026-07-21,35.7,,
+SUMEETINDS,IN,evicted,prediction-filter 2026-08-29: WEAK (bear Markov state + negative Kalman drift),2026-07-31,24.69,,
+ADANIGREEN,IN,evicted,evicted 2026-07-31 after 6 sessions in sell zone,,,2026-08-29,
+AXISBANK,IN,evicted,evicted 2026-07-27 after 6 sessions in sell zone,,,2026-08-29,
+CIEINDIA,IN,evicted,nan | renamed from MAHINDCIE (2026-07-23) | evicted 2026-07-31 after 6 sessions in sell zone,2026-07-23,419.0,2026-08-29,
+COASTCORP,IN,evicted,evicted 2026-07-29 after 6 sessions in sell zone,,,2026-08-29,
+GATEWAY,IN,evicted,evicted 2026-07-27 after 6 sessions in sell zone,,,2026-08-29,
+GMBREW,IN,evicted,evicted 2026-07-23 after 9 sessions in sell zone,,,2026-08-29,
+GUJENERGY,IN,evicted,evicted 2026-07-23 after 6 sessions in sell zone | renamed from GUJGASLTD (2026-07-23),,,2026-08-29,
+HATHWAY,IN,evicted,evicted 2026-07-28 after 6 sessions in sell zone,,,2026-08-29,
+HDFCBANK,IN,evicted,evicted 2026-07-27 after 6 sessions in sell zone,,,2026-08-29,
+HITECH,IN,evicted,evicted 2026-07-23 after 7 sessions in sell zone,,,2026-08-29,
+RESPONIND,IN,evicted,golden_cross 2026-07-15 (backfilled) | evicted 2026-07-28 after 6 sessions in sell zone,2026-07-15,190.53,2026-08-29,
+SHAKTIPUMP,IN,evicted,evicted 2026-07-24 after 6 sessions in sell zone,,,2026-08-29,
+THERMAX,IN,evicted,evicted 2026-07-31 after 6 sessions in sell zone,,,2026-08-29,
+TRIVENI,IN,evicted,evicted 2026-07-29 after 6 sessions in sell zone,,,2026-08-29,
+VIKRAMSOLR,IN,evicted,evicted 2026-07-23 after 8 sessions in sell zone,,,2026-08-29,
+YESBANK,IN,evicted,evicted 2026-07-31 after 6 sessions in sell zone,,,2026-08-29,
+ACI,US,evicted,22.4 RSI @ 2026-07-24 | evicted 2026-07-28 after 6 sessions in sell zone,2026-07-24,11.03,2026-08-29,
+ARL,US,evicted,golden_cross 2026-07-14 (backfilled) | evicted 2026-07-27 after 6 sessions in sell zone,2026-07-14,18.37,2026-08-29,
+ASLE,US,evicted,tuned-model 2026-07-24 | evicted 2026-07-24 after 12 sessions in sell zone,2026-07-24,,2026-08-29,
+NAMSW,US,evicted,golden_cross 2026-07-14 (backfilled) | evicted 2026-07-23 after 6 sessions in sell zone,2026-07-14,20.56,2026-08-29,
+PEG,US,evicted,tuned-model 2026-07-24 | evicted 2026-07-24 after 7 sessions in sell zone,2026-07-24,,2026-08-29,
+RDY,US,evicted,24.5 RSI @ 2026-07-23 | evicted 2026-07-23 after 8 sessions in sell zone,2026-07-23,,2026-08-29,
+SNEX,US,evicted,24.7 RSI @ 2026-07-22 | evicted 2026-07-23 after 7 sessions in sell zone,2026-07-22,74.53,2026-08-29,
+FTCI,US,evicted,23.7 RSI @ 2026-07-28 | evicted 2026-07-28 after 9 sessions in sell zone,2026-07-28,,2026-08-29,
+290560.KQ,KR,playbook,cheap∩hi-ROE (LONG),2026-08-29,1504.0,2026-08-29,"market not covered: fundamentals are quality scores in `roe` (80/55/40/20), not ratios"
+071320.KS,KR,playbook,cheap∩hi-ROE (LONG),2026-08-29,73400.0,2026-08-29,"market not covered: fundamentals are quality scores in `roe` (80/55/40/20), not ratios"
+100220.KS,KR,playbook,cheap∩hi-ROE (LONG),2026-08-29,4940.0,2026-08-29,"market not covered: fundamentals are quality scores in `roe` (80/55/40/20), not ratios"
+298000.KS,KR,playbook,cheap∩hi-ROE (LONG),2026-08-29,59500.0,2026-08-29,"market not covered: fundamentals are quality scores in `roe` (80/55/40/20), not ratios"
+227840.KS,KR,playbook,cheap∩hi-ROE (LONG),2026-08-29,13070.0,2026-08-29,"market not covered: fundamentals are quality scores in `roe` (80/55/40/20), not ratios"
+088130.KQ,KR,playbook,cheap∩hi-ROE (LONG),2026-08-29,5450.0,2026-08-29,"market not covered: fundamentals are quality scores in `roe` (80/55/40/20), not ratios"
+090150.KQ,KR,playbook,cheap∩hi-ROE (LONG),2026-08-29,5930.0,2026-08-29,"market not covered: fundamentals are quality scores in `roe` (80/55/40/20), not ratios"
+284740.KS,KR,playbook,cheap∩hi-ROE (LONG),2026-08-29,22900.0,2026-08-29,"market not covered: fundamentals are quality scores in `roe` (80/55/40/20), not ratios"
+136490.KS,KR,playbook,cheap∩hi-ROE (LONG),2026-08-29,10090.0,2026-08-29,"market not covered: fundamentals are quality scores in `roe` (80/55/40/20), not ratios"
+069730.KS,KR,playbook,cheap∩hi-ROE (LONG),2026-08-29,5390.0,2026-08-29,"market not covered: fundamentals are quality scores in `roe` (80/55/40/20), not ratios"
+154040.KQ,KR,playbook,cheap∩hi-ROE (LONG),2026-08-29,1079.0,2026-08-29,"market not covered: fundamentals are quality scores in `roe` (80/55/40/20), not ratios"
+105550.KQ,KR,playbook,cheap∩hi-ROE (LONG),2026-08-29,2055.0,2026-08-29,"market not covered: fundamentals are quality scores in `roe` (80/55/40/20), not ratios"
+314930.KQ,KR,playbook,expensive∩lo-ROE (SHORT),2026-08-29,7340.0,2026-08-29,"market not covered: fundamentals are quality scores in `roe` (80/55/40/20), not ratios"
+089030.KQ,KR,playbook,expensive∩lo-ROE (SHORT),2026-08-29,49050.0,2026-08-29,"market not covered: fundamentals are quality scores in `roe` (80/55/40/20), not ratios"
+163730.KQ,KR,playbook,expensive∩lo-ROE (SHORT),2026-08-29,10090.0,2026-08-29,"market not covered: fundamentals are quality scores in `roe` (80/55/40/20), not ratios"
+448730.KS,KR,playbook,expensive∩lo-ROE (SHORT),2026-08-29,5510.0,2026-08-29,"market not covered: fundamentals are quality scores in `roe` (80/55/40/20), not ratios"
+417310.KS,KR,playbook,expensive∩lo-ROE (SHORT),2026-08-29,2320.0,2026-08-29,"market not covered: fundamentals are quality scores in `roe` (80/55/40/20), not ratios"
+098460.KQ,KR,playbook,expensive∩lo-ROE (SHORT),2026-08-29,29100.0,2026-08-29,"market not covered: fundamentals are quality scores in `roe` (80/55/40/20), not ratios"
+066980.KQ,KR,playbook,expensive∩lo-ROE (SHORT),2026-08-29,1560.0,2026-08-29,"market not covered: fundamentals are quality scores in `roe` (80/55/40/20), not ratios"
+416180.KQ,KR,playbook,expensive∩lo-ROE (SHORT),2026-08-29,26100.0,2026-08-29,"market not covered: fundamentals are quality scores in `roe` (80/55/40/20), not ratios"
+093370.KS,KR,playbook,expensive∩lo-ROE (SHORT),2026-08-29,12830.0,2026-08-29,"market not covered: fundamentals are quality scores in `roe` (80/55/40/20), not ratios"
+130660.KS,KR,playbook,expensive∩lo-ROE (SHORT),2026-08-29,12650.0,2026-08-29,"market not covered: fundamentals are quality scores in `roe` (80/55/40/20), not ratios"
+123690.KS,KR,playbook,expensive∩lo-ROE (SHORT),2026-08-29,6600.0,2026-08-29,"market not covered: fundamentals are quality scores in `roe` (80/55/40/20), not ratios"
+125020.KQ,KR,playbook,expensive∩lo-ROE (SHORT),2026-08-29,5850.0,2026-08-29,"market not covered: fundamentals are quality scores in `roe` (80/55/40/20), not ratios"
+8338.T,JP,playbook,value-reversion (LONG),2026-08-29,757.0,2026-08-29,"market not covered: fundamentals are quality scores in `pb` (4 distinct values), not ratios"
+8387.T,JP,playbook,value-reversion (LONG),2026-08-29,3615.0,2026-08-29,"market not covered: fundamentals are quality scores in `pb` (4 distinct values), not ratios"
+7280.T,JP,playbook,value-reversion (LONG),2026-08-29,1344.0,2026-08-29,"market not covered: fundamentals are quality scores in `pb` (4 distinct values), not ratios"
+1718.T,JP,playbook,value-reversion (LONG),2026-08-29,6840.0,2026-08-29,"market not covered: fundamentals are quality scores in `pb` (4 distinct values), not ratios"
+7102.T,JP,playbook,value-reversion (LONG),2026-08-29,3750.0,2026-08-29,"market not covered: fundamentals are quality scores in `pb` (4 distinct values), not ratios"
+7463.T,JP,playbook,value-reversion (LONG),2026-08-29,965.0,2026-08-29,"market not covered: fundamentals are quality scores in `pb` (4 distinct values), not ratios"
+2112.T,JP,playbook,value-reversion (LONG),2026-08-29,479.0,2026-08-29,"market not covered: fundamentals are quality scores in `pb` (4 distinct values), not ratios"
+7231.T,JP,playbook,value-reversion (LONG),2026-08-29,3080.0,2026-08-29,"market not covered: fundamentals are quality scores in `pb` (4 distinct values), not ratios"
+CWR.L,EU,playbook,12M-momentum (LONG),2026-08-29,392.8,2026-08-29,market not covered: fundamentals are quality scores in `pb`; ratios table has no EU rows
+CMCX.L,EU,playbook,12M-momentum (LONG),2026-08-29,732.0,2026-08-29,market not covered: fundamentals are quality scores in `pb`; ratios table has no EU rows
+CCC.L,EU,playbook,12M-momentum (LONG),2026-08-29,5670.0,2026-08-29,market not covered: fundamentals are quality scores in `pb`; ratios table has no EU rows
+ASML.AS,EU,playbook,12M-momentum (LONG),2026-08-29,1494.4,2026-08-29,market not covered: fundamentals are quality scores in `pb`; ratios table has no EU rows
+GEKTERNA.AT,EU,playbook,12M-momentum (LONG),2026-08-29,47.0,2026-08-29,market not covered: fundamentals are quality scores in `pb`; ratios table has no EU rows
+ENQ.L,EU,playbook,12M-momentum (LONG),2026-08-29,25.15,2026-08-29,market not covered: fundamentals are quality scores in `pb`; ratios table has no EU rows
+ATYM.L,EU,playbook,12M-momentum (LONG),2026-08-29,1109.0,2026-08-29,market not covered: fundamentals are quality scores in `pb`; ratios table has no EU rows
+HFD.L,EU,playbook,12M-momentum (LONG),2026-08-29,273.5,2026-08-29,market not covered: fundamentals are quality scores in `pb`; ratios table has no EU rows
+HOC.L,EU,playbook,12M-momentum (LONG),2026-08-29,667.5,2026-08-29,market not covered: fundamentals are quality scores in `pb`; ratios table has no EU rows
+GLEN.L,EU,playbook,12M-momentum (LONG),2026-08-29,595.6,2026-08-29,market not covered: fundamentals are quality scores in `pb`; ratios table has no EU rows
+EMG.L,EU,playbook,12M-momentum (LONG),2026-08-29,309.0,2026-08-29,market not covered: fundamentals are quality scores in `pb`; ratios table has no EU rows
+ELPE.AT,EU,playbook,12M-momentum (LONG),2026-08-29,15.47,2026-08-29,market not covered: fundamentals are quality scores in `pb`; ratios table has no EU rows
+ASTERDM,IN,evicted,prediction-filter 2026-08-29: WEAK (bear Markov state + negative Kalman drift),2026-08-29,754.8,,
+GMBREW,IN,evicted,prediction-filter 2026-08-29: WEAK (bear Markov state + negative Kalman drift),2026-08-29,891.7,,
+SATIN,IN,evicted,prediction-filter 2026-08-29: WEAK (bear Markov state + negative Kalman drift),2026-08-29,226.01,,
+NXTT,US,evicted,prediction-filter 2026-08-29: WEAK (bear Markov state + negative Kalman drift),2026-08-29,6.02,,
+SOJE,US,evicted,prediction-filter 2026-08-29: WEAK (bear Markov state + negative Kalman drift),2026-08-29,,,
+SHOE,US,evicted,prediction-filter 2026-08-29: WEAK (bear Markov state + negative Kalman drift),2026-08-29,13.69,,
+CMSC,US,evicted,prediction-filter 2026-08-29: WEAK (bear Markov state + negative Kalman drift),2026-08-29,,,
+JKTYRE,IN,evicted,evicted 2026-07-27 after 6 sessions in sell zone,,,2026-08-29,
+ANSC,US,signal,technical 2026-07-22,2026-07-22,11.45,2026-08-30,not in SEC EDGAR ticker registry (delisted/renamed)
+290560.KQ,KR,playbook,cheap∩hi-ROE (LONG),2026-08-30,1504.0,2026-08-30,"market not covered: fundamentals are quality scores in `roe` (80/55/40/20), not ratios"
+071320.KS,KR,playbook,cheap∩hi-ROE (LONG),2026-08-30,73400.0,2026-08-30,"market not covered: fundamentals are quality scores in `roe` (80/55/40/20), not ratios"
+100220.KS,KR,playbook,cheap∩hi-ROE (LONG),2026-08-30,4940.0,2026-08-30,"market not covered: fundamentals are quality scores in `roe` (80/55/40/20), not ratios"
+298000.KS,KR,playbook,cheap∩hi-ROE (LONG),2026-08-30,59500.0,2026-08-30,"market not covered: fundamentals are quality scores in `roe` (80/55/40/20), not ratios"
+227840.KS,KR,playbook,cheap∩hi-ROE (LONG),2026-08-30,13070.0,2026-08-30,"market not covered: fundamentals are quality scores in `roe` (80/55/40/20), not ratios"
+088130.KQ,KR,playbook,cheap∩hi-ROE (LONG),2026-08-30,5450.0,2026-08-30,"market not covered: fundamentals are quality scores in `roe` (80/55/40/20), not ratios"
+090150.KQ,KR,playbook,cheap∩hi-ROE (LONG),2026-08-30,5930.0,2026-08-30,"market not covered: fundamentals are quality scores in `roe` (80/55/40/20), not ratios"
+284740.KS,KR,playbook,cheap∩hi-ROE (LONG),2026-08-30,22900.0,2026-08-30,"market not covered: fundamentals are quality scores in `roe` (80/55/40/20), not ratios"
+136490.KS,KR,playbook,cheap∩hi-ROE (LONG),2026-08-30,10090.0,2026-08-30,"market not covered: fundamentals are quality scores in `roe` (80/55/40/20), not ratios"
+069730.KS,KR,playbook,cheap∩hi-ROE (LONG),2026-08-30,5390.0,2026-08-30,"market not covered: fundamentals are quality scores in `roe` (80/55/40/20), not ratios"
+154040.KQ,KR,playbook,cheap∩hi-ROE (LONG),2026-08-30,1079.0,2026-08-30,"market not covered: fundamentals are quality scores in `roe` (80/55/40/20), not ratios"
+105550.KQ,KR,playbook,cheap∩hi-ROE (LONG),2026-08-30,2055.0,2026-08-30,"market not covered: fundamentals are quality scores in `roe` (80/55/40/20), not ratios"
+314930.KQ,KR,playbook,expensive∩lo-ROE (SHORT),2026-08-30,7340.0,2026-08-30,"market not covered: fundamentals are quality scores in `roe` (80/55/40/20), not ratios"
+089030.KQ,KR,playbook,expensive∩lo-ROE (SHORT),2026-08-30,49050.0,2026-08-30,"market not covered: fundamentals are quality scores in `roe` (80/55/40/20), not ratios"
+163730.KQ,KR,playbook,expensive∩lo-ROE (SHORT),2026-08-30,10090.0,2026-08-30,"market not covered: fundamentals are quality scores in `roe` (80/55/40/20), not ratios"
+448730.KS,KR,playbook,expensive∩lo-ROE (SHORT),2026-08-30,5510.0,2026-08-30,"market not covered: fundamentals are quality scores in `roe` (80/55/40/20), not ratios"
+417310.KS,KR,playbook,expensive∩lo-ROE (SHORT),2026-08-30,2320.0,2026-08-30,"market not covered: fundamentals are quality scores in `roe` (80/55/40/20), not ratios"
+098460.KQ,KR,playbook,expensive∩lo-ROE (SHORT),2026-08-30,29100.0,2026-08-30,"market not covered: fundamentals are quality scores in `roe` (80/55/40/20), not ratios"
+066980.KQ,KR,playbook,expensive∩lo-ROE (SHORT),2026-08-30,1560.0,2026-08-30,"market not covered: fundamentals are quality scores in `roe` (80/55/40/20), not ratios"
+416180.KQ,KR,playbook,expensive∩lo-ROE (SHORT),2026-08-30,26100.0,2026-08-30,"market not covered: fundamentals are quality scores in `roe` (80/55/40/20), not ratios"
+093370.KS,KR,playbook,expensive∩lo-ROE (SHORT),2026-08-30,12830.0,2026-08-30,"market not covered: fundamentals are quality scores in `roe` (80/55/40/20), not ratios"
+130660.KS,KR,playbook,expensive∩lo-ROE (SHORT),2026-08-30,12650.0,2026-08-30,"market not covered: fundamentals are quality scores in `roe` (80/55/40/20), not ratios"
+123690.KS,KR,playbook,expensive∩lo-ROE (SHORT),2026-08-30,6600.0,2026-08-30,"market not covered: fundamentals are quality scores in `roe` (80/55/40/20), not ratios"
+125020.KQ,KR,playbook,expensive∩lo-ROE (SHORT),2026-08-30,5850.0,2026-08-30,"market not covered: fundamentals are quality scores in `roe` (80/55/40/20), not ratios"
+8338.T,JP,playbook,value-reversion (LONG),2026-08-30,757.0,2026-08-30,"market not covered: fundamentals are quality scores in `pb` (4 distinct values), not ratios"
+8387.T,JP,playbook,value-reversion (LONG),2026-08-30,3615.0,2026-08-30,"market not covered: fundamentals are quality scores in `pb` (4 distinct values), not ratios"
+7280.T,JP,playbook,value-reversion (LONG),2026-08-30,1344.0,2026-08-30,"market not covered: fundamentals are quality scores in `pb` (4 distinct values), not ratios"
+1718.T,JP,playbook,value-reversion (LONG),2026-08-30,6840.0,2026-08-30,"market not covered: fundamentals are quality scores in `pb` (4 distinct values), not ratios"
+7102.T,JP,playbook,value-reversion (LONG),2026-08-30,3750.0,2026-08-30,"market not covered: fundamentals are quality scores in `pb` (4 distinct values), not ratios"
+7463.T,JP,playbook,value-reversion (LONG),2026-08-30,965.0,2026-08-30,"market not covered: fundamentals are quality scores in `pb` (4 distinct values), not ratios"
+2112.T,JP,playbook,value-reversion (LONG),2026-08-30,479.0,2026-08-30,"market not covered: fundamentals are quality scores in `pb` (4 distinct values), not ratios"
+7231.T,JP,playbook,value-reversion (LONG),2026-08-30,3080.0,2026-08-30,"market not covered: fundamentals are quality scores in `pb` (4 distinct values), not ratios"
+CWR.L,EU,playbook,12M-momentum (LONG),2026-08-30,392.8,2026-08-30,market not covered: fundamentals are quality scores in `pb`; ratios table has no EU rows
+CMCX.L,EU,playbook,12M-momentum (LONG),2026-08-30,732.0,2026-08-30,market not covered: fundamentals are quality scores in `pb`; ratios table has no EU rows
+CCC.L,EU,playbook,12M-momentum (LONG),2026-08-30,5670.0,2026-08-30,market not covered: fundamentals are quality scores in `pb`; ratios table has no EU rows
+ASML.AS,EU,playbook,12M-momentum (LONG),2026-08-30,1494.4,2026-08-30,market not covered: fundamentals are quality scores in `pb`; ratios table has no EU rows
+GEKTERNA.AT,EU,playbook,12M-momentum (LONG),2026-08-30,47.0,2026-08-30,market not covered: fundamentals are quality scores in `pb`; ratios table has no EU rows
+ENQ.L,EU,playbook,12M-momentum (LONG),2026-08-30,25.15,2026-08-30,market not covered: fundamentals are quality scores in `pb`; ratios table has no EU rows
+ATYM.L,EU,playbook,12M-momentum (LONG),2026-08-30,1109.0,2026-08-30,market not covered: fundamentals are quality scores in `pb`; ratios table has no EU rows
+HFD.L,EU,playbook,12M-momentum (LONG),2026-08-30,273.5,2026-08-30,market not covered: fundamentals are quality scores in `pb`; ratios table has no EU rows
+HOC.L,EU,playbook,12M-momentum (LONG),2026-08-30,667.5,2026-08-30,market not covered: fundamentals are quality scores in `pb`; ratios table has no EU rows
+GLEN.L,EU,playbook,12M-momentum (LONG),2026-08-30,595.6,2026-08-30,market not covered: fundamentals are quality scores in `pb`; ratios table has no EU rows
+EMG.L,EU,playbook,12M-momentum (LONG),2026-08-30,309.0,2026-08-30,market not covered: fundamentals are quality scores in `pb`; ratios table has no EU rows
+ELPE.AT,EU,playbook,12M-momentum (LONG),2026-08-30,15.47,2026-08-30,market not covered: fundamentals are quality scores in `pb`; ratios table has no EU rows
+ASTERDM,IN,evicted,prediction-filter 2026-08-30: WEAK (bear Markov state + negative Kalman drift),2026-08-30,754.8
+GMBREW,IN,evicted,prediction-filter 2026-08-30: WEAK (bear Markov state + negative Kalman drift),2026-08-30,891.7
+SATIN,IN,evicted,prediction-filter 2026-08-30: WEAK (bear Markov state + negative Kalman drift),2026-08-30,222.37
+NXTT,US,evicted,prediction-filter 2026-08-30: WEAK (bear Markov state + negative Kalman drift),2026-08-30,6.02
+SOJE,US,evicted,prediction-filter 2026-08-30: WEAK (bear Markov state + negative Kalman drift),2026-08-30,
+SHOE,US,evicted,prediction-filter 2026-08-30: WEAK (bear Markov state + negative Kalman drift),2026-08-30,13.69
+CMSC,US,evicted,prediction-filter 2026-08-30: WEAK (bear Markov state + negative Kalman drift),2026-08-30,
