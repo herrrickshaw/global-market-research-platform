@@ -5,47 +5,79 @@
 - adds cheap cross-repo links: identical symbol *labels* across repos -> 'shared_symbol' edges
 Output: ~/.graphify/global-graph.json  (+ a compact extraction index)
 """
-import glob, json, os, collections
+import glob, json, os, re, subprocess, collections
 
 OUT = os.path.expanduser("~/.graphify/global-graph.json")
 IDX = os.path.expanduser("~/.graphify/global-index.json")
 os.makedirs(os.path.dirname(OUT), exist_ok=True)
 
 # Read exact repo lists from logs (NEVER recursive-glob ~ — it walks 107GB).
-# Keyed by repo NAME so a local checkout always beats a shallow gh-clone of the same
-# repo: the clones are `--depth 1 GIT_LFS_SKIP_SMUDGE=1`, so when both exist the clone
-# is a stub. market-pipeline was the case that exposed this — a 13-node clone was
-# shadowing the real 7,670-node local graph, and every file:line reference into that
-# repo resolved to nothing.
-by_repo = {}   # repo name -> (priority, graph path); lower priority number wins
+#
+# Dedup key is the REMOTE URL, not the directory name. A local checkout always beats
+# a shallow gh-clone of the same remote: the clones are `--depth 1
+# GIT_LFS_SKIP_SMUDGE=1`, so when both exist the clone is a stub. market-pipeline
+# exposed the first half of this — a 13-node clone shadowing the real 7,670-node
+# local graph, so every file:line reference into it resolved to nothing.
+#
+# Keying on the directory basename does NOT fix it, because three local checkouts sit
+# in directories named differently from their own remote, and were merged twice:
+#     ~/BazaarTalks-cpp                 <-> clone Bazartalks_Py2Cplus
+#     ~/masaladeutsch-archive           <-> clone blogger_writeups_code
+#     ~/omc-retail-profitability-model  <-> clone india-omc-fuel-fleet-model
+# Each pair is ONE GitHub repo counted as two, inflating the graph by ~3.7k nodes and
+# manufacturing five "100% identical repo" pairs that are really three aliases plus
+# two genuine duplicates. Normalising the remote collapses the aliases and leaves the
+# genuine duplicates standing, which is the distinction that matters.
+by_remote = {}   # canonical remote -> (priority, graph path, display name)
 
-def offer(repo, gj, priority):
+
+def remote_of(repo_dir):
+    """Canonical <owner>/<name> for a checkout, or None if it has no origin."""
+    try:
+        url = subprocess.run(["git", "-C", repo_dir, "remote", "get-url", "origin"],
+                             capture_output=True, text=True, timeout=10).stdout.strip()
+    except Exception:
+        return None
+    if not url:
+        return None
+    url = re.sub(r'^git@([^:]+):', r'https://\1/', url)
+    url = re.sub(r'\.git$', '', url).rstrip('/').lower()
+    return "/".join(url.split("/")[-2:]) or None
+
+
+def offer(name, repo_dir, gj, priority):
     if not os.path.exists(gj):
         return
-    cur = by_repo.get(repo)
+    key = remote_of(repo_dir) or f"path::{os.path.realpath(repo_dir)}"
+    cur = by_remote.get(key)
     if cur is None or priority < cur[0]:
-        by_repo[repo] = (priority, gj)
+        by_remote[key] = (priority, gj, name)
+
 
 # 1. local git repos discovered by the batch driver
 for row in json.load(open(os.path.expanduser("~/.ruflo/logs/graphify_batch.json"))):
     if row.get("status") == "ok":
-        offer(os.path.basename(row["repo"]),
-              os.path.expanduser(f"~/{row['repo']}/graphify-out/graph.json"), 0)
+        d = os.path.expanduser(f"~/{row['repo']}")
+        offer(os.path.basename(row["repo"]), d,
+              os.path.join(d, "graphify-out", "graph.json"), 0)
 
 # 2. local trees that are NOT their own git repo, so the batch driver never sees them
-#    (it finds .git dirs and skips $HOME). market-pipeline lives inside the $HOME repo.
+#    (it finds .git dirs and skips $HOME). market-pipeline lives inside the $HOME repo,
+#    so its remote resolves to the $HOME repo's — key it by path instead.
 for extra in ("~/market-pipeline",):
     p = os.path.expanduser(extra)
-    offer(os.path.basename(p), os.path.join(p, "graphify-out", "graph.json"), 0)
+    gj = os.path.join(p, "graphify-out", "graph.json")
+    if os.path.exists(gj):
+        by_remote[f"path::{os.path.realpath(p)}"] = (0, gj, os.path.basename(p))
 
-# 3. cloned GitHub repos — only used where no local checkout exists
+# 3. cloned GitHub repos — only used where no local checkout of that remote exists
 clones_log = os.path.expanduser("~/.ruflo/logs/graphify_clones.json")
 if os.path.exists(clones_log):
     for row in json.load(open(clones_log)):
         if row.get("status") == "ok":
-            offer(row["repo"], row.get("graph", ""), 1)
+            offer(row["repo"], row.get("path", ""), row.get("graph", ""), 1)
 
-graphs = sorted(gj for _, gj in by_repo.values())
+graphs = sorted(gj for _, gj, _ in by_remote.values())
 
 nodes, edges = [], []
 per_repo = collections.Counter()
