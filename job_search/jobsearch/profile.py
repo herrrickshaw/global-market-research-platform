@@ -194,6 +194,37 @@ class TargetProfile:
         "green hydrogen": 0.7,
         "energy efficiency": 0.6,
         "city gas distribution": 0.7,
+        # --- Found by pulling four new employers and reading the ZEROES ---
+        # Every one of these scored 0.000 "no role keyword match" against a
+        # real posting that is plainly a fit. The gaps are all near-misses on
+        # a word this map already almost had.
+        #
+        # "Manager - Mobility Consulting (DFI & Government Business)" is the
+        # Invest India job description almost verbatim, and it scored zero
+        # because the map had "consultant" but not "consulting", and nothing
+        # at all for development-finance or government-business work.
+        "consulting": 0.5,
+        "dfi": 0.9,
+        "development finance": 0.9,
+        "government business": 0.85,
+        "public sector advisory": 0.85,
+        # "Manager (Power / Clean Energy Domain)" - the energy-transition
+        # vertical is on the CV twice, but only as sector words, which cannot
+        # rescue a title carrying no function word. Not bare "power": that
+        # would pull in power-systems engineering.
+        "clean energy": 0.7,
+        "power sector": 0.65,
+        "energy sector": 0.65,
+        # "Regional Manager - Large Corporates (BD)" - India's market
+        # abbreviates business development in the title itself. Two letters
+        # is a greedy key: "BD" is also Becton Dickinson, so their brands are
+        # hard negatives below. Without that, "Territory Sales Rep - BD
+        # Biosciences" scored 0.85.
+        "bd": 0.85,
+        # "Director - Private Markets" - private-market investment is the
+        # deal-side neighbour of the FDI work; the sector map had "private
+        # equity" but no title key could reach it.
+        "private markets": 0.6,
         "research analyst": 0.6,
         "business analyst": 0.5,
         "transformation": 0.6,
@@ -242,6 +273,11 @@ class TargetProfile:
         "sailpoint", "hana", "netsuite", "peoplesoft", "tableau", "power bi",
         "sharepoint", "microsoft 365", "m365",
         # Wrong function - software/IC engineering
+        # "Consulting Software Architect" scored 0.5 on the new "consulting"
+        # key - the same wrong-function trap as the rest of this block.
+        "software architect", "solution architect",
+        # BD = Becton Dickinson, not business development.
+        "biosciences", "becton",
         "software engineer", "software developer", "backend engineer",
         "frontend engineer", "full stack", "devops", "sre", "qa engineer",
         "data engineer", "machine learning engineer", "android", "ios developer",

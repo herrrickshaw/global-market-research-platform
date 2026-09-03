@@ -268,3 +268,50 @@ def test_the_fdi_keywords_do_not_drag_in_unrelated_work():
                   "Origination Analyst - Salesforce CPQ"]:
         fit, _ = role_fit(_job(title, location="London, United Kingdom"), P)
         assert fit == 0.0, title
+
+
+# --------------------------------------------------------------------------
+# Zeroes found by pulling four new employers and reading what scored 0.000
+# --------------------------------------------------------------------------
+
+def test_titles_that_scored_zero_against_real_postings_now_match():
+    """Each of these is a real posting that scored 0.000 "no role keyword
+    match" the first time it reached the scorer, and each is plainly a fit.
+
+    The Crisil mobility role is the Invest India job description almost
+    verbatim - development-finance and government-business advisory - and it
+    scored zero because the map held "consultant" but not "consulting".
+    """
+    for title in ["Manager - Mobility Consulting (DFI & Government Business)",
+                  "Manager (Power / Clean Energy Domain)",
+                  "Regional Manager - Large Corporates (BD)",
+                  "Director - Private Markets"]:
+        fit, why = role_fit(_job(title, location="Mumbai, India"), P)
+        assert fit > 0.5, f"{title}: {why}"
+
+
+def test_bd_does_not_match_becton_dickinson():
+    """Two letters is a greedy key. "BD" is business development in an Indian
+    posting and Becton Dickinson in a medical-device one; the second scored
+    0.85 before its brands became hard negatives."""
+    fit, _ = role_fit(_job("Territory Sales Rep - BD Biosciences",
+                           location="Mumbai, India"), P)
+    assert fit == 0.0
+
+
+def test_consulting_does_not_drag_in_software_consulting():
+    """The same wrong-function trap the SAP and Salesforce negatives already
+    cover - "consulting" is a broad word and software wears it too."""
+    for title in ["Consulting Software Architect", "Lead Solution Architect"]:
+        fit, _ = role_fit(_job(title, location="London, United Kingdom"), P)
+        assert fit == 0.0, title
+
+
+def test_clean_energy_is_keyed_but_bare_power_is_not():
+    """"Power" alone would pull in power-systems engineering, which the CV
+    does not evidence and which dominates utility job boards."""
+    good, _ = role_fit(_job("Manager, Clean Energy Advisory",
+                            location="Gurugram, India"), P)
+    bad, _ = role_fit(_job("Power Systems Design Engineer",
+                           location="Gurugram, India"), P)
+    assert good > 0.5 and bad == 0.0
