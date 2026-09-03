@@ -209,3 +209,62 @@ def test_lng_trading_surfaces_without_outranking_the_core():
     core, _ = role_fit(_job("Senior Business Development Manager, LNG",
                             location="Duesseldorf, Germany"), P)
     assert 0.3 < trading < core
+
+
+# --------------------------------------------------------------------------
+# The FDI vocabulary the rest of the world uses
+# --------------------------------------------------------------------------
+
+def test_investment_promotion_is_reachable_by_its_other_names():
+    """"Investment promotion" is largely an Indian phrasing.
+
+    The same function is advertised as "inward investment" in Britain and
+    Ireland, "trade and investment" by agencies, and "site selection" in the
+    private sector. Keying only on the Indian phrase makes the CV's headline
+    identity unreachable in exactly the second market it targets.
+    """
+    for title, location in [
+        ("Inward Investment Manager", "London, United Kingdom"),
+        ("Head of Trade and Investment", "Dublin, Ireland"),
+        ("Economic Development Director", "Amsterdam, Netherlands"),
+        ("Trade Commissioner - South Asia", "New Delhi, India"),
+    ]:
+        fit, why = role_fit(_job(title, location=location), P)
+        assert fit > 0.5, f"{title}: {why}"
+
+
+def test_origination_is_the_title_word_for_deal_origination():
+    """Energy and infrastructure finance advertise the CV's "Deal Origination
+    & Investor Outreach" competency as, simply, origination."""
+    fit, _ = role_fit(_job("Origination Manager - Renewables",
+                           location="Madrid, Spain"), P)
+    assert fit > 0.5
+
+
+def test_go_to_market_matches_the_hyphenated_spelling():
+    """strip_inserts() keeps hyphens, so a spaced key can never match a
+    hyphenated title -- the same asymmetry already fixed in the ATS scorer.
+    Both spellings are carried deliberately."""
+    hyphenated, _ = role_fit(_job("Go-To-Market Strategy Manager"), P)
+    spaced, _ = role_fit(_job("Go To Market Strategy Manager"), P)
+    assert hyphenated > 0.5 and spaced > 0.5
+
+
+def test_a_sector_vertical_carries_a_role_with_no_function_word():
+    """The verticals built at Invest India (green hydrogen, CBG, SAF, CCUS)
+    appear in titles as the sector. A role can fit perfectly and carry none of
+    the function words."""
+    fit, _ = role_fit(_job("Green Hydrogen Project Lead",
+                           location="Rotterdam, Netherlands"), P)
+    assert fit > 0.4
+
+
+def test_the_fdi_keywords_do_not_drag_in_unrelated_work():
+    """Negative controls for this widening, same rule as the last one."""
+    for title in ["Site Reliability Engineer",
+                  "Economic Research Intern",
+                  "Hydrogen Plant Maintenance Technician",
+                  "Trade Compliance Customs Clerk",
+                  "Origination Analyst - Salesforce CPQ"]:
+        fit, _ = role_fit(_job(title, location="London, United Kingdom"), P)
+        assert fit == 0.0, title

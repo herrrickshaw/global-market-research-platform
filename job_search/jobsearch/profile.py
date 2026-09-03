@@ -1,7 +1,14 @@
 """Candidate profile and role targeting.
 
-Derived from Umashankar_TD_CV.pdf (2026-08-13). Everything here is data, not
+Derived from CV_Umashankar_Master_20260826.pdf. Everything here is data, not
 logic -- override any of it in config.yaml without touching the scoring engine.
+
+The 2026-08-26 revision moved the candidate's headline identity to "Investment
+Promotion & Energy-Sector Leader" and foregrounded deal origination, investor
+outreach, PPP/BOOT structuring, and the energy-transition verticals built at
+Invest India (SAF, CBG, CCUS, green hydrogen). The keyword map was widened to
+match; see the FDI block below for why the Indian phrasing alone was not
+enough.
 
 Profile shape that drives the weights below:
   - 10+ yrs: LNG / oil & gas engineering (Shell), FDI & investment promotion
@@ -148,6 +155,45 @@ class TargetProfile:
         "geschaftsentwicklung": 0.9,
         "geschäftsentwicklung": 0.9,
         "referent": 0.6,
+        # --- The FDI / investment-promotion vocabulary the CV leads with ---
+        # This is the candidate's headline identity ("Investment Promotion &
+        # Energy-Sector Leader"), and outside India the same function is almost
+        # never advertised as "investment promotion". Britain, Ireland and the
+        # Netherlands say "inward investment"; agency roles say "trade and
+        # investment"; the private-sector version is "site selection". Without
+        # these keys the strongest lane on the CV is only reachable through the
+        # one phrase India happens to use.
+        "inward investment": 0.95,
+        "trade and investment": 0.9,
+        "trade commissioner": 0.85,
+        "economic development": 0.85,
+        "site selection": 0.8,
+        "industrial policy": 0.75,
+        # "Deal Origination & Investor Outreach" is a named core competency and
+        # the substance of both the Invest India and GITA roles. In energy and
+        # infrastructure finance the title word is simply "origination".
+        "deal origination": 0.9,
+        "origination": 0.8,
+        "investment strategy": 0.85,
+        # ESMT elective plus the development-finance flavour of the agency
+        # work. Mid weight: adjacent to the core, not the centre of it.
+        "impact investment": 0.75,
+        "impact investing": 0.75,
+        # Both spellings on purpose. strip_inserts() keeps hyphens, so a title
+        # reading "Go-To-Market Strategy Manager" never contains the spaced
+        # form -- the same hyphen asymmetry already fixed in the ATS scorer.
+        "go-to-market": 0.7,
+        "go to market": 0.7,
+        # "Market Research, Competitive Intelligence & Benchmarking" is one
+        # core-competency line; only the "market intelligence" half was here.
+        "competitive intelligence": 0.75,
+        # Verticals the CV built from scratch at Invest India (SAF, CBG,
+        # lubricant recycling, CCUS) and advocated on at GITA. These appear in
+        # titles as the sector, not as a function, so a role can be a perfect
+        # fit and carry none of the function words above.
+        "green hydrogen": 0.7,
+        "energy efficiency": 0.6,
+        "city gas distribution": 0.7,
         "research analyst": 0.6,
         "business analyst": 0.5,
         "transformation": 0.6,
