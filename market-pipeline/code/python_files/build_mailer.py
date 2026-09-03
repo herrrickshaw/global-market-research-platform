@@ -48,6 +48,7 @@ import pandas as pd
 warnings.filterwarnings("ignore")
 
 import liquidity as liq
+import price_bands as pb
 import run_global_analysis as rga
 import market_performance as mp
 import news_picks as npk
@@ -325,6 +326,88 @@ def _market_picks_rows(data: dict, market: str, cap: int = None):
             f"<td style='color:{_COL.get(r.Liquidity, '#777')};font-weight:600'>{r.Liquidity}</td></tr>"
         )
     return rows
+
+
+# ── price bands ───────────────────────────────────────────────────────────────
+# The picks table is ranked by conviction, which scatters names across every
+# price level. A reader deploying a fixed rupee amount cannot act on that
+# directly: a ₹32,200 name and a ₹94 name are not interchangeable at a given
+# position size. This section re-cuts the SAME picks by price so the question
+# "what clears the criteria in the range I actually buy in" is answerable
+# without scanning the table by eye.
+#
+# The ladder, the labels, the bucketing and the capacity rule live in
+# price_bands.py, shared with price_band_analysis.py. Those two read different
+# sources and compute different things, but they must agree on what "₹500–1000"
+# means or neither is checkable against the other — see that module's docstring.
+# _CCY is passed through so the currency symbols have one source of truth here.
+_ADV_PCT = pb.ADV_PCT
+
+# The band table spans the WHOLE qualifying set, not the 24 rows the picks table
+# shows, so it needs its own bar or it degenerates into a census: of 907 India
+# picks on 2026-09-03, 825 passed exactly one screener. One screener agreeing
+# with itself is not agreement, and banding those buries the 41 names that do
+# agree under 250 that do not. 2-of-3 is the lowest bar at which the three
+# quality screeners actually corroborate each other, so that is the bar.
+_BAND_MIN_CONV = 2
+
+
+def _price_band_rows(data: dict, market: str, names_per_band: int = 6):
+    """Re-cut this market's picks into price bands. Same names, second axis."""
+    picks = data.get("picks") or []
+    if not picks:
+        return []
+    p = pd.DataFrame(picks)
+    p["Market"] = market
+    p = liq.annotate(p)
+    p["_ltp"] = pd.to_numeric(p.get("LTP"), errors="coerce")
+    p["_nf"] = pd.to_numeric(p.get("N_Fund"), errors="coerce").fillna(0)
+    p["_tv"] = pd.to_numeric(p.get("Turnover_USD"), errors="coerce")
+    p = p[p["_ltp"].notna() & (p["_ltp"] > 0) & (p["_nf"] >= _BAND_MIN_CONV)]
+    if p.empty:
+        return []
+    p["_band"] = pb.assign(p["_ltp"], market, ccy=_CCY)
+
+    rows = []
+    for band in pb.labels_for(market, ccy=_CCY):
+        g = p[p["_band"] == band].sort_values(["_nf", "_tv"], ascending=[False, False])
+        if g.empty:
+            # An empty band is a real answer ("nothing clears here today"), not a
+            # gap to hide — a reader who buys in that range needs to see the zero.
+            rows.append(
+                f"<tr><td style='padding:4px 8px'><b>{band}</b></td>"
+                f"<td style='color:#bbb'>0</td><td style='color:#bbb'>·</td>"
+                f"<td style='color:#bbb' colspan='2'>nothing clears today</td></tr>"
+            )
+            continue
+        full = int((g["_nf"] >= 3).sum())
+        shown = list(g["Symbol"].head(names_per_band))
+        extra = len(g) - len(shown)
+        names = ", ".join(shown) + (f" <span style='color:#999'>+{extra}</span>" if extra else "")
+        # Median, not mean: one mega-cap in a band would otherwise imply a
+        # position size that none of the other names in it can absorb.
+        cap_s = pb.fmt_money(pb.capacity(g["_tv"].median()))
+        rows.append(
+            f"<tr><td style='padding:4px 8px'><b>{band}</b></td>"
+            f"<td><b>{len(g)}</b></td>"
+            f"<td style='color:{'#1b7f37' if full else '#bbb'};font-weight:600'>{full or '·'}</td>"
+            f"<td style='color:#333'>{names}</td>"
+            f"<td style='white-space:nowrap;color:#555'>{cap_s}</td></tr>"
+        )
+    return rows
+
+
+_BAND_NOTE = (
+    "<p style='font-size:11px;color:#555;margin:2px 0 12px'>Every name where at least "
+    f"<b>{_BAND_MIN_CONV} of the 3</b> quality screeners agree, cut by price so a fixed "
+    "position size maps to a band — this spans the whole qualifying set, not only the "
+    "rows listed above. A band is <i>not</i> a valuation call: in India the share price "
+    "is mostly face value × share count, and measured across the universe earnings yield "
+    "<b>falls</b> as price rises, so the higher bands are where you pay up for quality "
+    f"rather than where it is dearer. <b>Max pos</b> = {_ADV_PCT:.0f}% of the band's "
+    "median daily turnover — the size above which a small-cap edge stops surviving its "
+    "own market impact. Names shown are the highest-agreement first.</p>"
+)
 
 
 def _pio(v):
@@ -932,6 +1015,10 @@ def build():
     ind_picks_rows = _market_picks_rows(ind_data, "IN")
     us_picks_rows = _market_picks_rows(us_data, "US")
 
+    # 1b. The same picks, re-cut by price band (see _price_band_rows).
+    ind_band_rows = _price_band_rows(ind_data, "IN")
+    us_band_rows = _price_band_rows(us_data, "US")
+
     # 2. India CCC screen (screener.in 228040)
     ccc_rows = _ccc_rows()
 
@@ -1101,6 +1188,9 @@ h3{{font-size:14px;margin:14px 0 6px;color:#333}}
 {_fund_coverage_note()}
 {_coverage_scope_note()}
 {_table(["Symbol", "CMP", "Convergence", "P C B", "Value", "Technical", "Turnover", "Liquidity"], ind_picks_rows) if ind_picks_rows else "<p>no picks</p>"}
+<h3 style="font-size:13px;margin:14px 0 4px;color:#333">By price band <span style="font-weight:400;color:#777" class="mut">— everything that clears, by what it costs</span></h3>
+{_BAND_NOTE}
+{_table(["Band", "Picks", "3/3", "Names", f"Max pos @{_ADV_PCT:.0f}% ADV"], ind_band_rows) if ind_band_rows else "<p class='mut' style='color:#777'>n/a</p>"}
 <h3 style="font-size:13px;margin:14px 0 4px;color:#333">Cash Conversion Cycle <span style="font-weight:400;color:#777" class="mut">(screener.in 228040)</span></h3>
 <p style="font-size:11px;color:#666;margin:2px 0">Lowest/negative CCC = collects from customers before paying suppliers.</p>
 {_table(["Symbol", "Name", "CMP", "CCC days", "ROCE", "Liquidity", "Source"], ccc_rows) if ccc_rows else "<p>n/a</p>"}
@@ -1114,6 +1204,8 @@ h3{{font-size:14px;margin:14px 0 6px;color:#333}}
 <h2 style="font-size:16px;border-bottom:2px solid #1a73e8;padding-bottom:3px;margin-top:26px">🇺🇸 US <span style="font-weight:400;color:#666;font-size:13px">— mood {us_mood["mood"]} ({us_mood["score"]:+.2f}) from {us_mood.get("n_articles", 0)} articles</span></h2>
 <h3 style="font-size:13px;margin:12px 0 4px;color:#333">Screener — most tradable</h3>
 {_table(["Symbol", "CMP", "Convergence", "P C B", "Value", "Technical", "Turnover", "Liquidity"], us_picks_rows) if us_picks_rows else "<p>no picks (run daily_combined_report.py --market US)</p>"}
+<h3 style="font-size:13px;margin:14px 0 4px;color:#333">By price band <span style="font-weight:400;color:#777" class="mut">— everything that clears, by what it costs</span></h3>
+{_table(["Band", "Picks", "3/3", "Names", f"Max pos @{_ADV_PCT:.0f}% ADV"], us_band_rows) if us_band_rows else "<p class='mut' style='color:#777'>n/a</p>"}
 {conv_us}
 <h3 style="font-size:13px;margin:14px 0 4px;color:#333">🔥 News picks <span style="font-weight:400;color:#777" class="mut">— buzz, NOT a recommendation</span></h3>
 {_table(["Symbol", "Name", "CMP", "Sentiment", "Mentions", "Headline"], us_news_rows) if us_news_rows else "<p>n/a</p>"}
