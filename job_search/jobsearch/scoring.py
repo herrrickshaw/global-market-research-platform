@@ -16,6 +16,10 @@ W_ROLE, W_NETWORK, W_FRESH = 0.50, 0.35, 0.15
 
 _HALF_LIFE_DAYS = 30.0
 
+# Above this role-keyword weight, a "Specialist"/"Officer"/"Consultant" in the
+# title reads as a professional grade rather than a junior rung.
+IC_GRADE_FLOOR = 0.6
+
 
 # Inserts employers wedge into the middle of a title. Left in place they break
 # every multi-word keyword: "Research (Senior) Analyst" does not contain
@@ -87,10 +91,24 @@ def role_fit(job: JobPosting, profile: TargetProfile) -> tuple[float, list[str]]
                     default=0.0)
     if seniority:
         score = min(1.0, score + seniority * 0.12)
-    elif profile.junior_keywords and any(_contains(title, kw) for kw in profile.junior_keywords):
+    elif (profile.junior_keywords
+          and best < IC_GRADE_FLOOR
+          and any(_contains(title, kw) for kw in profile.junior_keywords)):
         # Explicitly junior title with no seniority marker: a 10+ year candidate
         # applying here reads as overqualified, so it should rank below a
         # same-topic role pitched at the right level rather than beside it.
+        #
+        # The `best < IC_GRADE_FLOOR` guard exists because "Specialist",
+        # "Officer" and "Consultant" mean opposite things in different houses.
+        # In a corporate title they are junior. At the World Bank, IFC, GIZ and
+        # IEEFA they are career-grade professional titles carrying 10+ years --
+        # and those are precisely the development-finance employers the FDI
+        # keywords were added to reach. "Power Sector Specialist, South Asia"
+        # was being halved to 0.33 and buried at 51st.
+        #
+        # A title that already matched a STRONG domain keyword is a domain role
+        # wearing a grade marker, not a junior generalist role, so the penalty
+        # is withheld. A weak match ("Consultant" alone) still takes it.
         score *= 0.45
         reasons.append("below target seniority")
 

@@ -225,6 +225,14 @@ class TargetProfile:
         # deal-side neighbour of the FDI work; the sector map had "private
         # equity" but no title key could reach it.
         "private markets": 0.6,
+        # Development-finance grade titles. The World Bank, IFC and the
+        # regional banks advertise senior professional roles as "Officer" and
+        # "Specialist"; without these the only key they hit is the generic
+        # "consultant", which then trips the junior penalty.
+        "investment officer": 0.85,
+        "sector specialist": 0.75,
+        "industry specialist": 0.7,
+        "operations officer": 0.6,
         "research analyst": 0.6,
         "business analyst": 0.5,
         "transformation": 0.6,
@@ -272,6 +280,14 @@ class TargetProfile:
         "dynamics 365", "guidewire", "coupa", "onestream", "mulesoft",
         "sailpoint", "hana", "netsuite", "peoplesoft", "tableau", "power bi",
         "sharepoint", "microsoft 365", "m365",
+        # Junior sales, not business development. The Siemens note in this
+        # file claimed BDR roles were "correctly excluded"; they were not -
+        # "Business Development Representative" scored 0.95 on the
+        # "business development" key. They cannot be caught by the junior
+        # penalty either, since that is now withheld from strong domain
+        # matches, so they belong here as their own function.
+        "business development representative", "sales development representative",
+        "sales representative", "account executive", "bdr", "sdr",
         # Wrong function - software/IC engineering
         # "Consulting Software Architect" scored 0.5 on the new "consulting"
         # key - the same wrong-function trap as the rest of this block.

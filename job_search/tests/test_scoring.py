@@ -315,3 +315,54 @@ def test_clean_energy_is_keyed_but_bare_power_is_not():
     bad, _ = role_fit(_job("Power Systems Design Engineer",
                            location="Gurugram, India"), P)
     assert good > 0.5 and bad == 0.0
+
+
+# --------------------------------------------------------------------------
+# "Specialist" means opposite things in different houses
+# --------------------------------------------------------------------------
+
+def test_development_finance_grade_titles_escape_the_junior_penalty():
+    """"Specialist", "Officer" and "Consultant" are junior rungs in a corporate
+    title and career-grade professional titles at the World Bank, IFC, GIZ and
+    IEEFA - the development-finance employers the FDI keywords exist to reach.
+
+    IEEFA's "Power Sector Specialist, South Asia" is a 10+ year India energy-
+    policy role; the blanket junior penalty halved it to 0.33 and buried it at
+    51st place.
+    """
+    for title in ["Power Sector Specialist, South Asia",
+                  "Senior Investment Officer, Loan Syndication",
+                  "Industry Specialist - Financial Services"]:
+        fit, why = role_fit(_job(title, location="New Delhi, India"), P)
+        assert fit > 0.6, f"{title}: {why}"
+        assert not any("below target seniority" in r for r in why), title
+
+
+def test_a_bare_junior_title_still_takes_the_penalty():
+    """The exemption is for strong DOMAIN matches only. A generic "Consultant"
+    has no domain qualifier and stays demoted."""
+    fit, why = role_fit(_job("Consultant", location="London, United Kingdom"), P)
+    assert any("below target seniority" in r for r in why)
+    assert fit < 0.4
+
+
+def test_sales_development_reps_are_excluded_not_merely_demoted():
+    """This file used to claim BDR roles were "correctly excluded". They were
+    not: "Business Development Representative" scored 0.95 on the
+    "business development" key, and the junior penalty cannot catch them now
+    that strong domain matches are exempt from it."""
+    for title in ["Business Development Representative",
+                  "Sales Development Representative",
+                  "Account Executive - Maritime"]:
+        fit, _ = role_fit(_job(title, location="London, United Kingdom"), P)
+        assert fit == 0.0, title
+
+
+def test_the_real_business_development_titles_are_untouched():
+    """Negative control for the exclusion above: it must not swallow the
+    genuine BD roles that are the core of this search."""
+    for title in ["Head of Business Development",
+                  "Senior Business Development Manager",
+                  "Renewables Business Development Manager"]:
+        fit, _ = role_fit(_job(title, location="London, United Kingdom"), P)
+        assert fit > 0.8, title
