@@ -2,6 +2,86 @@
 
 Decisions and material changes to the pipeline, newest first.
 
+## 2026-09-04 — Price-band segmentation, plus the 9 bugs a /code-review found in it
+
+`price_bands.py` (new): one shared ladder — band edges, labels, bucketing,
+the %ADV capacity rule, and the "not a valuation signal" caveat — consumed by
+both `build_mailer.py` (a new "By price band" section under each market's
+picks table) and `price_band_analysis.py` (a deeper standalone cross-section
+report). The two read different sources and compute different things, so
+their loaders stayed separate; only what has to agree between them — what
+"₹500–1000" means — was centralized.
+
+A `/code-review high` pass against that commit ran 8 finder angles, verified
+10 candidates independently, and 9 survived. All 9 are fixed, in two
+follow-up commits:
+
+- **The band table's "Max pos" column was silently in $, never ₹** — sat next
+  to a ₹-labeled band row with nothing marking the currency mismatch.
+  Reproduced the misread risk, fixed by making the header say `($)`
+  explicitly rather than converting currency (`Turnover_USD` is deliberately
+  USD across every market in this mailer already, same as the adjacent
+  picks table's own Turnover column — converting would have been the wrong
+  fix for a labeling gap).
+- **`_price_band_rows` crashed on any pre-ladder combined-report JSON** —
+  `p.get("N_Fund")` on a missing column returns a bare scalar, and
+  `pd.to_numeric(None, errors="coerce")` comes back with no `.fillna()`.
+  Reproduced directly (`AttributeError: 'numpy.float64' object has no
+  attribute 'fillna'`), no `try/except` anywhere caught it, so an old JSON
+  would have taken down the whole brief. `_market_picks_rows` already had a
+  `Tier`-based fallback for exactly this; `_price_band_rows`'s own premise
+  (the N_Fund fraction) can't be reconstructed from `Tier`, so it now
+  degrades to an empty section instead.
+- **`edge_population()` silently ignored `--adv-pct`**, always using the 5%
+  default while its sibling `candidates()` honored the CLI flag — one report
+  run could show two different %ADV assumptions in adjacent tables. Verified
+  `--adv-pct 10` now doubles every basket-capacity figure and the header.
+- **`os.makedirs(os.path.dirname(args.out))` crashed on a bare `--out`
+  filename** — `dirname` of a bare filename is `""`, and `os.makedirs("")`
+  always raises regardless of `exist_ok`. Only makedirs when there's an
+  actual directory component.
+- **`fmt_money`'s `ccy` parameter meant a symbol STRING, colliding in name
+  with `label()`/`labels_for()`/`assign()`'s `ccy`, which means a
+  market→symbol MAP** — passing the dict wouldn't raise, it would silently
+  embed the dict's `repr()` into rendered HTML. Renamed to `symbol`.
+- **`bands_for()` silently substituted the US dollar ladder for any market
+  without an entry** — dormant today (only IN/US are called), but
+  `build_mailer.py`'s own comments describe EU/JP/KR row-builders as kept
+  ready for reuse; wiring one to price-bands would have bucketed euro/yen
+  prices on the wrong scale with no warning. Now raises `KeyError` naming
+  the gap. `DEFAULT_MARKET` removed as dead code once nothing read it.
+- **`_market_picks_rows` and `_price_band_rows` each independently rebuilt
+  the same DataFrame and called `liq.annotate()`** — a non-vectorized
+  per-row tier-classification loop, run twice per market on every scheduled
+  build for no reason. Extracted `_annotated_picks()` as the single build
+  step; both row-builders now take the already-annotated frame and copy
+  before mutating so neither leaks columns into the other.
+- **`price_bands.py`'s docstring claimed the module owns "the caveat"** as
+  one of the things that must not drift between consumers, but `CAVEAT` was
+  never imported by either one — `build_mailer.py` wrote its own
+  independently-worded version. `_BAND_NOTE` now embeds `pb.CAVEAT` verbatim.
+- **Three separate `for band in LABELS: df[df["Band"]==band]` loops**
+  (one in each of `build_mailer.py` and two in `price_band_analysis.py`)
+  re-scanned the full frame per band instead of a single `groupby` — the
+  pattern `candidates()` in the same file already used correctly. Applied to
+  the two simpler aggregation functions in `price_band_analysis.py`; left
+  the mailer's HTML-row-building loop alone (its own reviewer verdict called
+  the performance difference negligible at ~900-1400 rows, and it had
+  already been reproduction-tested twice for the real crash bug that day —
+  not worth the added churn for a microsecond-level win).
+
+One candidate the review raised — a `truthy()` string-match concern for
+float-upcast screen columns — was checked against the actual source
+generators (`full_indian_market_scan.py` et al.) and refuted: those four
+columns are always written as `"YES"/"NO"`/`"PASS"/"FAIL"` string literals,
+never numeric flags, so the failure mode can't occur for this data.
+
+Every fix was verified against the live pipeline before/after: none of the
+nine changed a single reported number, only how a bad input is handled or
+how clearly the output is labeled. Commits: `847def59` (feature),
+`ca63ceca` (crash + currency label), `d05c761e` (remaining 7). Tagged
+`price-bands-2026-09-04`.
+
 ## 2026-08-25 — India reverted: the raw panel is an INPUT, and the fix was a reader
 
 Same-day correction to the entry below. That change adjusted splits in the raw
