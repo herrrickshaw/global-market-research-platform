@@ -351,6 +351,15 @@ _ADV_PCT = pb.ADV_PCT
 # quality screeners actually corroborate each other, so that is the bar.
 _BAND_MIN_CONV = 2
 
+# Max pos is derived from Turnover_USD, which this mailer already keeps in USD
+# for every market — the picks table's own "Turnover" column (via _tv()) does
+# the same for India rows sitting right next to a ₹-priced CMP. That's a
+# deliberate cross-market liquidity unit, not a bug, but a ₹-labeled band row
+# ("₹500–1,000") followed by an unmarked "$86k" reads as if the two agree on
+# currency when they don't — so the header says so explicitly rather than
+# leaving it to be inferred from a column two cells over.
+_BAND_HEADERS = ["Band", "Picks", "3/3", "Names", f"Max pos @{_ADV_PCT:.0f}% ADV ($)"]
+
 
 def _price_band_rows(data: dict, market: str, names_per_band: int = 6):
     """Re-cut this market's picks into price bands. Same names, second axis."""
@@ -360,8 +369,19 @@ def _price_band_rows(data: dict, market: str, names_per_band: int = 6):
     p = pd.DataFrame(picks)
     p["Market"] = market
     p = liq.annotate(p)
+    if "N_Fund" not in p.columns:
+        # Pre-ladder payloads carry no per-screener fraction. Unlike
+        # _market_picks_rows (which has a Tier-based fallback ranking), this
+        # section's whole premise is the 2-of-3/3-of-3 N_Fund fraction — Tier's
+        # coarse Triple/Multi/Single buckets don't reconstruct that cleanly, so
+        # there is nothing to band. Render the same empty state as "no picks"
+        # rather than let pd.to_numeric(p.get("N_Fund"), ...) crash: p.get()
+        # on a missing column returns a bare scalar None, and
+        # pd.to_numeric(None, errors="coerce") comes back as a numpy scalar
+        # with no .fillna() — confirmed by direct reproduction, not a Series.
+        return []
     p["_ltp"] = pd.to_numeric(p.get("LTP"), errors="coerce")
-    p["_nf"] = pd.to_numeric(p.get("N_Fund"), errors="coerce").fillna(0)
+    p["_nf"] = pd.to_numeric(p["N_Fund"], errors="coerce").fillna(0)
     p["_tv"] = pd.to_numeric(p.get("Turnover_USD"), errors="coerce")
     p = p[p["_ltp"].notna() & (p["_ltp"] > 0) & (p["_nf"] >= _BAND_MIN_CONV)]
     if p.empty:
@@ -406,7 +426,9 @@ _BAND_NOTE = (
     "<b>falls</b> as price rises, so the higher bands are where you pay up for quality "
     f"rather than where it is dearer. <b>Max pos</b> = {_ADV_PCT:.0f}% of the band's "
     "median daily turnover — the size above which a small-cap edge stops surviving its "
-    "own market impact. Names shown are the highest-agreement first.</p>"
+    "own market impact, always in USD (this mailer's common cross-market liquidity unit, "
+    "same as the Turnover column above regardless of what currency the band itself is "
+    "priced in). Names shown are the highest-agreement first.</p>"
 )
 
 
@@ -1190,7 +1212,7 @@ h3{{font-size:14px;margin:14px 0 6px;color:#333}}
 {_table(["Symbol", "CMP", "Convergence", "P C B", "Value", "Technical", "Turnover", "Liquidity"], ind_picks_rows) if ind_picks_rows else "<p>no picks</p>"}
 <h3 style="font-size:13px;margin:14px 0 4px;color:#333">By price band <span style="font-weight:400;color:#777" class="mut">— everything that clears, by what it costs</span></h3>
 {_BAND_NOTE}
-{_table(["Band", "Picks", "3/3", "Names", f"Max pos @{_ADV_PCT:.0f}% ADV"], ind_band_rows) if ind_band_rows else "<p class='mut' style='color:#777'>n/a</p>"}
+{_table(_BAND_HEADERS, ind_band_rows) if ind_band_rows else "<p class='mut' style='color:#777'>n/a</p>"}
 <h3 style="font-size:13px;margin:14px 0 4px;color:#333">Cash Conversion Cycle <span style="font-weight:400;color:#777" class="mut">(screener.in 228040)</span></h3>
 <p style="font-size:11px;color:#666;margin:2px 0">Lowest/negative CCC = collects from customers before paying suppliers.</p>
 {_table(["Symbol", "Name", "CMP", "CCC days", "ROCE", "Liquidity", "Source"], ccc_rows) if ccc_rows else "<p>n/a</p>"}
@@ -1205,7 +1227,7 @@ h3{{font-size:14px;margin:14px 0 6px;color:#333}}
 <h3 style="font-size:13px;margin:12px 0 4px;color:#333">Screener — most tradable</h3>
 {_table(["Symbol", "CMP", "Convergence", "P C B", "Value", "Technical", "Turnover", "Liquidity"], us_picks_rows) if us_picks_rows else "<p>no picks (run daily_combined_report.py --market US)</p>"}
 <h3 style="font-size:13px;margin:14px 0 4px;color:#333">By price band <span style="font-weight:400;color:#777" class="mut">— everything that clears, by what it costs</span></h3>
-{_table(["Band", "Picks", "3/3", "Names", f"Max pos @{_ADV_PCT:.0f}% ADV"], us_band_rows) if us_band_rows else "<p class='mut' style='color:#777'>n/a</p>"}
+{_table(_BAND_HEADERS, us_band_rows) if us_band_rows else "<p class='mut' style='color:#777'>n/a</p>"}
 {conv_us}
 <h3 style="font-size:13px;margin:14px 0 4px;color:#333">🔥 News picks <span style="font-weight:400;color:#777" class="mut">— buzz, NOT a recommendation</span></h3>
 {_table(["Symbol", "Name", "CMP", "Sentiment", "Mentions", "Headline"], us_news_rows) if us_news_rows else "<p>n/a</p>"}
