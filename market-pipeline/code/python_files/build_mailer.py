@@ -278,7 +278,25 @@ def _safe_int(v, default=0):
         return default
 
 
-def _market_picks_rows(data: dict, market: str, cap: int = None):
+def _annotated_picks(data: dict, market: str) -> pd.DataFrame:
+    """
+    The picks DataFrame, liquidity-annotated. Built once and shared by
+    _market_picks_rows and _price_band_rows, which both used to independently
+    rebuild it from the same `data["picks"]` — liq.annotate()'s tier
+    classification is a per-row Python loop, not vectorized, so that was a
+    second full pass over ~900+ rows per market on every scheduled run for no
+    reason. Empty DataFrame (not None) on no picks, so callers can check
+    `.empty` uniformly instead of a None-vs-empty-list branch each.
+    """
+    picks = data.get("picks") or []
+    if not picks:
+        return pd.DataFrame()
+    p = pd.DataFrame(picks)
+    p["Market"] = market
+    return liq.annotate(p)
+
+
+def _market_picks_rows(p: pd.DataFrame, market: str, cap: int = None):
     """Fundamentals-screener picks rows for India/US, liquidity-annotated.
 
     The Tier column ("Triple Hit"/"Multi-Screen") is gone: it counted technical
@@ -287,14 +305,14 @@ def _market_picks_rows(data: dict, market: str, cap: int = None):
     three fundamental screeners actually agreed on. The fraction cannot lie that
     way, and the two screen groups are now separate columns so the reader can see
     which kind of agreement they are looking at.
+
+    `p` is the already-annotated DataFrame from _annotated_picks — this
+    function only sorts/renders, it doesn't build.
     """
     cap = _DETAIL_CAP["picks"] if cap is None else cap
-    picks = data.get("picks") or []
-    if not picks:
+    if p.empty:
         return []
-    p = pd.DataFrame(picks)
-    p["Market"] = market
-    p = liq.annotate(p)
+    p = p.copy()
     lr = {"High": 0, "Medium": 1, "Low": 2, "Unknown": 3}
     # Pre-ladder payloads have no N_Fund; fall back to the old tier order so an
     # older combined JSON still renders in a sane sequence instead of blank.
@@ -361,14 +379,16 @@ _BAND_MIN_CONV = 2
 _BAND_HEADERS = ["Band", "Picks", "3/3", "Names", f"Max pos @{_ADV_PCT:.0f}% ADV ($)"]
 
 
-def _price_band_rows(data: dict, market: str, names_per_band: int = 6):
-    """Re-cut this market's picks into price bands. Same names, second axis."""
-    picks = data.get("picks") or []
-    if not picks:
+def _price_band_rows(p: pd.DataFrame, market: str, names_per_band: int = 6):
+    """
+    Re-cut this market's picks into price bands. Same names, second axis.
+
+    `p` is the already-annotated DataFrame from _annotated_picks (shared with
+    _market_picks_rows — see that function's docstring for why).
+    """
+    if p.empty:
         return []
-    p = pd.DataFrame(picks)
-    p["Market"] = market
-    p = liq.annotate(p)
+    p = p.copy()
     if "N_Fund" not in p.columns:
         # Pre-ladder payloads carry no per-screener fraction. Unlike
         # _market_picks_rows (which has a Tier-based fallback ranking), this
@@ -417,14 +437,17 @@ def _price_band_rows(data: dict, market: str, names_per_band: int = 6):
     return rows
 
 
+# pb.CAVEAT supplies the "band is not a valuation call" sentence verbatim
+# rather than this file re-deriving its own wording — that sentence is the one
+# genuinely prose (not numeric) thing price_bands.py's docstring claims to own
+# on the two consumers' behalf, so it has to actually be sourced from there or
+# the claim is false.
 _BAND_NOTE = (
     "<p style='font-size:11px;color:#555;margin:2px 0 12px'>Every name where at least "
     f"<b>{_BAND_MIN_CONV} of the 3</b> quality screeners agree, cut by price so a fixed "
     "position size maps to a band — this spans the whole qualifying set, not only the "
-    "rows listed above. A band is <i>not</i> a valuation call: in India the share price "
-    "is mostly face value × share count, and measured across the universe earnings yield "
-    "<b>falls</b> as price rises, so the higher bands are where you pay up for quality "
-    f"rather than where it is dearer. <b>Max pos</b> = {_ADV_PCT:.0f}% of the band's "
+    f"rows listed above. {pb.CAVEAT} "
+    f"<b>Max pos</b> = {_ADV_PCT:.0f}% of the band's "
     "median daily turnover — the size above which a small-cap edge stops surviving its "
     "own market impact, always in USD (this mailer's common cross-market liquidity unit, "
     "same as the Turnover column above regardless of what currency the band itself is "
@@ -1034,12 +1057,16 @@ def build():
     # the scans keep running daily in daily_research.sh and still populate
     # market_daily.snapshots, so restoring a market is re-adding its block here,
     # not rebuilding the pipeline.
-    ind_picks_rows = _market_picks_rows(ind_data, "IN")
-    us_picks_rows = _market_picks_rows(us_data, "US")
+    # Built once, rendered twice (picks table + price-band table) — see
+    # _annotated_picks's docstring.
+    ind_annotated = _annotated_picks(ind_data, "IN")
+    us_annotated = _annotated_picks(us_data, "US")
+    ind_picks_rows = _market_picks_rows(ind_annotated, "IN")
+    us_picks_rows = _market_picks_rows(us_annotated, "US")
 
     # 1b. The same picks, re-cut by price band (see _price_band_rows).
-    ind_band_rows = _price_band_rows(ind_data, "IN")
-    us_band_rows = _price_band_rows(us_data, "US")
+    ind_band_rows = _price_band_rows(ind_annotated, "IN")
+    us_band_rows = _price_band_rows(us_annotated, "US")
 
     # 2. India CCC screen (screener.in 228040)
     ccc_rows = _ccc_rows()

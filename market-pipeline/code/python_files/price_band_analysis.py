@@ -34,7 +34,6 @@ import price_bands as pb
 # "By price band" section, so the two cannot drift on what a band means. This
 # script is the India cross-section, so it bands in ₹ by default.
 MARKET = "IN"
-BAND_LABELS = pb.labels_for(MARKET)
 
 # Screens carried in the Fundamentals sheet as yes/no-ish object columns.
 SCREEN_COLS = ["Piotroski_Strong", "CoffeeCan", "MagicFormula", "BullCartel"]
@@ -84,8 +83,11 @@ def load(path: str) -> pd.DataFrame:
 def profile(df: pd.DataFrame) -> pd.DataFrame:
     """One row per band: size, liquidity, quality, signal."""
     rows = []
-    for band in BAND_LABELS:
-        g = df[df["Band"] == band]
+    # groupby(observed=False) on Band's Categorical dtype enumerates every
+    # band in ladder order, including ones with zero rows here, without
+    # re-scanning the full frame once per band the way a "for band in
+    # BAND_LABELS: df[df['Band']==band]" loop does.
+    for band, g in df.groupby("Band", observed=False):
         if g.empty:
             continue
         n = len(g)
@@ -156,23 +158,27 @@ def candidates(
     return ok.groupby("Band", observed=True).head(per_band)[cols]
 
 
-def edge_population(df: pd.DataFrame) -> pd.DataFrame:
+def edge_population(df: pd.DataFrame, adv_pct: float = pb.ADV_PCT) -> pd.DataFrame:
     """
     Where the validated illiquid-Piotroski edge actually lives, by band.
     Counts high-Piotroski names in the illiquid tiers and the capacity
-    available across that basket at the shared %ADV rule.
+    available across that basket at `adv_pct`.
+
+    Takes adv_pct explicitly (matching candidates()) rather than reading
+    pb.ADV_PCT internally — main() was passing --adv-pct to candidates() but
+    not here, so a non-default --adv-pct run showed two different %ADV
+    assumptions in the same report with no warning.
     """
     hi = df[df["Piotroski_Score"] >= 7]
     ill = hi[hi["Liquidity_Tier"].isin(["T4_ILLIQUID", "T5_MOST_ILLIQUID"])]
     rows = []
-    for band in BAND_LABELS:
-        g = ill[ill["Band"] == band]
+    for band, g in ill.groupby("Band", observed=False):
         rows.append({
             "Band": band,
             "High-F illiquid names": len(g),
             "Median turnover ₹cr": round(g["Median_Turnover"].median() / 1e7, 2) if len(g) else 0,
-            f"Basket capacity @{pb.ADV_PCT:.0f}% ADV ₹cr":
-                round(pb.capacity(g["Median_Turnover"]).sum() / 1e7, 2),
+            f"Basket capacity @{adv_pct:.0f}% ADV ₹cr":
+                round(pb.capacity(g["Median_Turnover"], adv_pct).sum() / 1e7, 2),
         })
     return pd.DataFrame(rows)
 
@@ -182,7 +188,7 @@ def main() -> None:
     ap.add_argument("--scan", default=None)
     ap.add_argument("--out", default="reports/price_bands.md")
     ap.add_argument("--per-band", type=int, default=8)
-    ap.add_argument("--adv-pct", type=float, default=5.0,
+    ap.add_argument("--adv-pct", type=float, default=pb.ADV_PCT,
                     help="%% of median daily turnover used as the position cap")
     ap.add_argument("--drop-t5", action="store_true",
                     help="exclude the most-illiquid tier (off by default — see candidates())")
@@ -193,7 +199,7 @@ def main() -> None:
 
     prof = profile(df)
     liq = crosstab_liquidity(df)
-    edge = edge_population(df)
+    edge = edge_population(df, args.adv_pct)
     cand = candidates(df, args.per_band, args.adv_pct, args.drop_t5)
 
     pd.set_option("display.width", 220, "display.max_columns", 50)
@@ -207,7 +213,12 @@ def main() -> None:
     print(f"\n── SHORTLIST (Piotroski>=7, not breaking down; cap @{args.adv_pct}% ADV) ──")
     print(cand.round(1).to_string(index=False))
 
-    os.makedirs(os.path.dirname(args.out), exist_ok=True)
+    # os.makedirs("", ...) raises even with exist_ok=True — dirname is "" for
+    # a bare filename like --out price_bands.md, which should just write to
+    # the current directory rather than crash before the report is written.
+    out_dir = os.path.dirname(args.out)
+    if out_dir:
+        os.makedirs(out_dir, exist_ok=True)
     with open(args.out, "w") as fh:
         fh.write(f"# India universe by price band\n\n")
         fh.write(f"Scan: `{os.path.basename(path)}` · universe {len(df)} names\n\n")

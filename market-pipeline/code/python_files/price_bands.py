@@ -34,7 +34,6 @@ BANDS: dict[str, list[tuple[float, float]]] = {
     "IN": [(0, 250), (250, 500), (500, 1000), (1000, 5000), (5000, float("inf"))],
     "US": [(0, 10), (10, 50), (50, 200), (200, 1000), (1000, float("inf"))],
 }
-DEFAULT_MARKET = "US"
 
 # Currency symbols for band LABELS only. Callers that already own a fuller map
 # (build_mailer._CCY) should pass it as `ccy=` so there is one source of truth
@@ -56,7 +55,23 @@ CAVEAT = (
 
 
 def bands_for(market: str) -> list[tuple[float, float]]:
-    return BANDS.get(str(market).upper(), BANDS[DEFAULT_MARKET])
+    """
+    Raises for a market with no ladder, rather than silently substituting
+    DEFAULT_MARKET's edges. build_mailer.py already keeps EU/JP/KR picks-row
+    builders "deliberately LEFT IN PLACE ... restoring a market is re-adding
+    its block here" — the moment one of those gets wired to
+    _price_band_rows(eu_data, "EU"), a silent US-dollar-ladder fallback would
+    bucket euro/yen prices on the wrong numeric scale and produce a
+    plausible-looking but meaningless report. A KeyError surfaces the gap
+    immediately instead.
+    """
+    key = str(market).upper()
+    if key not in BANDS:
+        raise KeyError(
+            f"no price-band ladder for market {key!r} — add an entry to "
+            f"price_bands.BANDS (have: {sorted(BANDS)})"
+        )
+    return BANDS[key]
 
 
 def label(lo: float, hi: float, market: str, ccy: dict | None = None) -> str:
@@ -92,11 +107,20 @@ def capacity(turnover, adv_pct: float = ADV_PCT):
     return pd.to_numeric(turnover, errors="coerce") * adv_pct / 100.0
 
 
-def fmt_money(v, ccy: str = "$") -> str:
-    """Compact money for a table cell: $42k / $4.2M. NaN renders as an em dash."""
+def fmt_money(v, symbol: str = "$") -> str:
+    """
+    Compact money for a table cell: $42k / $4.2M. NaN renders as an em dash.
+
+    Parameter is named `symbol`, not `ccy` like label()/labels_for()/assign() —
+    those take a market->symbol MAP, this takes a single symbol STRING. Same
+    name, different type would let a caller pass the map by copying the
+    ccy=_CCY pattern used elsewhere in this module; f-string interpolation of
+    a dict never raises, so that mistake would silently embed a dict repr()
+    into the output instead of erroring.
+    """
     if v is None or not pd.notna(v):
         return "—"
     v = float(v)
     if abs(v) >= 1e6:
-        return f"{ccy}{v / 1e6:,.1f}M"
-    return f"{ccy}{v / 1e3:,.0f}k"
+        return f"{symbol}{v / 1e6:,.1f}M"
+    return f"{symbol}{v / 1e3:,.0f}k"
