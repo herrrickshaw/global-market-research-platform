@@ -810,17 +810,31 @@ def main(nasdaq_only: bool = False, top: int = 0, run_scans: bool = True,
     print("Stage 2 — Bulk OHLC download (1-year window; needed for Golden Crossover 200 DMA) …")
     ohlc_data = bulk_download_ohlc(all_symbols, period="1y")
     print(f"  → {len(ohlc_data)} tickers with usable data")
-    check_panel_session(ohlc_data)
+    panel = check_panel_session(ohlc_data)
+    panel_asof = panel.get("panel_asof")
     print()
 
     # Stage 3: Darvas Box + Golden Crossover on every ticker (no extra API calls)
     print("Stage 3 — Darvas Box + Golden Crossover screen (all stocks) …")
     all_rows, darvas_rows = [], []
     ohlc_row_map: dict[str, dict] = {}
+    # check_panel_session deliberately judges the panel by its MODAL end date, so
+    # that one ticker with a stray bar cannot vouch for the whole panel. The flip
+    # side is that it says nothing about a single ticker lagging a healthy panel
+    # — which is exactly what SPCX did on 2026-09-03/04/05: its frame ended
+    # 09-02 while the panel ended 09-04, so `closes.iloc[-1]` published a
+    # three-day-old close as LTP and the send gate read the gap as a 4.9% price
+    # disagreement. A row whose last bar predates the panel is not today's
+    # price, so it does not belong in a workbook that reconcile treats as today's.
+    stragglers: list[str] = []
 
     for ticker, df in ohlc_data.items():
         closes = pd.to_numeric(df["Close"], errors="coerce").dropna()
         if closes.empty:
+            continue
+        bar_date = closes.index[-1].date()
+        if panel_asof and bar_date < panel_asof:
+            stragglers.append(ticker)
             continue
         ltp = round(float(closes.iloc[-1]), 2)
         if ltp < min_price:
@@ -840,6 +854,10 @@ def main(nasdaq_only: bool = False, top: int = 0, run_scans: bool = True,
         base_row = {
             "Symbol":           ticker,
             "LTP":              ltp,
+            # The session LTP actually came from. Without this the only way to
+            # tell a stale quote from a real move was to reconcile it against a
+            # live source and guess — see the straggler note in Stage 3.
+            "Bar_Date":         bar_date.isoformat(),
             "Prev_Close":       prev,
             "Change%":          chg_pct,
             "Turnover_USD":     round(tv_usd),
@@ -865,6 +883,12 @@ def main(nasdaq_only: bool = False, top: int = 0, run_scans: bool = True,
 
         if darvas.get("signal") in ("BREAKOUT_BUY", "BREAKDOWN_SELL"):
             darvas_rows.append(base_row.copy())
+
+    if stragglers:
+        print(f"  ⏮  {len(stragglers)} ticker(s) dropped — last bar behind the "
+              f"{panel_asof} panel session, so their close is not today's price: "
+              f"{', '.join(sorted(stragglers)[:8])}"
+              f"{' …' if len(stragglers) > 8 else ''}")
 
     breakout_count  = sum(1 for r in all_rows if r["Darvas_Signal"] == "BREAKOUT_BUY")
     breakdown_count = sum(1 for r in all_rows if r["Darvas_Signal"] == "BREAKDOWN_SELL")

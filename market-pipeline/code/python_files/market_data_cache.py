@@ -111,6 +111,13 @@ INDEX_STALE_HOURS = 20    # same as OHLC
 BATCH_SIZE  = 100         # smaller batches → fewer rate limit hits
 BATCH_SLEEP = 2.0         # seconds between batches
 
+# Re-request tickers that came back absent from an otherwise-successful
+# incremental batch. Two passes cleared 28% of the US universe on 2026-09-05;
+# the sleep is deliberately longer than BATCH_SLEEP because the usual cause is
+# a rate limit that needs a moment to clear, not a one-off dropped response.
+INCR_REFETCH_TRIES = 2
+INCR_REFETCH_SLEEP = 5.0
+
 # Create directories on import
 for d in [OHLC_DIR, FUND_DIR, INDEX_DIR, META_DIR]:
     d.mkdir(parents=True, exist_ok=True)
@@ -340,12 +347,37 @@ class MarketCache:
             # For simplicity, fetch all from yesterday (most will only be 1–2 rows)
             start = date.today() - timedelta(days=5)  # small window for incremental
             downloaded = self._bulk_yf_download(needs_incr, start=start)
+
+            # 🔴 A ticker missing from the response is almost always a transient
+            # yfinance failure, NOT a dead ticker — and the `elif` below will
+            # otherwise hand the caller last run's frame with no signal that it
+            # is stale. Measured 2026-09-05: 2,220 of 7,842 US names (28%) sat
+            # frozen on 2026-09-02 bars, ABBV/CAG/TRP among them, and the US
+            # scan published those closes as that morning's LTP. SPCX was the
+            # one the send gate happened to sample, so the brief was suppressed
+            # on 09-04 and 09-05 for what looked like a price disagreement.
+            # A plain re-request recovered all 20 of 20 sampled stragglers.
+            #
+            # _bulk_yf_download already retries a batch that fails wholesale;
+            # what it cannot see is a batch that returns 200 with some tickers
+            # absent. That is the gap this closes.
+            for _ in range(INCR_REFETCH_TRIES):
+                missing = [t for t in needs_incr
+                           if downloaded.get(t) is None or downloaded[t].empty]
+                if not missing:
+                    break
+                time.sleep(INCR_REFETCH_SLEEP)
+                for t, df in self._bulk_yf_download(missing, start=start).items():
+                    if df is not None and not df.empty:
+                        downloaded[t] = df
+
+            served_stale = []
             for t in needs_incr:
                 path = self._ohlc_path(t)
                 try:
                     existing = pd.read_parquet(path) if path.exists() else pd.DataFrame()
                     new_rows = downloaded.get(t, pd.DataFrame())
-                    if not new_rows.empty:
+                    if new_rows is not None and not new_rows.empty:
                         combined = pd.concat([existing, new_rows]).sort_index()
                         combined = combined[~combined.index.duplicated(keep="last")]
                         combined = self._clean_ohlc(combined)
@@ -353,10 +385,22 @@ class MarketCache:
                         self._update_meta(f"ohlc:{t}", path, combined)
                         result[t] = combined
                     elif not existing.empty:
+                        # Still nothing after the retries. Serve what we have —
+                        # dropping it would be worse — but say so, and stamp the
+                        # frame so a caller quoting .iloc[-1] as "today's price"
+                        # can tell that it is not.
+                        existing.attrs["stale"] = True
                         result[t] = existing
+                        served_stale.append(t)
                 except Exception:
                     if t in downloaded:
                         result[t] = downloaded[t]
+
+            if served_stale:
+                print(f"  ⚠️  {len(served_stale)} ticker(s) served from stale cache "
+                      f"after {INCR_REFETCH_TRIES} refetch attempt(s) — their last "
+                      f"bar is NOT today's: {', '.join(served_stale[:8])}"
+                      f"{' …' if len(served_stale) > 8 else ''}")
 
         if self.verbose:
             print(f"  Cache result: {len(result)}/{len(tickers)} tickers loaded")
