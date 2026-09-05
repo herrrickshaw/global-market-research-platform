@@ -2,6 +2,68 @@
 
 Decisions and material changes to the pipeline, newest first.
 
+## 2026-09-05 — Two silent data failures that cost three briefs and three days of Japan
+
+The 09-04 and 09-05 briefs were both suppressed by the send gate, and Japan had
+produced nothing since 09-03. Two unrelated causes, both invisible in the logs.
+
+**The cache served stale frames as if they were current.** `get_ohlc_bulk`'s
+incremental path ended in `elif not existing.empty: result[t] = existing` — when
+a yfinance batch returned 200 with some tickers simply absent, the caller got
+last run's frame with nothing marking it stale. Measured on 09-05: **2,220 of
+7,842 US names (28%) were frozen on 09-02 bars**, ABBV/CAG/TRP among them, and
+`check_panel_session` reported only 57% of names on the correct session. The US
+scan published those closes as that morning's LTP. SPCX is simply the one the
+8-name reconcile sample happened to draw — it read 140.71 for three consecutive
+days, byte-identical row and all, while the market moved to 147.95.
+
+`_bulk_yf_download` already retries a batch that fails *wholesale*; the gap was
+a batch that succeeds partially. Absent tickers are now re-requested (2 passes,
+5s backoff — longer than `BATCH_SLEEP` because the cause is a rate limit that
+needs a moment, not a dropped response). A plain re-request recovered 20 of 20
+sampled stragglers, and in production took the panel share **57% → 93%**.
+Anything still unresolved after the retries is served — dropping it would be
+worse — but stamped `.attrs["stale"]` and counted out loud.
+
+**Rejected:** treating an absent ticker as delisted and dropping it. The 09-05
+data shows the failure is overwhelmingly transient; that rule would have deleted
+ABBV from the universe on a bad network day.
+
+**A lagging ticker could still be quoted as today's price.**
+`check_panel_session` judges the panel by its **modal** end date, deliberately,
+so one stray bar cannot vouch for the whole panel — the flip side is that it is
+blind to one ticker lagging a healthy panel, which is exactly the SPCX shape.
+`full_us_market_scan.py` now drops rows whose last bar predates `panel_asof` and
+stamps every surviving row with `Bar_Date`. First run: 502 dropped, almost all
+dead warrants/units/rights (`-UN`, `-WT`, `-PF`, `W`, `RI`), and every one of
+5,646 remaining rows on 2026-09-04.
+
+**Rejected:** flagging rather than dropping. A row whose LTP is not today's
+price is not merely suspect to a human reader — `scan_price_reconcile.py` samples
+the workbook's most liquid names and treats their LTP as today's, so a flag it
+does not read changes nothing. Dropping is what the liquidity gate already does
+one line below, for the same reason.
+
+**JPX moved `data_j.xls` to `.xlsx`.** The old URL 404s; the path stem is
+unchanged. That killed the TSE universe from 09-03, and with it the Japan scan,
+the Japan ingest (4 days stale), and `[R4]`'s Japan correlation scan, which
+resolved 0 symbols and wrote a 15-byte matrix. Fixed in
+`full_japan_market_scan.py`, `symbol_master.py` and `run_app.sh`. The latter two
+also had to leave `xlrd`, which dropped xlsx support in 2.0 — pandas/openpyxl
+reads both, and the columns are positionally unchanged (1=code, 2=name,
+3=market category), so the parse is otherwise identical.
+
+`symbol_master._japan_names` swallowed every exception with a bare `pass`, which
+is *why* a 404 went unnoticed for three days — Japan just quietly stopped
+appearing in the master. It now warns on a non-200, on an exception, and on
+returning zero equities.
+
+**Known and not fixed here:** all three call sites drop the 172 JPX codes
+containing a letter (`130A`, `135A`, …) via an `isdigit()` filter. These are
+real TSE tickers under JPX's newer alphanumeric scheme. That is a pre-existing
+universe gap, unrelated to the outage, and widening the universe inside an
+outage fix would have hidden the regression it was meant to prove fixed.
+
 ## 2026-09-04 — Price-band segmentation, plus the 9 bugs a /code-review found in it
 
 `price_bands.py` (new): one shared ladder — band edges, labels, bucketing,
