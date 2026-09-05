@@ -247,21 +247,26 @@ def _japan_names() -> list:
         "スタンダード（内国株式）",  # Standard (domestic stock)
         "グロース（内国株式）",   # Growth (domestic stock)
     }
+    # 2026-09-03: JPX re-published data_j as .xlsx and the .xls now 404s. That
+    # also rules out xlrd, which dropped xlsx support in 2.0 -- pandas/openpyxl
+    # reads both. Columns are positional and unchanged: 1=code, 2=name,
+    # 3=market category, with row 0 the header (pandas consumes it).
     rows = []
     try:
-        import xlrd
+        import pandas as pd
         import requests
+        from io import BytesIO
         r = requests.get(
-            "https://www.jpx.co.jp/markets/statistics-equities/misc/tvdivq0000001vg2-att/data_j.xls",
+            "https://www.jpx.co.jp/markets/statistics-equities/misc/tvdivq0000001vg2-att/data_j.xlsx",
             timeout=60,
         )
         if r.ok:
-            wb = xlrd.open_workbook(file_contents=r.content)
-            ws = wb.sheet_by_index(0)
-            for i in range(1, ws.nrows):
-                code_raw = ws.cell_value(i, 1)
-                name = str(ws.cell_value(i, 2)).strip()
-                market_cat = str(ws.cell_value(i, 3)).strip()
+            df = pd.read_excel(BytesIO(r.content), dtype=str)
+            for code_raw, name, market_cat in zip(
+                df.iloc[:, 1], df.iloc[:, 2], df.iloc[:, 3]
+            ):
+                name = str(name).strip()
+                market_cat = str(market_cat).strip()
                 if not code_raw or not name or market_cat not in _INCLUDE_CATEGORIES:
                     continue
                 try:
@@ -271,10 +276,16 @@ def _japan_names() -> list:
                 if code.isdigit():
                     rows.append({"symbol": f"{code}.T", "name": name,
                                  "exchange": "JAPAN", "suffix": ""})
+        else:
+            warnings.warn(f"JPX data_j.xlsx returned HTTP {r.status_code}")
     except ImportError:
         pass
-    except Exception:
-        pass
+    except Exception as e:
+        # Swallowing this silently is what let the 404 above go unnoticed for
+        # three days -- Japan just quietly stopped appearing in the master.
+        warnings.warn(f"JPX listed-issues fetch failed: {e}")
+    if not rows:
+        warnings.warn("JPX listed-issues master returned 0 Japanese equities")
     return rows
 
 

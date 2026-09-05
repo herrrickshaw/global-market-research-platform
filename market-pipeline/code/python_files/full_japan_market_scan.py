@@ -110,9 +110,13 @@ _CACHE_FILE = DOWNLOAD_DIR / ".symbols_cache.json"
 
 # JPX publishes a daily stock master CSV (TSE Prime + Standard + Growth).
 # This is the authoritative free source for the full TSE universe.
+#
+# 2026-09-03: JPX re-published this file as .xlsx and the .xls now 404s, which
+# killed the Japan universe (and, downstream, the [R4] Japan correlation scan)
+# for three days. The path stem is unchanged; only the extension moved.
 JPX_MASTER_URL = (
     "https://www.jpx.co.jp/markets/statistics-equities/misc/"
-    "tvdivq0000001vg2-att/data_j.xls"
+    "tvdivq0000001vg2-att/data_j.xlsx"
 )
 
 # ── Symbol universe ───────────────────────────────────────────────────────────
