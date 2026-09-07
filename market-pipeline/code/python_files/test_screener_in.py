@@ -7,12 +7,17 @@
 # WHY THIS EXISTS: screener_in.py parses screener.in's HTML with regex — it has
 # no error if the site changes its table structure, blocks the request, or the
 # screen itself returns nothing; it just silently returns an empty/malformed
-# DataFrame. build_mailer.py's CCC section already degrades gracefully in that
-# case (renders "n/a" for India CCC), but that degradation was ALSO silently
-# masking a real bug for a full session (a schema mismatch, fixed 2026-07-13) —
-# nobody noticed because nothing ever flagged it. This script is the visible
-# tripwire: run it daily as a pipeline step so a broken scrape shows up as a
-# clear PASS/FAIL in the log instead of a quietly empty report section.
+# DataFrame. That silence once masked a real bug for a full session (a schema
+# mismatch, fixed 2026-07-13) because nothing ever flagged it. This script is
+# the visible tripwire: run it daily as a pipeline step so a broken scrape
+# shows up as a clear PASS/FAIL in the log.
+#
+# SCOPE, since 2026-08-21: this scrape is NO LONGER the source of the brief's
+# CCC section. build_mailer._ccc_rows() computes CCC from filings
+# (cash_conversion_cycle.py: EDGAR for US, the yfinance store for India) and
+# uses screener.in only to fill tickers the filings cannot. So a FAIL here means
+# REDUCED COVERAGE of that gap-fill, not an empty or "n/a" CCC section — do not
+# infer brief breakage from this test failing. Check the rendered brief.
 #
 # Not a pytest suite (this repo has none) — a standalone script matching the
 # rest of the codebase's style, with an exit code for pipeline gating.
@@ -30,7 +35,14 @@ import sys
 
 import pandas as pd
 
-REQUIRED_COLUMNS = ["Symbol", "Name", "Cash_Cycle"]
+# Only what the consumer actually reads: screener_in.ccc_map() is
+# dict(zip(df["Symbol"], df["Cash_Cycle"])). "Name" was required here but only
+# kept conditionally by the producer (screener_in.ccc_screen(): `if c in
+# df.columns`), so the two disagreed from the start; when screener.in dropped
+# the Name column on 2026-09-06 this test failed daily in two pipelines while
+# the CCC data itself was complete and correct. Do not re-add a column here
+# unless ccc_map() or _ccc_rows() genuinely needs it.
+REQUIRED_COLUMNS = ["Symbol", "Cash_Cycle"]
 _SYMBOL_RE = re.compile(r"^[A-Z0-9&.-]+$")
 
 
@@ -98,7 +110,8 @@ def run(min_rows: int = 5) -> tuple[bool, list[str]]:
     if ok and "Cash_Cycle" in df.columns:
         top = df.assign(_cc=pd.to_numeric(df["Cash_Cycle"], errors="coerce")) \
                 .dropna(subset=["_cc"]).sort_values("_cc").iloc[0]
-        checks.append(f"  top pick today: {top['Symbol']} ({top.get('Name','')}) "
+        name = str(top.get("Name") or "").strip()
+        checks.append(f"  top pick today: {top['Symbol']}{f' ({name})' if name else ''} "
                        f"CCC={top['_cc']:.1f}d")
 
     return ok, checks
@@ -115,7 +128,7 @@ def main():
     for c in checks:
         print(f"  {c}")
     print(f"\n{'PASS' if ok else 'FAIL'} — screener.in CCC scrape "
-          f"{'looks healthy' if ok else 'needs attention (build_mailer.py will show n/a for CCC until fixed)'}")
+          f"{'looks healthy' if ok else 'needs attention (CCC still renders from filings; this degrades only the screener.in gap-fill)'}")
     sys.exit(0 if ok else 1)
 
 

@@ -2,6 +2,45 @@
 
 Decisions and material changes to the pipeline, newest first.
 
+## 2026-09-08 — A stale test asserted a column nobody reads, and lied about the damage
+
+`test_screener_in.py` failed on 09-06, 09-07 and 09-08, in **two** pipelines
+(`daily_mailer.sh` step [6/13] and `ingest.sh` step [6/7], ~2h45m apart), sending
+two alert emails a day. The CCC data was complete and correct throughout: 29
+rows, 29/29 numeric `Cash_Cycle`, 100% inside ±400 days, and the 09-07 brief
+rendered 10 real CCC rows (IGIL −632.9d, SANGHVIMOV −467.9d, MSTCLTD −448.9d).
+
+Two independent staleness bugs, and the second one is the expensive one.
+
+**`REQUIRED_COLUMNS` demanded `Name`.** The producer only ever kept it
+conditionally — `screener_in.ccc_screen()` filters `keep` by `if c in
+df.columns` — and the consumer, `ccc_map()`, is
+`dict(zip(df["Symbol"], df["Cash_Cycle"]))`. It never reads `Name`. Producer and
+test disagreed from the day the column list was written; screener.in dropping
+`Name` on 09-06 just exposed it. The list is now exactly what the consumer
+reads.
+
+**The failure message claimed the brief was broken.** It read *"build_mailer.py
+will show n/a for CCC until fixed"*, and the file header said the CCC section
+"renders n/a" on a bad scrape. Both were written before **2026-08-21**, when
+`_ccc_rows()` stopped calling screener.in at all and moved to computing CCC from
+filings (`cash_conversion_cycle.py`) with the scrape demoted to gap-fill. So the
+test was reporting an outage in a code path that no longer exists — and it was
+convincing enough to be believed and repeated in an audit before anyone opened
+the brief. Both strings now say what a FAIL actually costs: reduced gap-fill
+coverage, not an empty section.
+
+**Rejected:** re-deriving `Name` from the instrument list to satisfy the
+assertion. That adds a real dependency to keep a test happy about a field
+nothing consumes. **Also rejected:** downgrading the missing-column check to a
+WARN — that would blunt it for `Symbol` and `Cash_Cycle`, where a rename really
+would empty the gap-fill silently. The check keeps failing loudly; it just
+guards the right columns now.
+
+**Left open:** the `Name` column in the brief's CCC table is blank, since
+screener.in no longer supplies it and nothing backfills it. Cosmetic — worth
+deciding whether to source it or drop the column.
+
 ## 2026-09-05 — Two silent data failures that cost three briefs and three days of Japan
 
 The 09-04 and 09-05 briefs were both suppressed by the send gate, and Japan had
