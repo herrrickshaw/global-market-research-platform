@@ -161,6 +161,25 @@ def validate(sample: int, tol: float) -> dict:
                        "agree": agree, "disagree": dis})
 
     price_sources.record(ledger)
+
+    # Sources that were asked and answered NOTHING, with the reason they gave.
+    # A silent source still appears in the header, which is how twelvedata sat
+    # inert for 79 consecutive checks (registered 2026-08-29, `--source-report`
+    # read `answered 0.0%`) while the line advertised three witnesses. That is
+    # not cosmetic: silence drops the quorum back to two, and at two a 1-1 split
+    # is a MISMATCH, so one stale witness suppresses a correct send — precisely
+    # the failure the third witness was registered to prevent, and precisely
+    # what suppressed the 2026-09-11 brief on a stale yfinance BHARTIARTL date.
+    #
+    # Diagnostic only: a silent source must NOT vote and must NOT fail the send.
+    # An absent key is a missing witness, not evidence against the prices.
+    mute = {}
+    for src in price_sources.SOURCES:
+        rows = [r for r in ledger if r["source"] == src]
+        if rows and not any(r["theirs"] is not None for r in rows):
+            errs = [r["error"] for r in rows if r["error"]]
+            mute[src] = errs[0] if errs else "no answer"
+
     bad = [c for c in checks if c["status"] == "MISMATCH"]
 
     # Date agreement WITHIN each source, across names. Deliberately not across
@@ -219,7 +238,7 @@ def validate(sample: int, tol: float) -> dict:
     elif stale_feed:
         reason = f"source feed frozen — {'; '.join(stale_feed)}"
     return {"ok": ok, "reason": reason, "scan": f.split("/")[-1], "asof": asof.isoformat(),
-            "verified": verified, "checks": checks}
+            "verified": verified, "checks": checks, "mute": mute}
 
 
 def main() -> int:
@@ -263,6 +282,13 @@ def main() -> int:
     srcs = ", ".join(price_sources.SOURCES)
     print(f"  validating {r.get('scan','?')} against {srcs} "
           f"(tolerance {a.tolerance}%, asof {r.get('asof','?')})")
+    # .get with a default: the no-workbook early return carries no "mute" key,
+    # and per the banner above a KeyError here would suppress the send.
+    mute = r.get("mute") or {}
+    for src, why in mute.items():
+        print(f"  ⚠ {src} answered nothing ({why}) — NOT voting; "
+              f"effective quorum {len(price_sources.SOURCES) - len(mute)} "
+              f"of {len(price_sources.SOURCES)}")
     for c in r["checks"]:
         if c["status"] == "skip":
             print(f"    -  {c['symbol']:12s} skipped ({c['why']})")

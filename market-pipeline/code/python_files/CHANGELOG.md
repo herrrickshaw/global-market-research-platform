@@ -2,6 +2,53 @@
 
 Decisions and material changes to the pipeline, newest first.
 
+## 2026-09-11 — The third witness was never a witness: 79 checks, 0% answered
+
+The 09-11 brief was suppressed. Every price passed — worst gap 1.34% against a
+2.0% tolerance — and the trip was a *date*: yfinance served BHARTIARTL's 09-09
+close (1814.70) while Alpha Vantage independently confirmed our ₹1839.0 at the
+correct 09-10 session. Our data was right. A witness was stale, the jury split
+1-1, and `validate_brief`'s majority rule counts a tie as a MISMATCH.
+
+That is the exact failure mode Twelve Data was registered on 2026-08-29 to end,
+and it did not end it, because **Twelve Data has never once answered**.
+`validate_brief.py --source-report 30` reads `twelvedata 79 checks · answered
+0.0%`. `_twelvedata()` is complete and correct; `_key("TWELVEDATA_KEY")` returns
+`None` because no such key exists — not in the environment, not in
+`~/.config/market-secrets/credentials.env` (44 keys, none of them this one), not
+anywhere on the machine. The source has been asked 79 times and returned
+`{"error": "no TWELVEDATA_KEY"}` 79 times.
+
+**The registration was inert, exactly as designed — and that was the problem.**
+`_twelvedata`'s docstring is explicit that an absent key makes the source drop
+out of the quorum rather than vote "no", so registering it early is "never
+harmful". True for correctness, false for operations: a silent witness is
+indistinguishable from a working one in every line the run prints. The header is
+built from `price_sources.SOURCES` unconditionally, so for eleven days it
+advertised *"validating … against yfinance, alphavantage, twelvedata"* while two
+sources voted. The quorum silently sat at 2, where one stale feed suppresses a
+correct send — which is where it was on 09-11.
+
+**Silent sources are now named, with their reason and the effective quorum.**
+`validate()` derives a `mute` map from the ledger it already builds (source →
+the error it actually returned) and returns it; the production print path renders
+`⚠ twelvedata answered nothing (no TWELVEDATA_KEY) — NOT voting; effective
+quorum 2 of 3`.
+
+Deliberately **diagnostic only**: a mute source still does not vote and still
+cannot fail a send. An absent key is a missing witness, not evidence against the
+prices, and making it fail would convert a degraded quorum into a daily outage.
+Rejected for the same reason: failing the gate when the quorum drops below three.
+The `.get("mute")` default is load-bearing — the no-workbook early return has no
+such key, and per the banner on that branch a `KeyError` there would exit
+non-zero and suppress every send forever.
+
+**Still open, and it needs a human:** the key itself. A free Twelve Data account
+(800 req/day, 8/min; the gate spends ~6 per run) has to be created by hand, then
+`TWELVEDATA_KEY=…` appended to the canonical credential store. Until then the
+quorum stays at two and any single stale feed can suppress a correct brief —
+the warning above just means it will say so out loud.
+
 ## 2026-09-08 — A stale test asserted a column nobody reads, and lied about the damage
 
 `test_screener_in.py` failed on 09-06, 09-07 and 09-08, in **two** pipelines
