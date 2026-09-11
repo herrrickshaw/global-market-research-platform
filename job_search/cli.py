@@ -124,6 +124,10 @@ def cmd_scan(args) -> int:
         cfg.min_ats = args.min_ats
     if getattr(args, "sort_by_ats", False):
         cfg.sort_by_ats = True
+    if "open_only" in vars(args) and ("--open-only" in sys.argv
+                                      or getattr(args, "open_only", None)):
+        from jobsearch.sources.apollo import STALE_AFTER_DAYS
+        cfg.apollo_stale_after = args.open_only or STALE_AFTER_DAYS
 
     matches, stats = run(cfg)
     print(json.dumps(stats, indent=2, default=str))
@@ -226,6 +230,13 @@ def main(argv=None) -> int:
                         "(postings with no JD text are kept, not zeroed)")
     s.add_argument("--sort-by-ats", action="store_true",
                    help="rank by ATS score instead of the blended score")
+    s.add_argument("--open-only", nargs="?", type=int, const=None,
+                   metavar="DAYS",
+                   help="keep only postings the source has re-observed within "
+                        "DAYS (default 21). Answers 'is it still on the "
+                        "board', which --min-score and the posted-date window "
+                        "do not. Postings from sources that do not track "
+                        "sightings are DROPPED, not assumed open.")
     s.set_defaults(func=cmd_scan)
 
     a = sub.add_parser("ats", help="score your CV against one job description")

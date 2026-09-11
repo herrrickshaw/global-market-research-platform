@@ -233,6 +233,14 @@ class TargetProfile:
         "sector specialist": 0.75,
         "industry specialist": 0.7,
         "operations officer": 0.6,
+        # Sector-leadership titles. "Director Oil and Gas" at an advisory or
+        # research house is the CV's deepest sector line with a grade attached,
+        # and it scored 0.000: oil and gas were only ever SECTOR words, which
+        # cannot rescue a title carrying no function word. Found by refreshing
+        # Crisil and reading the zeroes again.
+        "oil and gas": 0.7,
+        "oil & gas": 0.7,
+        "natural gas": 0.65,
         "research analyst": 0.6,
         "business analyst": 0.5,
         "transformation": 0.6,
@@ -294,6 +302,11 @@ class TargetProfile:
         "software architect", "solution architect",
         # BD = Becton Dickinson, not business development.
         "biosciences", "becton",
+        # Plant and field operations. The new "oil and gas" key gave
+        # "Oil and Gas Field Operator" 0.82, and these titles dominate the
+        # boards of every refiner and national oil company in the dump
+        # (Reliance 99 postings, QatarEnergy 181, ADNOC 80).
+        "operator", "fitter", "welder", "machinist", "rigger",
         "software engineer", "software developer", "backend engineer",
         "frontend engineer", "full stack", "devops", "sre", "qa engineer",
         "data engineer", "machine learning engineer", "android", "ios developer",

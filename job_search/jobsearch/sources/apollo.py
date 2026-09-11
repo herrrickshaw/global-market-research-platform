@@ -48,8 +48,14 @@ def _parse_date(raw: str | None):
         return None
 
 
+# A posting Apollo has not re-observed in this many days is treated as probably
+# closed. Boards are re-crawled every few days, so a gap this long means the
+# requisition stopped appearing rather than that the crawler went quiet.
+STALE_AFTER_DAYS = 21
+
+
 def _matches(job: JobPosting, countries: tuple[str, ...] | None,
-             since: date | None) -> bool:
+             since: date | None, stale_after: int | None = None) -> bool:
     """Country + recency gate applied to an already-normalised posting.
 
     An undated posting is KEPT when a recency window is set: Apollo omits dates
@@ -62,6 +68,14 @@ def _matches(job: JobPosting, countries: tuple[str, ...] | None,
             return False
     if since and job.posted_at and job.posted_at < since:
         return False
+    if stale_after is not None:
+        seen = job.days_since_seen()
+        # UNKNOWN is not a pass. A source that does not track last_seen_at
+        # cannot answer "is this still open", so an open-only request must
+        # exclude it rather than assume the best -- the same rule this project
+        # applies to a blank ATS score.
+        if seen is None or seen > stale_after:
+            return False
     return True
 
 
@@ -74,6 +88,7 @@ def _to_posting(j: dict, company: str, source: str) -> JobPosting:
         location=location,
         url=j.get("url", ""),
         posted_at=_parse_date(j.get("posted_at")),
+        last_seen_at=_parse_date(j.get("last_seen_at")),
         external_id=str(j.get("id", "")),
     )
 
@@ -155,7 +170,14 @@ class ApolloDumpSource(JobSource):
 
     def fetch(self, path: str | Path = "data/apollo_postings.json",
               countries: tuple[str, ...] | None = None,
-              days: int | None = None) -> list[JobPosting]:
+              days: int | None = None,
+              stale_after: int | None = None) -> list[JobPosting]:
+        """Replay saved Apollo postings.
+
+        `days` filters on when a role was POSTED; `stale_after` on when it was
+        last SEEN on the board. Only the second speaks to whether it is still
+        open. Pass stale_after=STALE_AFTER_DAYS for an open-now view.
+        """
         p = Path(path)
         if not p.exists():
             raise SourceError(f"no Apollo dump at {p}")
@@ -171,7 +193,7 @@ class ApolloDumpSource(JobSource):
                 continue
             for j in payload.get("jobs", []):
                 posting = _to_posting(j, company, self.name)
-                if _matches(posting, countries, since):
+                if _matches(posting, countries, since, stale_after):
                     jobs.append(posting)
             if payload.get("_caveat"):
                 # Surface partial coverage rather than letting it read as complete.

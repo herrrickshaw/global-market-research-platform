@@ -61,7 +61,13 @@ def collect_feed_jobs(cfg: Config) -> list[JobPosting]:
             batch = ApolloDumpSource().fetch(
                 cfg.apollo_dump,
                 countries=tuple(cfg.apollo_countries) or None,
-                days=cfg.apollo_days or None)
+                # A confirmed-open posting must not then be discarded for
+                # being old. Uniper's Head of LNG Trading was posted 2026-07-17
+                # and last seen 2026-09-08: alive, and thrown away by a 45-day
+                # posted-date cutoff. Asking for open roles supersedes asking
+                # for new ones, so the posted window stands down.
+                days=None if cfg.apollo_stale_after else (cfg.apollo_days or None),
+                stale_after=cfg.apollo_stale_after or None)
             log.info("apollo dump: %d postings", len(batch))
             jobs += batch
         except SourceError as exc:

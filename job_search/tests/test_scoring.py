@@ -366,3 +366,28 @@ def test_the_real_business_development_titles_are_untouched():
                   "Renewables Business Development Manager"]:
         fit, _ = role_fit(_job(title, location="London, United Kingdom"), P)
         assert fit > 0.8, title
+
+
+def test_sector_leadership_titles_with_no_function_word_match():
+    """"Director Oil and Gas" at a research house is the CV's deepest sector
+    line with a grade attached, and it scored 0.000 - oil and gas were only
+    ever SECTOR words, and a sector word cannot rescue a title that carries no
+    function word."""
+    for title in ["Director Oil and Gas", "Senior Oil and Gas Consultant",
+                  "Head of Natural Gas Origination"]:
+        fit, why = role_fit(_job(title, location="Gurugram, India"), P)
+        assert fit > 0.6, f"{title}: {why}"
+
+
+def test_plant_and_field_operator_titles_are_excluded():
+    """The new "oil and gas" key gave "Oil and Gas Field Operator" 0.82. These
+    titles dominate every refiner's board in the dump - Reliance alone had 99
+    of them - so they are their own wrong function."""
+    for title in ["Oil and Gas Field Operator", "Operator, Panel",
+                  "Senior Welder - Pipelines"]:
+        fit, _ = role_fit(_job(title, location="Jamnagar, India"), P)
+        assert fit == 0.0, title
+    # ...without swallowing the development-finance "Officer" grade.
+    fit, _ = role_fit(_job("Operations Officer - Infrastructure",
+                           location="New Delhi, India"), P)
+    assert fit > 0.5

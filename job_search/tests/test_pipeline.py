@@ -98,3 +98,41 @@ def test_reports_render(tmp_path, monkeypatch):
     assert "Head of Business Development" in md_p.read_text()
     html = html_p.read_text()
     assert "<table>" in html and 'class="warm"' in html
+
+
+def test_open_only_stands_down_the_posted_date_window():
+    """Asking for still-open roles supersedes asking for new ones.
+
+    Uniper's Head of LNG Trading was posted 2026-07-17 and last seen
+    2026-09-08: alive, and silently discarded by a 45-day posted-date cutoff.
+    Filtering on both at once throws away exactly the long-lived senior roles
+    that sighting data exists to rescue.
+    """
+    import json
+    from datetime import date, timedelta
+
+    from jobsearch.config import Config
+    from jobsearch.pipeline import collect_feed_jobs
+
+    today = date.today()
+    dump = {"Uniper": {"org_id": "x", "total": 1, "jobs": [
+        {"title": "Head of LNG Trading", "country": "Germany",
+         "posted_at": str(today - timedelta(days=56)),
+         "last_seen_at": str(today - timedelta(days=3)),
+         "url": "u"}]}}
+
+    import tempfile
+    import pathlib
+    with tempfile.TemporaryDirectory() as d:
+        path = pathlib.Path(d) / "dump.json"
+        path.write_text(json.dumps(dump))
+
+        cfg = Config()
+        cfg.apollo_dump = str(path)
+        cfg.apollo_days = 45
+        # Recency alone loses it.
+        assert collect_feed_jobs(cfg) == []
+        # Asking for open roles gets it back.
+        cfg.apollo_stale_after = 21
+        got = collect_feed_jobs(cfg)
+        assert len(got) == 1 and got[0].title == "Head of LNG Trading"

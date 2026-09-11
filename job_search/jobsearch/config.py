@@ -68,6 +68,10 @@ class Config:
     apollo_dump: str = ""
     apollo_countries: list = field(default_factory=list)
     apollo_days: int = 0
+    # Drop postings the source has not re-observed in this many days. 0 keeps
+    # everything. This is the only setting that speaks to whether a role is
+    # still OPEN rather than merely recent.
+    apollo_stale_after: int = 0
     careers_pages: dict = field(default_factory=dict)
     out_dir: str = "out"
     top_n: int = 200
@@ -85,7 +89,8 @@ def load_config(path: str | Path | None) -> Config:
                     "careers_pages", "apollo_dump", "workday_tenants",
                     "workday_autodiscover", "successfactors_sites",
                     "resume_path", "resume_dir",
-                    "min_ats", "sort_by_ats", "apollo_countries", "apollo_days"):
+                    "min_ats", "sort_by_ats", "apollo_countries", "apollo_days",
+                    "apollo_stale_after"):
             if key in raw:
                 setattr(cfg, key, raw[key])
         src = raw.get("sources", {}) or {}

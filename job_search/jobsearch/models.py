@@ -34,6 +34,22 @@ class JobPosting:
     description: str = ""
     remote: bool = False
     external_id: str = ""
+    # When the source last OBSERVED this posting on the employer's board.
+    # posted_at answers "how new is this"; last_seen_at answers "is it still
+    # there" - and those are different questions. A role posted five weeks ago
+    # and still seen yesterday is open; one posted two weeks ago and last seen
+    # a month back is closed. Only sources that track it set this.
+    last_seen_at: Optional[date] = None
+
+    def days_since_seen(self, today: Optional[date] = None) -> Optional[int]:
+        """Age of the last sighting, or None when the source does not track it.
+
+        None means UNKNOWN, never fresh - callers must not treat a missing
+        value as a recent sighting.
+        """
+        if not self.last_seen_at:
+            return None
+        return ((today or date.today()) - self.last_seen_at).days
 
     def dedupe_key(self) -> tuple:
         from .normalize import normalize_company, normalize_title

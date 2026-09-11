@@ -243,3 +243,88 @@ def test_personio_rejects_a_malformed_response(monkeypatch):
     monkeypatch.setattr(ats_public, "http_get_text", lambda *_a, **_k: "<html><p>oops")
     with pytest.raises(SourceError, match="non-XML"):
         ats_public.PersonioSource().fetch("acme")
+
+
+# --------------------------------------------------------------------------
+# "Posted recently" and "still open" are different questions
+# --------------------------------------------------------------------------
+
+def test_last_seen_at_is_captured_from_apollo():
+    """Apollo returns last_seen_at on every posting and it was being discarded.
+
+    posted_at answers "how new is this". Only last_seen_at answers "is it still
+    on the board", which is what someone about to spend an evening writing
+    applications actually needs.
+    """
+    from datetime import date
+    from jobsearch.sources.apollo import _to_posting
+
+    j = _to_posting({"title": "Manager", "city": "Mumbai", "country": "India",
+                     "posted_at": "2026-08-11T09:00:00.000+00:00",
+                     "last_seen_at": "2026-09-09T11:00:00.000+00:00"},
+                    "Crisil", "apollo")
+    assert j.posted_at == date(2026, 8, 11)
+    assert j.last_seen_at == date(2026, 9, 9)
+    assert j.days_since_seen(date(2026, 9, 11)) == 2
+
+
+def test_a_missing_last_seen_reads_as_unknown_not_as_fresh():
+    """Absent is not zero, again. A source that does not track the field cannot
+    vouch for a posting being open, so it must report None rather than today."""
+    from datetime import date
+    from jobsearch.sources.apollo import _to_posting
+
+    j = _to_posting({"title": "Manager", "posted_at": "2026-08-11T09:00:00Z"},
+                    "C", "apollo")
+    assert j.last_seen_at is None
+    assert j.days_since_seen(date(2026, 9, 11)) is None
+
+
+def test_stale_after_excludes_postings_with_no_sighting_data():
+    """Asking for open-only roles must not quietly pass through everything whose
+    freshness is unknown - that would turn a filter into a no-op."""
+    from datetime import date, timedelta
+
+    from jobsearch.models import JobPosting
+    from jobsearch.sources.apollo import _matches
+
+    today = date.today()
+    fresh = JobPosting("apollo", "C", "Manager", "Mumbai, India", "u",
+                       posted_at=today - timedelta(days=40),
+                       last_seen_at=today - timedelta(days=2))
+    gone = JobPosting("apollo", "C", "Manager", "Mumbai, India", "u",
+                      posted_at=today - timedelta(days=10),
+                      last_seen_at=today - timedelta(days=45))
+    unknown = JobPosting("apollo", "C", "Manager", "Mumbai, India", "u",
+                         posted_at=today - timedelta(days=3))
+
+    assert _matches(fresh, None, None, 21) is True
+    assert _matches(gone, None, None, 21) is False
+    assert _matches(unknown, None, None, 21) is False
+    # With no stale_after asked for, nothing is filtered on sighting age.
+    for j in (fresh, gone, unknown):
+        assert _matches(j, None, None, None) is True
+
+
+def test_posted_recently_and_still_open_can_disagree():
+    """The whole point of the field: a five-week-old posting still on the board
+    beats a ten-day-old one that has already come down."""
+    from datetime import date, timedelta
+
+    from jobsearch.models import JobPosting
+    from jobsearch.sources.apollo import _matches
+
+    today = date.today()
+    old_but_live = JobPosting("apollo", "C", "A", "Mumbai, India", "u",
+                              posted_at=today - timedelta(days=35),
+                              last_seen_at=today - timedelta(days=1))
+    new_but_closed = JobPosting("apollo", "C", "B", "Mumbai, India", "u",
+                                posted_at=today - timedelta(days=10),
+                                last_seen_at=today - timedelta(days=40))
+    since = today - timedelta(days=20)
+    # Recency alone gets this exactly backwards.
+    assert _matches(old_but_live, None, since, None) is False
+    assert _matches(new_but_closed, None, since, None) is True
+    # Sighting age gets it right.
+    assert _matches(old_but_live, None, None, 21) is True
+    assert _matches(new_but_closed, None, None, 21) is False
