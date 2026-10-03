@@ -22,6 +22,7 @@ import os
 import sys
 
 SUFFIX = "_correlation_matrix.csv"
+SUFFIXES = (SUFFIX, SUFFIX + ".zst")
 GITHUB_REGULAR_LIMIT = 100 * 1024 * 1024  # GitHub rejects non-LFS files > 100 MB
 
 
@@ -30,8 +31,8 @@ def compress_one(csv_path, keep_csv=False):
     import pyarrow as pa
     import pyarrow.parquet as pq
 
-    out = csv_path[: -len(".csv")] + ".parquet"
-    df = pd.read_csv(csv_path)
+    out = csv_path[: csv_path.rindex(".csv")] + ".parquet"
+    df = pd.read_csv(csv_path)  # infers zstd from a .csv.zst suffix
     idx = df.columns[0]  # first column is the Symbol/ticker index (string)
     floatcols = [c for c in df.columns if c != idx]
     df[floatcols] = df[floatcols].astype("float16")
@@ -41,6 +42,11 @@ def compress_one(csv_path, keep_csv=False):
     chk = pd.read_parquet(out)
     if chk.shape != df.shape:
         raise RuntimeError(f"shape mismatch {csv_path}: csv {df.shape} != parquet {chk.shape}")
+
+    # carry the source's mtime: activity_graph grades matrix freshness by mtime,
+    # so a conversion must not make a stale matrix look like today's output
+    st = os.stat(csv_path)
+    os.utime(out, (st.st_atime, st.st_mtime))
 
     csv_bytes = os.path.getsize(csv_path)
     pq_bytes = os.path.getsize(out)
@@ -62,9 +68,11 @@ def main():
         print(f"compress_correlation_matrices: no dir {args.dir} (nothing to do)")
         return 0
 
-    csvs = sorted(f for f in os.listdir(args.dir) if f.endswith(SUFFIX))
+    # market_correlation_scan.py writes .csv.zst; matching only .csv made this a
+    # silent weekly no-op while ~600 MB of matrices accumulated (found 2026-09-15)
+    csvs = sorted(f for f in os.listdir(args.dir) if f.endswith(SUFFIXES))
     if not csvs:
-        print(f"compress_correlation_matrices: no *{SUFFIX} in {args.dir} (nothing to do)")
+        print(f"compress_correlation_matrices: no *{SUFFIX}[.zst] in {args.dir} (nothing to do)")
         return 0
 
     saved = 0

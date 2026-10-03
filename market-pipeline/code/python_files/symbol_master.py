@@ -8,7 +8,7 @@
 #   BSE    — bse-library bhavcopyReport    (equity groups)
 #   US     — SEC EDGAR company_tickers_exchange.json
 #   JAPAN  — JPX data_j.xls (TSE equities, ETF/REIT categories excluded)
-#   KOREA  — FinanceDataReader StockListing(KOSPI/KOSDAQ)
+#   KOREA  — KRX KIND corpList.do (KOSPI + KOSDAQ; open, no auth)
 #   CHINA  — akshare stock_info_a_code_name() (SSE+SZSE A-shares; Beijing
 #            Stock Exchange codes excluded, yfinance has no data for them)
 #   HK     — FinanceDataReader StockListing('HKEX') (dual RMB-counter dupes
@@ -291,37 +291,64 @@ def _japan_names() -> list:
 
 def _korea_names() -> list:
     """
-    KOSPI + KOSDAQ via FinanceDataReader (same source as run_app.sh's Korea
-    refresh). KOSPI and KOSDAQ get distinct `exchange` values (mirroring how
-    NASDAQ/NYSE are two exchange values under the "US" market grouping) so
+    KOSPI + KOSDAQ via the KRX KIND listed-company download (open, no auth).
+    KOSPI and KOSDAQ get distinct `exchange` values (mirroring how NASDAQ/NYSE
+    are two exchange values under the "US" market grouping) so
     market_correlation_scan.py's --market KOREA can combine both the same
     way MARKET_EXCHANGES["US"] combines NASDAQ+NYSE. Pre-suffixed symbols
     (.KS / .KQ), suffix="" -- same reasoning as _japan_names().
+
+    WHY NOT FinanceDataReader (the source this used until 2026-09-09): FDR's
+    listing backend started returning HTTP 404 for EVERY market key -- KOSPI,
+    KOSDAQ, KONEX, KRX, KRX-DESC alike -- so this returned 0 rows, the master
+    was rebuilt with no Korea at all, and market_correlation_scan.py's
+    `--market KOREA` resolved 0 symbols and wrote empty cluster/matrix files.
+    (The Korea OHLCV cache was warm the whole time: 2,774 symbols. The outage
+    was purely the ticker LIST.) pykrx is not the fallback either -- as of
+    1.0.51 its listing calls require KRX_ID/KRX_PW credentials we don't hold.
+
+    KIND is the same source full_korea_market_scan.py already uses, which is
+    why that scan kept working through the outage. The ~20 lines of parse are
+    deliberately duplicated rather than imported: symbol_master is a low-level
+    shared module and importing a top-level scan script would invert the
+    dependency and drag pykrx/openpyxl into every consumer. Keep the two in
+    sync -- see full_korea_market_scan._fetch_kind_list().
     """
+    import io
+
+    import requests
+
     rows = []
-    try:
-        import warnings as _w
-        _w.filterwarnings("ignore")
-        import FinanceDataReader as fdr
-        for mkt, sfx, exch in [("KOSPI", ".KS", "KOSPI"), ("KOSDAQ", ".KQ", "KOSDAQ")]:
-            try:
-                with _deadline(label=f"Korea/{mkt}"):
-                    df = fdr.StockListing(mkt)
-            except SourceTimeout as e:
-                # Loud, not silent. The pre-existing `except Exception: continue`
-                # made a hang look identical to an empty listing.
-                print(f"  ✗ {e} — skipping {mkt}")
-                continue
-            except Exception:
-                continue
-            for _, x in df.iterrows():
-                sym = str(x.get("Code", x.get("Symbol", ""))).strip().zfill(6)
-                name = str(x.get("Name", "")).strip()
-                if sym and name:
-                    rows.append({"symbol": f"{sym}{sfx}", "name": name,
-                                 "exchange": exch, "suffix": ""})
-    except ImportError:
-        pass
+    url  = "https://kind.krx.co.kr/corpgeneral/corpList.do"
+    hdrs = {"User-Agent": "Mozilla/5.0", "Referer": "https://kind.krx.co.kr/"}
+    for mkt_param, sfx, exch in [("stockMkt", ".KS", "KOSPI"),
+                                 ("kosdaqMkt", ".KQ", "KOSDAQ")]:
+        try:
+            with _deadline(label=f"Korea/{exch}"):
+                r = requests.get(
+                    url,
+                    params={"method": "download", "searchType": "13",
+                            "marketType": mkt_param},
+                    headers=hdrs, timeout=30,
+                )
+                r.raise_for_status()
+                df = pd.read_html(io.StringIO(r.text), encoding="euc-kr")[0]
+        except SourceTimeout as e:
+            # Loud, not silent. The pre-existing `except Exception: continue`
+            # made a hang -- and, on 2026-09-09, a hard 404 -- look identical
+            # to an exchange that genuinely has no listings.
+            print(f"  ✗ {e} — skipping {exch}")
+            continue
+        except Exception as e:
+            print(f"  ✗ Korea/{exch} listing fetch failed: "
+                  f"{type(e).__name__}: {e} — skipping {exch}")
+            continue
+        for _, x in df.iterrows():
+            sym  = str(x.get("종목코드", "")).strip().zfill(6)
+            name = str(x.get("회사명", "")).strip()
+            if len(sym) == 6 and sym.isdigit() and name:
+                rows.append({"symbol": f"{sym}{sfx}", "name": name,
+                             "exchange": exch, "suffix": ""})
     return rows
 
 
@@ -540,6 +567,30 @@ def build_master(refresh: bool = False, include_us: bool = True) -> pd.DataFrame
     df = pd.DataFrame(nse + bse + us + japan + korea + china + hk + europe)
     if df.empty:
         print("  ⚠️  No symbols fetched."); return df
+
+    # A source that breaks upstream returns [] and looks exactly like a market
+    # that legitimately has no listings, so a whole market can vanish from the
+    # master in silence -- which is what happened to Korea on 2026-09-09 (FDR
+    # started 404ing; the correlation scan then resolved 0 symbols and wrote
+    # empty clusters for a day before anyone noticed). Compare against the
+    # master we are about to overwrite and say so loudly. Warn rather than
+    # abort: markets legitimately sit at zero here (China is a known scope
+    # gap), and refusing to write would block every unrelated refresh too.
+    if MASTER.exists():
+        try:
+            prev = pd.read_parquet(MASTER)["exchange"].value_counts()
+            now  = df["exchange"].value_counts()
+            lost = sorted(x for x in prev.index
+                          if prev[x] > 0 and int(now.get(x, 0)) == 0)
+            if lost:
+                print(f"  ✗ REGRESSION: {len(lost)} exchange(s) present in the "
+                      f"existing master are EMPTY in this rebuild — "
+                      + ", ".join(f"{x} (was {prev[x]})" for x in lost))
+                print("     Their upstream source is probably broken. The master "
+                      "is still being written; downstream scans of those markets "
+                      "will resolve 0 symbols until it is fixed.")
+        except Exception:
+            pass  # diagnostic only — never block the rebuild
     df = df.drop_duplicates(subset=["symbol","exchange"])
     df["name_clean"] = df["name"].map(clean_name)
     df["yf_symbol"]  = df["symbol"] + df["suffix"]

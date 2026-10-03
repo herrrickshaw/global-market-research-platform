@@ -2,7 +2,7 @@
 # Growth at a Reasonable Price (GARP) — high earnings growth without an inflated
 # P/E. Classic Lynch test: PEG <= 1, or P/E at/below industry while growth is high.
 from __future__ import annotations
-from .base import StockData, Result, safe
+from .base import StockData, Result, safe, first_present
 
 META = {"name": "Growth at a Reasonable Price", "slug": "garp", "category": "fundamental",
         "description": "High earnings growth with a non-inflated P/E (PEG<=1, or P/E "
@@ -15,7 +15,7 @@ PE_MAX = 40.0
 
 def screen(s: StockData) -> Result | None:
     g = s.f
-    growth = safe(g("eps_growth")) or safe(g("earnings_growth"))
+    growth = first_present(safe(g("eps_growth")), safe(g("earnings_growth")))
     pe = safe(g("pe"))
     peg = safe(g("peg"))
     industry_pe = safe(g("industry_pe"))       # Damodaran reference

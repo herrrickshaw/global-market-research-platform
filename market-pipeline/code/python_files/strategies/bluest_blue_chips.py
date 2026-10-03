@@ -2,7 +2,7 @@
 # Bluest of the Blue Chips — large caps (> ₹3000 cr) with strong profit growth,
 # high ROE, and attractive valuation (PE at/below industry benchmark).
 from __future__ import annotations
-from .base import StockData, Result, safe
+from .base import StockData, Result, safe, first_present
 
 META = {"name": "Bluest of the Blue Chips", "slug": "bluest_blue_chips",
         "category": "fundamental",
@@ -21,7 +21,7 @@ def screen(s: StockData) -> Result | None:
         mc = safe(g("market_cap"))
         mcap_cr = mc / 1e7 if mc else None      # raw INR → crore
     roe = safe(g("roe"))
-    profit_growth = safe(g("profit_growth")) or safe(g("eps_growth"))
+    profit_growth = first_present(safe(g("profit_growth")), safe(g("eps_growth")))
     pe = safe(g("pe"))
     industry_pe = safe(g("industry_pe"))        # from reference_data (Damodaran)
     if mcap_cr is None or roe is None:

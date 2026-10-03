@@ -161,3 +161,10 @@ market-pipeline/code/python_files/cache_seed/factorial_screener_signals_CN_techn
 # strings, and Alpha Vantage quotes your API key back inside its rate-limit
 # message (seen 2026-08-18) — this origin is PUBLIC, so the whole dir stays out.
 market-pipeline/code/python_files/state/
+
+# Credential files that live at $HOME but were never ignored (audit 2026-09-23).
+# .git-credentials holds a live GitHub PAT in plaintext; rclone.conf holds the
+# Dropbox + Google Drive OAuth tokens. Both were untracked but NOT ignored, so a
+# single `git add -A` would have committed working credentials to this origin.
+.git-credentials
+.config/rclone/

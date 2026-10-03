@@ -88,7 +88,14 @@ def _normalize_whitespace(s: str) -> str:
 
 
 def _verify_citation(span: object, source_text: str) -> bool:
-    """True if *span* appears verbatim (allowing whitespace differences) in source_text."""
+    """True if *span* appears verbatim (allowing whitespace differences) in
+    source_text. Array-typed fields (e.g. a list of holdings) legitimately
+    come back as a list of per-item citations rather than one string --
+    found via the promptfoo pilot, where a correctly-extracted `holdings`
+    array was silently flagged grounded=False because this only accepted
+    str. Every element must verify for the field to count as grounded."""
+    if isinstance(span, list):
+        return bool(span) and all(_verify_citation(item, source_text) for item in span)
     if not isinstance(span, str) or not span.strip():
         return False
     return _normalize_whitespace(span) in _normalize_whitespace(source_text)

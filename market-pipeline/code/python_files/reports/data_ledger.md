@@ -6,31 +6,31 @@ Living catalog; re-run `data_ledger.py` to refresh volume/latest/updated from di
 
 | market | rows | tickers | latest | updated | source | off-peak window | rate note |
 |---|--:|--:|--:|--:|---|---|---|
-| IN | 4,484,270 | 7,043 | 2026-07-30 | 2026-07-30 | NSE/BSE bhavcopy | 18:00+ IST (EOD) | official archive — no throttle |
-| US | 16,305,195 | 9,829 | 2026-07-27 | 2026-07-27 | NASDAQ/yfinance | post-US-close / 03:00-07:00 IST | yfinance throttles in US hours |
-| KR | 5,292,842 | 2,597 | 2026-07-23 | 2026-07-23 | FinanceDataReader/KRX | after 12:30 IST (KRX close) | FDR gentle; batch |
-| JP | 7,359,698 | 3,083 | 2026-07-23 | 2026-07-23 | JPX/yfinance | after 11:30 IST (TSE close) | yfinance; J-Quants for validation |
-| EU | 3,828,110 | 1,618 | 2026-07-22 | 2026-07-23 | yfinance (17 exchanges) | after 21:30 IST (EU close) | yfinance; Volume sparse |
-| CN | 10,010,203 | 5,188 | 2026-07-01 | 2026-07-22 | akshare A-shares | after 12:30 IST (SSE/SZSE close) | akshare; avoid peak |
+| IN | 4,683,266 | 7,944 | 2026-09-29 | 2026-09-29 | NSE/BSE bhavcopy | 18:00+ IST (EOD) | official archive — no throttle |
+| US | 16,571,221 | 10,058 | 2026-09-28 | 2026-09-29 | NASDAQ/yfinance | post-US-close / 03:00-07:00 IST | yfinance throttles in US hours |
+| KR | 5,403,183 | 2,779 | 2026-09-28 | 2026-09-29 | FinanceDataReader/KRX | after 12:30 IST (KRX close) | FDR gentle; batch |
+| JP | 7,463,203 | 3,572 | 2026-09-29 | 2026-09-29 | JPX/yfinance | after 11:30 IST (TSE close) | yfinance; J-Quants for validation |
+| EU | 3,839,025 | 1,666 | 2026-09-28 | 2026-09-29 | yfinance (17 exchanges) | after 21:30 IST (EU close) | yfinance; Volume sparse |
+| CN | 10,010,203 | 5,188 | 2026-07-01 | 2026-08-17 | akshare A-shares | after 12:30 IST (SSE/SZSE close) | akshare; avoid peak |
 
 ## Fundamentals
 
 | market | type | rows | tickers | latest FY | updated | source | fetch | off-peak | rate note |
 |---|---|--:|--:|--:|--:|---|---|---|---|
-| IN | fundamentals | 14,162 | 1,487 | 2026-03-31 | 2026-07-18 | screener.in | `screener_history_collector.py` | off-hours (run_fundamentals_offhours.sh) | scrape politely |
-| US | fundamentals | 111,949 | 4,597 | 2029-12-31 | 2026-07-19 | SEC EDGAR | `edgar collector` | anytime | EDGAR fair-use 10 req/s |
-| US | shares | 463 | 463 | — | 2026-07-24 | yfinance .info | `us_shares_fetch.py` | off-peak 03:00-07:00 IST | yfinance ~50% shares coverage |
-| KR | fundamentals | 6,825 | 1,564 | 2026-03-31 | 2026-07-24 | DART (FSS) | `dart_history_collect.py` | off-hours | DART_KEY; ~20k/day quota; XBRL from ~2019 |
-| JP | fundamentals | 5,263 | 1,295 | 2026-03-31 | 2026-07-18 | yfinance (J-Quants planned) | `(J-Quants fins/statements)` | off-hours | JQUANTS_API_KEY set; tier-limited history |
-| EU | fundamentals | 4,666 | 1,159 | 2026-05-31 | 2026-07-24 | yfinance (DE/DK/CH/FI/SE union) | `build EU_union` | after 21:30 IST | 5y only; pre-2021 needs registries |
-| CN | fundamentals | 4,677 | 426 | 2025-12-31 | 2026-07-25 | akshare indicators | `cn_akshare_collect.py` | after 15:00 CST / 12:30 IST | akshare; sleep 0.3s/req |
+| IN | fundamentals | 14,162 | 1,487 | 2026-03-31 | 2026-08-17 | screener.in | `screener_history_collector.py` | off-hours (run_fundamentals_offhours.sh) | scrape politely |
+| US | fundamentals | 111,949 | 4,597 | 2029-12-31 | 2026-08-17 | SEC EDGAR | `edgar collector` | anytime | EDGAR fair-use 10 req/s |
+| US | shares | 0 | 0 | — | — | yfinance .info | `us_shares_fetch.py` | off-peak 03:00-07:00 IST | yfinance ~50% shares coverage |
+| KR | fundamentals | 0 | 0 | — | — | DART (FSS) | `dart_history_collect.py` | off-hours | DART_KEY; ~20k/day quota; XBRL from ~2019 |
+| JP | fundamentals | 5,263 | 1,295 | 2026-03-31 | 2026-08-17 | yfinance (J-Quants planned) | `(J-Quants fins/statements)` | off-hours | JQUANTS_API_KEY set; tier-limited history |
+| EU | fundamentals | 0 | 0 | — | — | yfinance (DE/DK/CH/FI/SE union) | `build EU_union` | after 21:30 IST | 5y only; pre-2021 needs registries |
+| CN | fundamentals | 0 | 0 | — | — | akshare indicators | `cn_akshare_collect.py` | after 15:00 CST / 12:30 IST | akshare; sleep 0.3s/req |
 
 ## Derived
 
 | scope | rows | updated | builder | note |
 |---|--:|--:|---|---|
-| IN/US/KR | 9,630 | 2026-07-30 | `financial_ratios.py` | rebuilt daily [15b] |
-| 6 markets | 10,206 | 2026-07-31 | `build_all_ratios.py` | adds JP/EU/CN |
+| IN/US/KR | 12,001 | 2026-09-29 | `financial_ratios.py` | rebuilt daily [15b] |
+| 6 markets | 8,800 | 2026-10-01 | `build_all_ratios.py` | adds JP/EU/CN |
 
 ## Reference (free exchange masters)
 

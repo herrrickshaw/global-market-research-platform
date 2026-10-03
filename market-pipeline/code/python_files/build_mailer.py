@@ -924,7 +924,12 @@ def _as_of_html() -> str:
         )
 
     if behind:
-        names = ", ".join(f"{r['label']} ({r['session']:%d %b})" for r in behind)
+        # session is None when provenance can't date a market; a stale market
+        # with no date must still render, or the draft fallback dies with it.
+        names = ", ".join(
+            f"{r['label']} ({r['session']:%d %b})" if r["session"]
+            else f"{r['label']} (session unknown)"
+            for r in behind)
         head = (f"<b style='color:#c62828'>⚠️ Stale data: {names} — the latest "
                 f"published close is newer than what is quoted below.</b> Treat "
                 f"those figures as historical, not current. ")

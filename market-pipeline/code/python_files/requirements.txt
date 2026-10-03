@@ -83,3 +83,10 @@ stable_baselines3>=2.3
 zstandard
 cassandra-driver
 exchange_calendars==4.13.2
+
+# Present in the old venv by ad-hoc install, never declared; lost when the venv
+# was deleted on 2026-09-14 and rebuilt from this file. langgraph is what
+# daily_research [R9] completeness audit imports.
+langgraph
+scrapling
+tenacity

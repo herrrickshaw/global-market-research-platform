@@ -4,15 +4,13 @@ Each candidate zone rule scored by the forward-10d return SPREAD between the nam
 
 | market | Trend-follow (close>EMA20>EMA50) | Mean-revert (buy oversold) | 6-month momentum | 1-month momentum | winner |
 |---|---|---|---|---|---|
-| **IN** | +0.15% (t+0.6) | +0.24% (t+1.4) | +0.20% (t+1.2) | -0.17% (t-0.8) | **Trend-follow** |
-| **US** | -0.22% (t-1.5) | +0.41% (t+2.0) | **+0.38% (t+2.2)** | -0.28% (t-1.7) | **Mean-revert** |
-| **JP** | -0.16% (t-1.6) | **+0.28% (t+3.1)** | -0.03% (t-0.4) | -0.23% (t-2.0) | **Mean-revert** |
-| **KR** | **-0.29% (t-2.5)** | **+0.20% (t+2.4)** | **-0.33% (t-2.1)** | -0.17% (t-1.6) | **Mean-revert** |
-| **EU** | -0.18% (t-1.8) | +0.24% (t+1.9) | +0.19% (t+1.4) | **-0.33% (t-3.1)** | **Mean-revert** |
+| **IN** | +0.15% (t+0.6) | +0.23% (t+1.3) | +0.22% (t+1.3) | -0.16% (t-0.8) | **Trend-follow** |
+| **US** | -0.22% (t-1.4) | +0.41% (t+2.0) | **+0.39% (t+2.2)** | -0.29% (t-1.7) | **Mean-revert** |
+| **JP** | -0.17% (t-1.6) | **+0.29% (t+3.4)** | -0.03% (t-0.4) | -0.24% (t-1.9) | **Mean-revert** |
+| **KR** | **-0.34% (t-2.8)** | **+0.22% (t+2.6)** | **-0.37% (t-2.4)** | -0.21% (t-1.8) | **Mean-revert** |
+| **EU** | -0.18% (t-1.8) | **+0.25% (t+2.0)** | +0.19% (t+1.3) | **-0.32% (t-3.1)** | **Mean-revert** |
 
 **Bold** = |t| ≥ 2. Winner = largest positive spread with |t| ≥ 1.5, else defaults to trend (the incumbent). This is the spread a long-BUY/short-SELL book would have earned per 2 weeks — not a live strategy (no costs, weekly rebalance), but a clean read on which signal DISCRIMINATES in each market.
 
 ## How this maps to the digest
 The zone engine can switch rule by market: a name is BUY if it passes its market's winning rule, SELL if it fails it, HOLD between. Eviction still runs off the SELL state, so a market whose winner is mean-reversion will evict on overbought-and-fading rather than below-EMA50 — which is what the literature (Balvers-Wu; emerging-market fast reversion; KOSPI contrarian) and our own signal-effectiveness analysis both point to.
-
-🔴 IN mom126 daily re-test (2026-08-23): 0.149% (t0.87, n=225 independent 10-day windows, real daily 126-trading-day lookback -- matches the live watchlist_digest.py field exactly, not the weekly-bar approximation above). NOT WIRED: IN stays on 'trend'. Daily re-test (0.149, t0.87, n=225) did not clear |t|>=1.5 and/or spread<=0 -- confirms the 14.7%-vs-10.2% CAGR edge in backtest_zone_rule_rec_simulation.py was NOT backed by real discriminating power. Recorded so this is not silently re-tried later.

@@ -53,10 +53,20 @@ def compute_darvas_box(df: pd.DataFrame, confirm: int = DARVAS_CONFIRM,
     cand = col_candidates or {}
 
     def find_col(frame, names):
+        # Exact (case-insensitive) name first, then substring. Substring alone let
+        # "Close" resolve to "Adj Close" whenever that column came first, and
+        # "Adj" is avoided in the substring pass unless it is the only match.
+        cols = [str(c) for c in frame.columns]
         for c in names:
-            m = next((col for col in frame.columns if c.upper() in col.upper()), None)
+            m = next((col for col in cols if col.upper() == c.upper()), None)
             if m:
                 return m
+        for allow_adj in (False, True):
+            for c in names:
+                m = next((col for col in cols if c.upper() in col.upper()
+                          and (allow_adj or "ADJ" not in col.upper())), None)
+                if m:
+                    return m
         return None
 
     if df is None or df.empty:

@@ -7,12 +7,12 @@ GE/dbt-style validation of the warehouse ratios + fundamentals. Educational rese
 | expectation | result | detail |
 |---|:--:|---|
 | ratios.market_ticker unique | ✅ pass | 0 dupes |
-| ratios.ticker not-null | ❌ FAIL | 1 nulls |
-| ratios.close not-null | ❌ FAIL | 1.1% null |
+| ratios.ticker not-null | ✅ pass | 0 nulls |
+| ratios.close not-null | ❌ FAIL | 2.9% null |
 | ratios.pe in (0,1000] | ✅ pass | 0 out-of-range |
 | ratios.roe in [-3,3] | ✅ pass | 0 out-of-range |
-| ratios.pe coverage ≥ 70% | ❌ FAIL | 57% present |
-| ratios.roe coverage ≥ 90% | ✅ pass | 91% present |
+| ratios.pe coverage ≥ 70% | ❌ FAIL | 58% present |
+| ratios.roe coverage ≥ 90% | ✅ pass | 93% present |
 
 ## 2. Deduplication
 
@@ -28,16 +28,16 @@ GE/dbt-style validation of the warehouse ratios + fundamentals. Educational rese
 
 | ratio | coverage before | after | filled |
 |---|--:|--:|--:|
-| pe | 55% | **57%** | +310 |
-| pb | 81% | **82%** | +112 |
-| roe | 93% | **91%** | +256 |
-| roce | 56% | **56%** | +0 |
+| pe | 58% | **58%** | +138 |
+| pb | 85% | **84%** | +11 |
+| roe | 96% | **93%** | +45 |
+| roce | 52% | **52%** | +0 |
 
 ## 4. Freshness (warehouse latest date)
 
 | market | IN | US | KR | JP | EU |
 |---|---|---|---|---|---|
-| last date | 2026-07-30 | 2026-07-27 | 2026-07-23 | 2026-07-23 | 2026-07-22 |
+| last date | 2026-09-29 | 2026-09-28 | 2026-09-28 | 2026-09-29 | 2026-09-28 |
 
 ## 5. Pending (fetch-only — cannot be derived)
 

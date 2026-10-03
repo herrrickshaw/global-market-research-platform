@@ -1,50 +1,50 @@
 # Completeness audit — data, claims, and gates
 
-Generated 2026-08-30 by `completeness_graph.py` (LangGraph, 4 nodes, deterministic — no LLM).
+Generated 2026-10-02 by `completeness_graph.py` (LangGraph, 4 nodes, deterministic — no LLM).
 
-**39 sources inventoried, 0 missing/erroring, 4 source(s) past their expected refresh cadence · 8 scheduled scripts checked, 1 quoting numbers their own cited report no longer contains · 8 analyses checked for the contamination gate, 0 ungated · 39 conclusions have a declared universe, 9 rest on a top-N liquid SAMPLE rather than the full market · 7 Cassandra market(s) audited, 1 present but hollow (rows and prices, no fundamentals)**
+**39 sources inventoried, 0 missing/erroring, 4 source(s) past their expected refresh cadence · 8 scheduled scripts checked, 1 quoting numbers their own cited report no longer contains · 8 analyses checked for the contamination gate, 0 ungated · 39 conclusions have a declared universe, 9 rest on a top-N liquid SAMPLE rather than the full market · 0 Cassandra market(s) audited, 0 present but hollow (rows and prices, no fundamentals)**
 
 ## 1. Data completeness
 
 | source | rows | symbols | span | stale (d) | cadence | crit |
 |---|--:|--:|---|--:|---|:--:|
-| `bhavcopy.bhavcopy_ohlcv` | 1,814,278 | 5,926 | 2025-06-23 -> 2026-08-28 | 2 | daily | ✅ |
-| `bhavcopy.bse_raw` | 1,442,027 | — | — | — | daily |  |
-| `bhavcopy.cleaned_ohlcv` | 1,150,703 | 5,908 | 2025-07-28 -> 2026-08-28 | 2 | daily | ✅ |
-| `bhavcopy.nse_deep_ohlcv` | 4,423,382 | 3,476 | 2016-01-01 -> 2026-07-13 | 48 | static |  |
-| `bhavcopy.nse_raw` | 689,311 | — | — | — | daily |  |
-| `etl.load_batches` | 49 | — | 2026-07-27 -> 2026-07-27 | 34 | per-run |  |
+| `bhavcopy.bhavcopy_ohlcv` | 1,964,064 | 6,811 | 2025-06-23 -> 2026-09-30 | 2 | daily | ✅ |
+| `bhavcopy.bse_raw` | 1,541,160 | — | — | — | daily |  |
+| `bhavcopy.cleaned_ohlcv` | 1,167,849 | 6,776 | 2025-08-28 -> 2026-09-30 | 2 | daily | ✅ |
+| `bhavcopy.nse_deep_ohlcv` | 4,423,382 | 3,476 | 2016-01-01 -> 2026-07-13 | 81 | static |  |
+| `bhavcopy.nse_raw` | 739,964 | — | — | — | daily |  |
+| `etl.load_batches` | 49 | — | 2026-07-27 -> 2026-07-27 | 67 | per-run |  |
 | `etl.source_registry` | 16 | — | — | — | static config |  |
 | `etl.stage_fundamentals` | 0 | 0 | — | — | per-run |  |
-| `fundamentals.india_pe_daily` | 1,979,108 | 1,776 | 2019-01-17 -> 2026-07-29 | 🔴 32 | daily | ✅ |
-| `fundamentals.india_quarterly` | 55,002 | 2,576 | 2018-05-21 -> 2026-07-30 | 31 | quarterly | ✅ |
-| `fundamentals.intl_pit_quarterly` | 40,098 | 3,216 | 2004-07-27 -> 2026-08-25 | 5 | JP/KR/CN daily off-hours trickle; AU/CA/DE/HK/SA/TW/BR/CH/SE/SG/UK/ZA weekly (Tier 3 cadence) | ✅ |
-| `fundamentals.next_earnings` | 2,537 | 2,537 | 2006-08-11 -> 2027-04-29 | -242 | off-hours trickle |  |
-| `fundamentals.ratios` | 11,936 | 11,911 | — | — | weekly |  |
-| `funds.nav` | 22,345,052 | 22,677 | 2016-07-28 -> 2026-07-29 | 🔴 32 | daily |  |
+| `fundamentals.india_pe_daily` | 1,979,108 | 1,776 | 2019-01-17 -> 2026-07-29 | 🔴 65 | daily | ✅ |
+| `fundamentals.india_quarterly` | 55,002 | 2,576 | 2018-05-21 -> 2026-07-30 | 64 | quarterly | ✅ |
+| `fundamentals.intl_pit_quarterly` | 42,337 | 3,321 | 2004-07-27 -> 2026-09-13 | 19 | JP/KR/CN daily off-hours trickle; AU/CA/DE/HK/SA/TW/BR/CH/SE/SG/UK/ZA weekly (Tier 3 cadence) | ✅ |
+| `fundamentals.next_earnings` | 2,581 | 2,581 | 2006-08-11 -> 2027-04-29 | -209 | off-hours trickle |  |
+| `fundamentals.ratios` | 12,001 | 11,975 | — | — | weekly |  |
+| `funds.nav` | 22,345,052 | 22,677 | 2016-07-28 -> 2026-07-29 | 🔴 65 | daily |  |
 | `funds.schemes` | 22,677 | 22,677 | — | — | daily |  |
-| `indices.custom_daily` | 62,535 | 31 | — | — | weekly |  |
+| `indices.custom_daily` | 63,268 | 31 | — | — | weekly |  |
 | `indices.factsheet_holding` | 1,336 | 137 | — | — | daily |  |
 | `indices.factsheet_meta` | 253 | 253 | — | — | daily |  |
 | `indices.factsheet_sector` | 1,192 | 107 | — | — | daily |  |
 | `indices.ingest_log` | 4 | — | — | — | per-run |  |
-| `indices.nse_daily` | 240,622 | 174 | 2016-07-28 -> 2026-07-30 | 🔴 31 | daily |  |
-| `indices.nse_tri` | 22,266 | 17 | 2016-08-01 -> 2026-07-27 | 🔴 34 | daily |  |
-| `market_daily.ingest_log` | 444 | — | — | — | per-run |  |
-| `market_daily.snapshots` | 566,994 | 33,255 | — | — | daily | ✅ |
+| `indices.nse_daily` | 240,622 | 174 | 2016-07-28 -> 2026-07-30 | 🔴 64 | daily |  |
+| `indices.nse_tri` | 22,266 | 17 | 2016-08-01 -> 2026-07-27 | 🔴 67 | daily |  |
+| `market_daily.ingest_log` | 698 | — | — | — | per-run |  |
+| `market_daily.snapshots` | 918,467 | 33,396 | — | — | daily | ✅ |
 | `market_daily.step_timings` | 179 | — | — | — | per-run |  |
-| `market_daily.symbol_names` | 21,858 | 21,858 | — | — | daily |  |
-| `market_daily.ticker_freshness` | 35,538 | 35,113 | — | — | daily | ✅ |
-| `market_daily.ticker_reference` | 37,591 | 37,166 | 2026-07-31 -> 2026-08-29 | 1 | every 15 min (local join only, see run_quarter_hourly_refresh.sh) | ✅ |
-| `public.fact_insider_transaction` | 204,977 | — | 2017-01-03 -> 2025-12-31 | 242 | built once (v8) |  |
-| `public.fact_screener_signal` | 4,980,728 | — | 2009-08-21 -> 2026-10-13 | -44 | built once (v8), not scheduled | ✅ |
-| `public.fact_short_interest` | 97,555 | — | 2017-12-29 -> 2026-06-30 | 61 | built once (v8) |  |
+| `market_daily.symbol_names` | 21,778 | 21,778 | — | — | daily |  |
+| `market_daily.ticker_freshness` | 36,524 | 36,099 | — | — | daily | ✅ |
+| `market_daily.ticker_reference` | 37,891 | 37,465 | 2026-07-31 -> 2026-10-01 | 1 | every 15 min (local join only, see run_quarter_hourly_refresh.sh) | ✅ |
+| `public.fact_insider_transaction` | 204,977 | — | 2017-01-03 -> 2025-12-31 | 275 | built once (v8) |  |
+| `public.fact_screener_signal` | 4,980,728 | — | 2009-08-21 -> 2026-10-13 | -11 | built once (v8), not scheduled | ✅ |
+| `public.fact_short_interest` | 97,555 | — | 2017-12-29 -> 2026-06-30 | 94 | built once (v8) |  |
 | `public.fundamentals` | 1 | — | — | — | dead |  |
 | `public.global_fundamentals` | 245,116 | 25,430 | — | — | external |  |
-| `public.load_batches` | 24 | — | 2026-07-07 -> 2026-07-19 | 42 | per-run |  |
+| `public.load_batches` | 24 | — | 2026-07-07 -> 2026-07-19 | 75 | per-run |  |
 | `public.markets` | 8 | — | — | — | static dimension | ✅ |
-| `public.ohlcv_history` | 38,235,027 | — | 2011-01-04 -> 2026-07-17 | 44 | external |  |
-| `public.stocks` | 35,243 | 34,357 | 2026-07-07 -> 2026-07-18 | 43 | append | ✅ |
+| `public.ohlcv_history` | 32,896,842 | — | 2011-01-04 -> 2026-07-17 | 77 | external |  |
+| `public.stocks` | 35,243 | 34,357 | 2026-07-07 -> 2026-07-18 | 76 | append | ✅ |
 | `india split factors` | 688 | 468 | — | — | — | ✅ |
 | `india unverifiable` | 29 | 29 | — | — | — | ✅ |
 
@@ -83,9 +83,8 @@ Generated 2026-08-30 by `completeness_graph.py` (LangGraph, 4 nodes, determinist
 | `PIOTROSKI_LIQUIDITY_PAPER.md` | definition (measured: $300k with junk, $896k without). The | declared | 2703 | 9 |
 | `bond_equity_linkage.md` | top 20 | 🔶 SAMPLE (top-N liquid) | 1093 | — |
 | `tier_anomaly_backtest.md` | top 200 | 🔶 SAMPLE (top-N liquid) | 1065 | — |
-| `pe_anomaly_backtest.md` | 1458 NSE names, monthly 2017-01-31 → 2026-06-30. Annual PI | declared | 601 | 109 |
+| `pe_anomaly_backtest.md` | 1458 NSE names, monthly 2017-01-31 → 2026-06-30. Annual PI | declared | 659 | 109 |
 | `reentry_book.md` | — | — | 508 | — |
-| `zone_rules_by_market.md` | — | — | 225 | — |
 | `smallcap_validation_hold63.md` | — | — | 108 | 108 |
 | `smallcap_validation_hold126.md` | — | — | 105 | 105 |
 | `mailer_effectiveness.md` | — | — | 80 | — |
@@ -98,7 +97,7 @@ Generated 2026-08-30 by `completeness_graph.py` (LangGraph, 4 nodes, determinist
 | `DATA_AUDIT.md` | shrinkage. | declared | — | — |
 | `PIT_EVENT_STUDIES.md` | 78,799; the rest fall outside the 2016+ adjusted panel | declared | — | — |
 | `STRATEGY_REPORT_TEMPLATE.md` | gate**: position ≤ 10% of the name's trailing-120d median  | declared | — | — |
-| `bundle_validation.md` | top 14 | 🔶 SAMPLE (top-N liquid) | — | — |
+| `bundle_validation.md` | top 38 | 🔶 SAMPLE (top-N liquid) | — | — |
 | `cluster_indices.md` | top 300 by trailing turnover with an NSE Industry label (~ | 🔶 SAMPLE (top-N liquid) | — | 35 |
 | `completeness_graph.md` | of 6 stocks and a span ending 2029, both impossible, while | 🔶 SAMPLE (top-N liquid) | — | — |
 | `data_sufficiency.md` | fundamentals (raise coverage), (2) collect deep history vi | declared | — | — |
@@ -108,6 +107,7 @@ Generated 2026-08-30 by `completeness_graph.py` (LangGraph, 4 nodes, determinist
 | `ownership_behaviour_india.md` | NSE equities identified via ticker_exchange_reference. Col | declared | — | — |
 | `ownership_behaviour_india_full.md` | it is **-0.04 and +0.02** — indistinguishable from zero. E | declared | — | — |
 | `peer_warranted.md` | — | — | — | 8 |
+| `price_bands.md` | by price band | declared | — | — |
 | `project_retrospective.md` | fundamentals-vs-speculation incomplete (US-only preview) | 🔶 SAMPLE (top-N liquid) | — | — |
 | `reentry_markers.md` | top 200 | 🔶 SAMPLE (top-N liquid) | — | — |
 | `strategy_regime_survival.md` | = HIGH+MEDIUM turnover tier only. `spread` = BUY−SELL fwd- | declared | — | — |
@@ -120,25 +120,10 @@ Generated 2026-08-30 by `completeness_graph.py` (LangGraph, 4 nodes, determinist
 
 > 🔶 marks a conclusion measured on the most liquid slice of the market. That is not a defect — liquidity gating is deliberate and keeps the result tradeable — but it narrows what the number is ABOUT, and the narrowing disappears by the time the figure is quoted downstream.
 
-## 5. Cassandra — rows present vs fields POPULATED vs MEASURED
-
-| market | rows | price fields | fundamentals | measured | verdict |
-|---|--:|--:|--:|--:|---|
-| us | 9,533 | 6,435 | 9,442 (99.0%) | 3,958 (41.5%) | fundamentals present |
-| china | 5,207 | 5,196 | 5,188 (99.6%) | 19 (0.4%) | 🔴 ALMOST ALL IMPUTED — populated, not measured |
-| japan | 3,873 | 3,643 | 3,664 (94.6%) | 3,544 (91.5%) | fundamentals present |
-| india | 3,484 | 2,367 | 3,484 (100.0%) | 1,427 (41.0%) | fundamentals present |
-| korea | 2,885 | 2,757 | 2,766 (95.9%) | 2,667 (92.4%) | fundamentals present |
-| hong_kong | 2,765 | 2,765 | 0 (0.0%) | n/a | 🔴 HOLLOW — counts as coverage, is not coverage |
-| europe | 2,434 | 990 | 2,062 (84.7%) | 1,077 (44.2%) | fundamentals present |
-
-> `fundamentals` is COUNTED as the BEST-populated column in each group, so it is an upper bound — the true per-field coverage is lower. `measured` is rows whose `fundamentals_source` is NOT `median_imputed` — found 2026-07-30 while investigating a repeated-decimal (pe,pb,roe) triple across unrelated symbols (a contamination shape the whole-number score check above does not catch). Every market sampled at 99-100% imputed; a median-imputed ROE ranks identically to a measured one in anything that sorts on the column, so `fundamentals present` alone was reporting placeholder coverage as if it were per-symbol data. A row that exists with null fundamentals is still worse than a missing table — the missing table raises an error where it is used, the null column silently narrows every downstream sample and still reports full coverage to a `COUNT(*)`.
-
 ## Notes
 
 - 🔴 fundamentals.next_earnings: max next_earnings_date is 2027-04-29 — IN THE FUTURE, table contains impossible dates
 - 🔴 public.fact_screener_signal: max signal_date is 2026-10-13 — IN THE FUTURE, table contains impossible dates
-- 🔴 cassandra[china]: fund_pct reports 100% populated, but only 0.4% of that is measured — the rest is fundamentals_source='median_imputed' reporting as if it were real per-symbol data
-- 🔴 cassandra[hong_kong]: 2,765 rows, prices populated (2,765) but fundamentals effectively EMPTY (0 = 0.0%) — counts as coverage in a row count, is not coverage in an analysis
+- 🔴 Cassandra unreachable: ('Unable to connect to any servers', {'127.0.0.1:9042': ConnectionRefu
 
 > Completeness is not correctness. This audit proves a source is present, fresh, internally consistent with what quotes it, and gated — not that the numbers in it are right. `reports/data_sufficiency.md` is the cautionary case: it reports a US liquid universe of 6 stocks and a span ending 2029, both impossible, while looking like a clean pass.

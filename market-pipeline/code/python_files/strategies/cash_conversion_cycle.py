@@ -32,9 +32,12 @@ def screen(s: StockData) -> Result | None:
         dio = _days(inv, cogs)
         dso = _days(rec, rev)
         dpo = _days(pay, cogs)
-        if dio is None and dso is None and dpo is None:
+        # All three legs or nothing. Counting a missing leg as 0 days turned a
+        # company with no payables field into DIO + DSO (or dropped DSO, ...) — a
+        # falsely low cycle that passed. Matches NEEDED in ../cash_conversion_cycle.py.
+        if dio is None or dso is None or dpo is None:
             return None
-        ccc = (dio or 0) + (dso or 0) - (dpo or 0)
+        ccc = dio + dso - dpo
     passed = ccc <= CCC_MAX
     return Result(s.symbol, META["slug"], passed=passed, score=round(ccc, 1),
                   metrics={"CCC_days": round(ccc, 1),

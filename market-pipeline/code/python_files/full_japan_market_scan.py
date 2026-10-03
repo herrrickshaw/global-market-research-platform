@@ -10,7 +10,9 @@
 #   Stage 5 — Save styled Excel workbook with ranked results
 #
 # Output sheets:
-#   All_Stocks      — price summary for every stock scanned
+#   All_Stocks      — price summary for every stock scanned, incl. Rate_Beta /
+#                     Rate_Beta_t (sensitivity to a BOJ hike — see
+#                     rate_factor_betas; |t| < 2 is noise)
 #   Darvas_Signals  — breakout / breakdown alerts ranked by upside
 #   Fundamentals    — Piotroski + Coffee Can results for breakout candidates
 #   Triple_Hits     — BREAKOUT_BUY + Piotroski ≥ 7 + Coffee Can PASS
@@ -33,6 +35,7 @@ from datetime import datetime, timedelta
 from io import BytesIO
 from pathlib import Path
 
+import numpy as np
 import pandas as pd
 import scan_core as _scan_core
 import requests
@@ -469,6 +472,95 @@ style_sheet = _scan_core.style_sheet
 
 # ── Main ─────────────────────────────────────────────────────────────────────
 
+# ── BOJ rate-hike sensitivity ────────────────────────────────────────────────
+# Rate sensitivity was the one question this sheet could not answer: every column
+# is absolute-price or fundamental, so "what does a BOJ hike do to this name?"
+# got answered from sector intuition. Banks-minus-real-estate is the cleanest
+# rate proxy available from data the scan ALREADY downloads — both legs are
+# domestic, both are liquid, and the spread isolates the rate channel.
+#
+# Orthogonalising to the equal-weight market is the part that matters: the raw
+# spread is heavily market by construction, so an unadjusted beta would just
+# re-measure what Above_EMA50 already says. Illiquid names are excluded from the
+# BASKETS (not from the output) — a T5 bank quoting a stale print would inject
+# its own staleness into the factor every other name is measured against.
+#
+# Measured 2026-09-18 over 358d on the warehouse panel: Tsukuba Bank 1.07
+# (t=16.2), Shikoku Bank 0.79 (t=17.2), every other name then in the JP book
+# statistically indistinguishable from zero. Read Rate_Beta WITH Rate_Beta_t —
+# |t| < 2 is noise, and most of the universe is noise.
+LIQUID_TIER_PREFIX = ("T1", "T2", "T3")
+RATE_BETA_MIN_DAYS = 120
+
+
+def rate_factor_betas(ohlc: dict, rows: list[dict]) -> dict[str, tuple]:
+    """Beta of every scanned name to a market-neutral BOJ-hike factor.
+
+    Factor = liquid banks − liquid real estate, orthogonalised to the
+    equal-weight liquid market. Returns {yf_ticker: (beta, t_stat)}.
+    """
+    closes = {}
+    for tkr, df in ohlc.items():
+        s = pd.to_numeric(df["Close"], errors="coerce").dropna()
+        if len(s) >= RATE_BETA_MIN_DAYS:
+            closes[tkr] = s
+    if not closes:
+        print("  rate factor skipped — no usable price history")
+        return {}
+
+    ret = np.log(pd.DataFrame(closes)).diff()
+    ret = ret.loc[:, ret.notna().mean() > 0.9]
+    if ret.empty:
+        print("  rate factor skipped — no name has a full return history")
+        return {}
+
+    def _liquid(row) -> bool:
+        return str(row.get("Liquidity_Tier", "")).startswith(LIQUID_TIER_PREFIX)
+
+    # JPX 33-sector codes, with the kanji fallback for the kabupy universe path
+    # (which labels sectors in Japanese instead of numbering them).
+    def _leg(code: str, kanji: str) -> list[str]:
+        return [r["YF_Ticker"] for r in rows
+                if _liquid(r) and r.get("YF_Ticker") in ret.columns
+                and (str(r.get("Sector", "")).startswith(code)
+                     or kanji in str(r.get("Sector", "")))]
+
+    banks   = _leg("7050", "銀行")
+    restate = _leg("8050", "不動産")
+    liquid  = [r["YF_Ticker"] for r in rows
+               if _liquid(r) and r.get("YF_Ticker") in ret.columns]
+    if len(banks) < 10 or len(restate) < 10 or len(liquid) < 100:
+        # Better no column than a factor built from six banks: a thin basket is
+        # one name's idiosyncratic move wearing a macro label.
+        print(f"  rate factor skipped — banks={len(banks)} "
+              f"real-estate={len(restate)} liquid={len(liquid)}")
+        return {}
+
+    mkt = ret[liquid].mean(axis=1)
+    raw = ret[banks].mean(axis=1) - ret[restate].mean(axis=1)
+    X   = pd.concat([mkt.rename("mkt"), raw.rename("raw")], axis=1).dropna()
+    slope, intercept = np.polyfit(X["mkt"], X["raw"], 1)
+    rate = X["raw"] - (slope * X["mkt"] + intercept)
+    print(f"  rate factor: {len(banks)} banks − {len(restate)} real-estate "
+          f"over {len(X)} days · ann.vol {rate.std() * 252 ** 0.5 * 100:.1f}% "
+          f"· last 21d {rate.tail(21).sum() * 100:+.1f}%")
+
+    out = {}
+    for tkr in ret.columns:
+        d = pd.concat([ret[tkr].rename("y"), mkt.rename("mkt"),
+                       rate.rename("rate")], axis=1).dropna()
+        if len(d) < RATE_BETA_MIN_DAYS:
+            continue
+        A = np.column_stack([np.ones(len(d)), d["mkt"].values, d["rate"].values])
+        coef, *_ = np.linalg.lstsq(A, d["y"].values, rcond=None)
+        resid = d["y"].values - A @ coef
+        var = float(resid @ resid) / (len(d) - A.shape[1])
+        se = (var * np.linalg.inv(A.T @ A)[2, 2]) ** 0.5
+        out[tkr] = (round(float(coef[2]), 2),
+                    round(float(coef[2] / se), 1) if se else None)
+    return out
+
+
 def main():
     parser = argparse.ArgumentParser(description="Full TSE scanner — Darvas + Piotroski + Coffee Can")
     parser.add_argument("--top",      type=int, default=0,     help="Limit to first N tickers")
@@ -555,6 +647,15 @@ def main():
     print(f"  Breakdown SELL: {sum(1 for r in darvas_rows if r['Darvas_Signal'] == 'BREAKDOWN_SELL')}")
     print(f"  In Box:         {len(all_rows) - len(darvas_rows)}")
 
+    # Stage 3b — rate sensitivity. Runs on the frame Stage 2 already downloaded,
+    # so it adds no network calls and no rate-limit pressure.
+    print("\nStage 3b — BOJ rate-factor betas …")
+    _betas = rate_factor_betas(ohlc, all_rows)
+    for _r in all_rows + darvas_rows:
+        _r["Rate_Beta"], _r["Rate_Beta_t"] = _betas.get(_r["YF_Ticker"], (None, None))
+    _have = sum(1 for _r in all_rows if _r["Rate_Beta"] is not None)
+    print(f"  Rate_Beta populated: {_have}/{len(all_rows)}")
+
     # Stage 4 — Fundamentals on breakout candidates
     fund_rows, triple_rows = [], []
 
@@ -603,6 +704,8 @@ def main():
                         "Code":            tech.get("Code"),
                         "Name":            tech.get("Name"),
                         "Sector":          tech.get("Sector"),
+                        "Rate_Beta":       tech.get("Rate_Beta"),
+                        "Rate_Beta_t":     tech.get("Rate_Beta_t"),
                         "LTP_JPY":         tech.get("LTP_JPY"),
                         "Change%":         tech.get("Change%"),
                         "Darvas_Signal":   tech.get("Darvas_Signal"),
@@ -639,7 +742,10 @@ def main():
                     for k in ("LTP_JPY", "Change%", "Darvas_Signal", "Box_Top",
                               "Box_Bottom", "Upside_to_Top%", "200_Day_MA",
                               "Distance_to_200MA%", "Trend_Signal",
-                              "Turnover_USD", "Liquidity_Tier"):
+                              "Turnover_USD", "Liquidity_Tier",
+                              # price-derived like the rest — a reused row must
+                              # not carry last week's beta into today's sheet
+                              "Rate_Beta", "Rate_Beta_t"):
                         if k in cur:
                             row[k] = cur[k]
                 fund_rows.append(row)

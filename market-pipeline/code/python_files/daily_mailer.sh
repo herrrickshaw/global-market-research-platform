@@ -94,8 +94,20 @@ fi
 # resolved it to homebrew 3.14 on 2026-07-22: step [0] flagged missing deps,
 # every scan died, and the validation gate correctly suppressed the send.
 PY="$(dirname "$0")/.venv/bin/python3"
-[ -x "$PY" ] || PY=python3
 LOG="daily_mailer_$(date +%Y%m%d).log"
+# No fallback to PATH python3. On 2026-09-15 the venv had been deleted, this
+# line quietly picked homebrew 3.14, and all 13 steps "ran" with no deps —
+# eight failures, a suppressed send, and no draft. A missing venv is a config
+# fault: say so once, loudly, and stop. /usr/bin/python3 is enough for the
+# alert (send_alert.py is stdlib + env_loader).
+if [ ! -x "$PY" ]; then
+  _msg="venv missing: $PY — rebuild with python3.11 -m venv .venv && .venv/bin/pip install -r requirements.txt"
+  echo "=== daily mailer $(date) · ABORTED ===" >> "$LOG"
+  echo "  🔴 $_msg" | tee -a "$LOG" >&2
+  /usr/bin/python3 send_alert.py --pipeline daily_mailer.sh --log "$LOG" \
+      "STARTUP: $_msg" >/dev/null 2>&1 || echo "  (alert could not be sent either)" >&2
+  exit 78   # EX_CONFIG
+fi
 
 # ── single-run lock ──────────────────────────────────────────────────────────
 # Shared with daily_pipeline.sh deliberately: both write watchlist.csv, and that

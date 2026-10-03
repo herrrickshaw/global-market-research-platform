@@ -19,7 +19,10 @@ def screen(s: StockData) -> Result | None:
         return None
     latest = vals[0]
     prior = vals[1:4]                          # up to 3 preceding quarters
-    was_loss = any(v is not None and v < 0 for v in prior)
+    # A turnaround is a sign flip: the quarter immediately before the profit must
+    # be a loss. `any(prior < 0)` passed a steady earner that had one small loss
+    # two or three quarters back.
+    was_loss = prior[0] < 0
     now_profit = latest is not None and latest > 0
     passed = was_loss and now_profit
     swing = None

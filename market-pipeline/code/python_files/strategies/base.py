@@ -83,3 +83,10 @@ def safe(v):
         return None if f != f else f          # NaN check
     except (TypeError, ValueError):
         return None
+
+
+def first_present(*vals):
+    """First value that is not None. Use instead of `a or b` for fallbacks between
+    fields: `or` treats a real 0.0 (zero growth, zero ROC) as missing and silently
+    substitutes the other field."""
+    return next((v for v in vals if v is not None), None)

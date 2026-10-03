@@ -2,7 +2,7 @@
 # Magic Formula — Joel Greenblatt: rank by Earnings Yield (EBIT/EV) + Return on
 # Capital (EBIT/(Net WC + Net Fixed Assets)). High of both = cheap & good.
 from __future__ import annotations
-from .base import StockData, Result, safe
+from .base import StockData, Result, safe, first_present
 
 META = {"name": "Magic Formula", "slug": "magic_formula", "category": "fundamental",
         "description": "Greenblatt: high earnings yield (EBIT/EV) AND high return on "
@@ -20,7 +20,7 @@ def screen(s: StockData) -> Result | None:
     g = s.f
     ebit = safe(g("ebit"))
     ev = safe(g("enterprise_value"))
-    roc = safe(g("roc")) or safe(g("roce"))
+    roc = first_present(safe(g("roc")), safe(g("roce")))
     ey = safe(g("earnings_yield"))
     book_value = safe(g("book_value"))
     if ey is None and ebit is not None and ev and ev != 0:

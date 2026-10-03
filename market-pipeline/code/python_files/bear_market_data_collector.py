@@ -282,10 +282,10 @@ def load_backfill_to_warehouse(conn, market: str, data: dict[str, pd.DataFrame],
                 SELECT DISTINCT ON (stock_id, date) {', '.join(staging_cols)}
                 FROM stg_bear_backfill
                 ORDER BY stock_id, date
-                ON CONFLICT (stock_id, date, batch_id) DO UPDATE SET
+                ON CONFLICT (stock_id, date) DO UPDATE SET
                     open_price = EXCLUDED.open_price, high_price = EXCLUDED.high_price,
                     low_price = EXCLUDED.low_price, close_price = EXCLUDED.close_price,
-                    volume = EXCLUDED.volume
+                    volume = EXCLUDED.volume, batch_id = EXCLUDED.batch_id
             """)
             inserted = cur.rowcount
         conn.commit()

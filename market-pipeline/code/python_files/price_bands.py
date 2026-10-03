@@ -33,12 +33,33 @@ import pandas as pd
 BANDS: dict[str, list[tuple[float, float]]] = {
     "IN": [(0, 250), (250, 500), (500, 1000), (1000, 5000), (5000, float("inf"))],
     "US": [(0, 10), (10, 50), (50, 200), (200, 1000), (1000, float("inf"))],
+    # JP/KR/CN added 2026-09-16, calibrated against the warehouse panels'
+    # equity-only distributions on that date (3,551 / 2,641 / 5,183 names) so
+    # every band carries real population instead of being a round number that
+    # happens to be empty. Edges sit near the ~35th/~75th/~92nd/~99th percentile
+    # of each market, which is roughly where the US ladder's already fall.
+    "JP": [(0, 1_000), (1_000, 3_000), (3_000, 10_000),
+           (10_000, 30_000), (30_000, float("inf"))],
+    "KR": [(0, 2_000), (2_000, 10_000), (10_000, 50_000),
+           (50_000, 200_000), (200_000, float("inf"))],
+    "CN": [(0, 10), (10, 30), (30, 100), (100, 300), (300, float("inf"))],
+    # 🔴 EU IS DELIBERATELY NOT KEYED "EU". The warehouse keeps all 17 European
+    # exchanges in ONE partition spanning nine quote currencies — and London
+    # quotes PENCE, so a raw `.L` close of 416 is €4.8, not €416. A ladder is a
+    # numeric scale, so it can only be applied after those are normalised to one
+    # currency; keying this "EU" would let `_price_band_rows(eu_data, "EU")`
+    # bucket pence, francs and zloty on a euro scale and return a
+    # plausible-looking, meaningless table. Under this key that call raises
+    # instead — the same protection bands_for() already gives an absent market.
+    # Convert to EUR first (liquidity.currency_for + SUBUNIT give the per-ticker
+    # currency and the /100), then band as "EU_EUR".
+    "EU_EUR": [(0, 5), (5, 25), (25, 100), (100, 500), (500, float("inf"))],
 }
 
 # Currency symbols for band LABELS only. Callers that already own a fuller map
 # (build_mailer._CCY) should pass it as `ccy=` so there is one source of truth
 # at the call site rather than two maps drifting apart here.
-CCY = {"IN": "₹", "US": "$"}
+CCY = {"IN": "₹", "US": "$", "JP": "¥", "KR": "₩", "CN": "CN¥", "EU_EUR": "€"}
 
 # Position that keeps you at this share of median daily turnover. %ADV is the
 # constraint that actually kills a small-cap edge as size grows — the platform's

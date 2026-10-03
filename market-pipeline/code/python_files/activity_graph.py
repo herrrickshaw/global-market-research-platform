@@ -249,7 +249,7 @@ def outputs(state: ActivityState) -> dict:
 
     if CORR.is_dir():
         for kind, pat in (("clusters", "*_correlation_clusters.txt"),
-                          ("matrix", "*_correlation_matrix.csv*")):
+                          ("matrix", "*_correlation_matrix.*")):  # .csv.zst or compressed .parquet
             fs = sorted(CORR.glob(pat), key=lambda p: p.stat().st_mtime)
             newest = _mtime(fs[-1]) if fs else None
             out.append({"artefact": f"correlation {kind}",

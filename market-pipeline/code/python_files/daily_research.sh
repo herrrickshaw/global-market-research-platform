@@ -43,8 +43,13 @@ set -uo pipefail
 cd "$(dirname "$0")"
 
 PY="$(dirname "$0")/.venv/bin/python3"
-[ -x "$PY" ] || PY=python3
 LOG="daily_research_$(date +%Y%m%d).log"
+# No fallback to PATH python3 — see daily_mailer.sh (2026-09-15: deleted venv,
+# homebrew 3.14 picked silently, every scan died on missing deps).
+if [ ! -x "$PY" ]; then
+  echo "  🔴 venv missing: $PY — rebuild it; research aborted" | tee -a "$LOG" >&2
+  exit 78   # EX_CONFIG
+fi
 DOW=$(date +%u)          # 1 = Monday
 DOM=$(date +%d)
 

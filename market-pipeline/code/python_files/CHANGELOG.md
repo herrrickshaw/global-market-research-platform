@@ -2,6 +2,95 @@
 
 Decisions and material changes to the pipeline, newest first.
 
+## 2026-09-21 — trailing_returns: patterns tightened, split suspects excluded
+
+The 2026-09-21 daily scan flagged a pattern on 7,451 of 7,910 filter_watchlist
+names (94%). There were two reasons. The ACCEL margin was 5pp on *annualized*
+rates, and a 1% week annualizes to ~68%, so almost any non-flat week counted as
+acceleration. REVERSAL also accepted any negative 6mo return plus a 3% week.
+Separately, the US/EU/JP/KR panels hold raw closes, so unadjusted reverse
+splits showed up as REVERSAL_UP (HUBC +1,251% in a week, JAGX +763%).
+
+**Done:** REVERSAL now needs a 6mo move of at least ±15% and a 1wk move of at
+least ±5%. ACCEL needs a raw 1wk move of at least ±3% and an annualized gap of
+at least 50pp. Any one-day close ratio ≥1.9x or ≤0.55x in the trailing year
+sets `split_suspect` and suppresses the pattern. Same-day results:
+filter_watchlist fell from 7,451 flagged to 3,052 flagged (plus 235 suspects),
+with REVERSAL_UP down from 757 to 249. watchlist fell from 316 to 138
+(8 suspects), with REVERSAL_UP down from 6 to 2.
+
+**Rejected:** detecting splits only from the returns already reported
+(|window return| > 90%). That also drops real −85% microcap declines, and it
+misses a split that falls outside the reported windows but inside a window
+another consumer reads. Also rejected: adjusting the raw panels here, because
+the panel owner does that job (see signal_tracker.PANELS). **Known gap:** the
+bound catches genuine −45% one-day crashes and misses 3:2 splits (0.67x).
+
+## 2026-09-18 — Japan scan: rate sensitivity is now a column, not an intuition
+
+The JP sheet could not answer "what does a BOJ hike do to this name?". Every
+column is absolute-price or fundamental, so the question got answered from
+sector labels — and the sector label is wrong often enough to matter: FPG
+(7148) is classified Securities & Commodity Futures and looks like a rate play,
+but measures **-0.07 (t=-0.6)**, while Mos Food Services (8153), a wholesale-
+coded restaurant chain, is a significant **-0.23 (t=-4.5)**.
+
+**Done:** `rate_factor_betas()` in `full_japan_market_scan.py` builds a factor
+from data Stage 2 already downloads — equal-weight liquid banks (JPX 7050)
+minus liquid real estate (8050), orthogonalised to the equal-weight liquid
+market — and regresses every scanned name on [market, factor]. `Rate_Beta` and
+`Rate_Beta_t` are written to All_Stocks, Darvas_Signals and Fundamentals, and
+are refreshed (not inherited) on rows reused from the fundamentals cache, since
+they are price-derived. No extra network calls: Stage 3b is one pass over the
+frame in memory. Validated 2026-09-18 on 2,914 names: 2,312 populated (the rest
+lack 120 days of history), banks median +0.74 vs universe -0.04, and the eight
+highest betas in the universe are all sector 7050.
+
+**Why orthogonalised:** the raw banks-minus-real-estate spread is substantially
+market by construction, so an unadjusted beta would have re-measured what
+`Above_EMA50` already reports. Illiquid names are excluded from the two baskets
+but still receive a beta — a T5 bank quoting a stale print would otherwise
+inject its staleness into the factor every other name is scored against.
+
+**Rejected:** a JGB-yield or policy-rate series as the factor. It would be the
+textbook construction, but it is an external daily fetch this scan does not have
+(and the FX-fetch failure of 2026-07-15, which silently disabled the liquidity
+gate for Japan and Europe, is the standing argument against adding one more
+network dependency to this script). The banks-minus-real-estate spread is
+observable in the panel we already hold.
+
+**Read it with the t-stat.** 740 of 2,312 names clear |t| >= 2; the rest is
+noise, and a Rate_Beta column invites exactly the mistake of trading the point
+estimate. Window is the scan's own `period="1y"`, so betas move as the window
+rolls: Sakura KCS (4761) measured -0.23 (t=-2.7) over 358d on the warehouse
+panel and -0.07 (t=-0.9) over the 221d the scan sees.
+
+## 2026-09-14 — ohlcv_history: one row per (stock_id, date), per-batch versioning dropped
+
+`warehouse_versioning.sql` extended the key to `UNIQUE (stock_id, date, batch_id)`
+so reloads would accumulate as queryable versions. In practice nothing queried
+versions, and every re-run inserted a complete second copy: Korea was loaded
+twice (batch 4 `legacy_backfill` + batch 5 `ohlcv_korea`, 5,256,823 rows each),
+and 5,324,473 keys (14% of 38.2M rows) had 2–3 rows. 44,151 keys disagreed on
+close — mostly India (incl. ~1,200 at exactly 2×/5×/10×, split vs unadjusted),
+US <2%. The two readers (`bridge_pg_fundamentals_to_cassandra.py`,
+`complete_india_us_fundamentals.py`) take "latest close" straight from the base
+table, not `ohlcv_history_current`, so they picked a copy arbitrarily; any
+count/return aggregate on Korea would have doubled.
+
+**Done:** kept one row per key — `success` batch over `failed`, then newest
+batch_id — deleted 5,338,185 rows, added `uq_ohlcv_history_stock_date UNIQUE
+(stock_id, date)`. 32,896,842 rows remain, 0 duplicate keys. Every removed row is
+in `public.ohlcv_history_dedup_backup_20260914` (restorable). Both writers now
+`ON CONFLICT (stock_id, date) DO UPDATE … batch_id = EXCLUDED.batch_id` —
+reloads overwrite in place, batch_id records the last writer.
+
+**Rejected:** keeping versioning and pointing readers at `ohlcv_history_current`
+— the table was already superseded for analysis by the parquet warehouse
+(`warehouse_insights.py`), history-of-a-price-bar has no consumer, and the design
+cost 14% of 12 GB on a disk at CRITICAL. The now-redundant `uq_ohlcv_history_batch` was dropped the same day
+(table 12 GB → 9.9 GB); `ohlcv_history_current` still works (trivially). VACUUM ran, VACUUM FULL did not (needs ~12 GB free).
+
 ## 2026-09-11 — The third witness was never a witness: 79 checks, 0% answered
 
 The 09-11 brief was suppressed. Every price passed — worst gap 1.34% against a

@@ -67,14 +67,17 @@ def _ret(close: pd.Series, n: int) -> Optional[float]:
 
 
 def _ccc(f: dict):
-    """Cash Conversion Cycle (days) = DIO + DSO - DPO, if inputs present."""
+    """Cash Conversion Cycle (days) = DIO + DSO - DPO, only when every input is present.
+
+    A missing component used to count as 0 days, so a company without a payables
+    field reported DIO + DSO as its cycle (or dropped DSO, and so on) — a falsely
+    low CCC that passed the screen. Same rule as the top-level
+    cash_conversion_cycle.py (NEEDED); otherwise fall back to a precomputed ccc."""
     inv, rec, pay = f.get("inventory"), f.get("receivables"), f.get("payables")
     cogs, rev = f.get("cogs"), f.get("revenue")
-    def d(n, dn):
-        return (n / dn * 365.0) if (n is not None and dn not in (None, 0)) else 0
-    if all(x is None for x in (inv, rec, pay)):
+    if any(x is None for x in (inv, rec, pay)) or cogs in (None, 0) or rev in (None, 0):
         return f.get("ccc")
-    return d(inv, cogs) + d(rec, rev) - d(pay, cogs)
+    return inv / cogs * 365.0 + rec / rev * 365.0 - pay / cogs * 365.0
 
 
 def compute_metrics(stock: StockData) -> Dict[str, float]:

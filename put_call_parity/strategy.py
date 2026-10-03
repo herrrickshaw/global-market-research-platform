@@ -27,6 +27,7 @@ from .config import (
     SCAN_INTERVAL_SECONDS,
     LOG_FILE,
 )
+from .oilprice_benchmark import check_crude_futures_price
 from .parity_engine import ParityEngine, ParitySignal
 from .trade_manager import PositionBook, TradeManager
 
@@ -87,9 +88,15 @@ def _get_futures_quote(broker: BrokerBase, instrument_key: str, expiry: str) -> 
         data = q.get(sym, {})
         bid = (data.get("depth") or {}).get("buy", [{}])[0].get("price", 0)
         ask = (data.get("depth") or {}).get("sell", [{}])[0].get("price", 0)
-        if bid and ask:
-            return (bid + ask) / 2
-        return data.get("last_price")
+        price = (bid + ask) / 2 if bid and ask else data.get("last_price")
+
+        if price and instrument_key == "CRUDEOIL":
+            ok, reason = check_crude_futures_price(price)
+            if not ok:
+                log.warning("Rejecting CRUDEOIL futures quote: %s", reason)
+                return None
+
+        return price
     except Exception as exc:
         log.warning("Failed to fetch futures quote for %s %s: %s", instrument_key, expiry, exc)
         return None

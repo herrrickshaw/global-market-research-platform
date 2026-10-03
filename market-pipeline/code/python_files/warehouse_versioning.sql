@@ -103,6 +103,10 @@ ALTER TABLE public.fact_insider_transaction
 
 -- =====================================================================
 -- ohlcv_history: add batch_id, extend natural key
+-- ⚠️ SUPERSEDED 2026-09-14 — do not re-apply this section. The batch-extended
+-- key let every reload insert a full second copy (14% duplicate keys, Korea
+-- double-loaded). ohlcv_history is now UNIQUE uq_ohlcv_history_stock_date
+-- (stock_id, date) and the loaders overwrite in place. See CHANGELOG.md.
 -- =====================================================================
 ALTER TABLE public.ohlcv_history
     ADD COLUMN IF NOT EXISTS batch_id BIGINT REFERENCES public.load_batches(batch_id);

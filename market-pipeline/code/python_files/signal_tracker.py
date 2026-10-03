@@ -71,6 +71,7 @@ from typing import Optional
 
 import numpy as np
 import pandas as pd
+import data_registry as _dr
 import warehouse_paths as _wh
 
 HERE = Path(__file__).resolve().parent
@@ -96,9 +97,28 @@ LEDGER = HERE / "cache_seed" / "signal_ledger.parquet"
 #
 # US keeps the raw panel because no adjusted panel exists for it — the global
 # adjuster ships corrected_symbols.parquet, a patch overlay, not partitions.
+#
+# EU/JP/KR added 2026-09-16. This dict held only IN and US, and the skip branch
+# in track() asserted those three "have no persisted panel — their scans fetch
+# live and keep nothing". That stopped being true: the warehouse carries EU, JP
+# and KR partitions with 11 year-files each, current to the same bar as IN and
+# US. The stale entry cost real coverage — 3,812 of filter_watchlist.csv's 8,300
+# rows (every EU, JP and KR name) scored as "no local price panel for this
+# market" while the data sat on disk unread, and the ledger's EU/JP/KR entries
+# were invisible to tracking unless someone passed --fetch-missing and re-pulled
+# from yfinance what was already local.
+#
+# 🔴 CN IS DELIBERATELY EXCLUDED. Its partition exists and loads, but its last
+# bar is 2026-07-01 — two and a half months stale. Adding it here would let the
+# mailer price today's signals off July closes and report them as current, which
+# is worse than the honest "no panel" skip it gets now. Add CN the day its
+# ingest is fixed, not before.
 PANELS = {
     "IN": _wh.ohlcv_adj_in(),
     "US": _wh.market("US"),
+    "EU": _wh.market("EU"),
+    "JP": _wh.market("JP"),
+    "KR": _wh.market("KR"),
 }
 
 
@@ -108,8 +128,149 @@ def _panel(p: Path, columns=None) -> pd.DataFrame:
         [pd.read_parquet(f, columns=columns) for f in sorted(p.glob("year=*.parquet"))],
         ignore_index=True,
     )
+
+
+def resolve_symbol(sym: str, mkt: str, columns) -> str | None:
+    """A ledger/watchlist symbol -> that panel's own column name, or None.
+
+    Registering the EU/JP/KR panels above is only half the fix: the ledger and
+    the watchlists disagree with the panels about ticker FORM for two of them,
+    so a bare lookup moves those rows from "no_panel" to "not_in_panel" and
+    tracks exactly as little as before.
+
+        JP   ledger '1301'    panel '1301.T'
+        KR   ledger '100030'  panel '000020.KS' / '263750.KQ'
+             ...and KR codes have lost their leading zeros upstream, so '100'
+             is really '000100' and needs re-padding to six digits.
+        EU   already exchange-qualified on both sides — matches 100% as-is.
+
+    🔴 THE KR SUFFIX IS LOOKED UP, NEVER INFERRED. .KS is KOSPI and .KQ is
+    KOSDAQ — 946 and 1,833 of the panel respectively — and nothing in a 6-digit
+    code says which. Guessing one silently mis-resolves two thirds of the
+    market, and a wrong-but-plausible price is far worse here than a miss. The
+    panel's own column list is the allowlist: a code matching no column stays
+    unresolved and is COUNTED as not_in_panel, never approximated.
+    """
+    s = str(sym).strip().upper()
+    if s in columns:
+        return s
+    if mkt == "JP":
+        return f"{s}.T" if f"{s}.T" in columns else None
+    if mkt == "KR":
+        base = s.zfill(6)
+        for suf in (".KS", ".KQ"):
+            if base + suf in columns:
+                return base + suf
+        return None
+    return None
+
+
+# EU/JP/KR have no entry: no index ETF for them exists in the panels (checked
+# 1306.T/1321.T, 069500.KS, EXS1.DE/ISF.L/MEUD.PA and others, none present), so
+# `vs mkt` stays NaN for those markets and track() emits an explicit
+# "no usable benchmark" note. That is the honest outcome — substituting a panel
+# median for a benchmark is what india_benchmark()'s docstring exists to warn
+# against. Wire a real index series in before adding a key here.
 BENCH = {"IN": "NIFTYBEES", "US": "SPY"}
 GOOD_GRADES = {"A", "B"}
+
+
+def india_benchmark(wide: Optional[pd.DataFrame] = None) -> pd.Series:
+    """The real NIFTY 50 line for India: NIFTYBEES panel bars spliced onto the
+    NSE index series, rescaled at the seam so the handoff has no jump.
+
+    🔴 THERE IS NO PANEL-MEDIAN FALLBACK, AND THERE MUST NEVER BE ONE AGAIN.
+    This function used to be `wide.median(axis=1)` — the cross-sectional median
+    CLOSE PRICE — whenever NIFTYBEES went stale. The 2026-08-22 audit caught it
+    fabricating a **+46.77%** "vs bench" for India: the median fell from 230 in
+    mid-June to 125 in August, a ~46% "index decline" that never happened. The
+    panel's composition is not fixed day to day (1,654 symbols in year=2016,
+    7,073 in year=2026), so the "return of the median" measures which names
+    happened to have a bar, not what the market did. The fix was written into
+    research/stock_pick_performance.py at the time and never ported back here,
+    so the live tracker kept grading every India signal against the fabricated
+    series for another three weeks. An entry with no real benchmark gets NaN —
+    never a number that looks precise and is wrong.
+
+    Two bugs in the earlier copies of this splice are fixed here:
+
+      * THE SEAM IS THE LAST DATE PRESENT IN BOTH SERIES, not `n50.iloc[0]`.
+        The old factor `nb.iloc[-1] / n50.iloc[0]` divides NIFTYBEES's last bar
+        by the index's FIRST bar — six weeks apart as of 2026-09-11, and off by
+        +0.69%. Anchoring on a shared date makes the factor exact by
+        construction.
+      * ONLY THE STRICTLY-AFTER TAIL IS APPENDED. A plain concat of the two
+        series leaves duplicate dates wherever they overlap, and the callers
+        below index with `.iloc[0]` / `.iloc[-1]`, which then pick arbitrarily
+        between two values for the same day.
+
+    🔴 THE NIFTYBEES LEG IS NOT SPLIT-ADJUSTED BEFORE 2020, AND IT IS SAFE ONLY
+    FOR RECENT WINDOWS. Measured 2026-09-11: the series jumps **+89.9% on
+    2019-12-19** — a corporate action, not a market move. The India adjuster
+    works off the equity corporate-actions feed, and NIFTYBEES was filtered out
+    of that feed as an ETF (ISIN prefix INF), which is the same filter that
+    stops its bars updating. So the one instrument used to benchmark India is
+    also the one the adjuster cannot see. This does NOT touch current tracking —
+    the ledger starts 2026-07-13 and the window in use moves a maximum of 1.93%
+    in a day — but a caller that reaches back past 2020 will get a fabricated
+    +90% "market return", which is the same class of error this function exists
+    to remove. The guard below shouts if that happens; fixing it properly needs
+    ETF corporate actions the repo does not collect.
+
+    `wide` is the caller's already-pivoted panel, passed in to avoid re-reading
+    it; omitted, the panel is read here (which is what the research scripts do).
+    """
+    if wide is None:
+        px = _panel(PANELS["IN"], columns=["Date", "Symbol", "Close"])
+        px["Symbol"] = px["Symbol"].astype(str).str.upper()
+        wide = px.pivot_table(index="Date", columns="Symbol", values="Close",
+                              aggfunc="last").sort_index()
+    nb = (wide[BENCH["IN"]].dropna().sort_index()
+          if BENCH["IN"] in wide.columns else pd.Series(dtype=float))
+
+    ic = pd.read_parquet(_dr.MARKET_CACHE / "exchange_extras" / "index_closes.parquet",
+                         columns=["Index Name", "Index Date", "Closing Index Value"])
+    ic = ic[ic["Index Name"] == "Nifty 50"]
+    n50 = pd.Series(
+        pd.to_numeric(ic["Closing Index Value"], errors="coerce").values,
+        index=pd.to_datetime(ic["Index Date"], format="%d-%m-%Y", errors="coerce"),
+    ).dropna().sort_index()
+    n50 = n50[~n50.index.duplicated(keep="last")]
+
+    if not len(nb):
+        return n50                      # level is irrelevant; only ratios are used
+    if not len(n50):
+        return nb
+
+    common = nb.index.intersection(n50.index)
+    if len(common):
+        seam = common.max()
+        factor = float(nb[seam]) / float(n50[seam])
+    else:
+        # No shared date: anchor on the smallest gap available — NIFTYBEES's
+        # last bar against the first index bar at or after it. Approximate, so
+        # it is worth knowing when this branch is taken rather than the exact one.
+        after = n50[n50.index >= nb.index.max()]
+        if not len(after):
+            return nb
+        factor = float(nb.iloc[-1]) / float(after.iloc[0])
+    tail = n50[n50.index > nb.index.max()] * factor
+    out = pd.concat([nb, tail]).sort_index()
+
+    # An index does not move 25% in a day. If one appears, it is an unadjusted
+    # corporate action in the NIFTYBEES leg (see the docstring), and any return
+    # chained across it is fiction. Warn rather than raise: callers working in
+    # recent windows are unaffected, and a hard failure here would take down the
+    # nightly report over a 2019 artifact it never touches.
+    jumps = out.pct_change().abs()
+    bad = jumps[jumps > 0.25]
+    if len(bad):
+        print(f"  ⚠ india_benchmark: {len(bad)} unadjusted jump(s) in the NIFTYBEES leg "
+              f"({', '.join(f'{d:%Y-%m-%d} {v*100:+.0f}%' for d, v in bad.items())}). "
+              f"Safe after {bad.index.max():%Y-%m-%d}; do NOT chain a return across it.",
+              file=sys.stderr)
+    return out
+
 
 SCAN_DIRS = {
     "IN": ("indian_full_scan", "indian_full_scan_*.xlsx"),
@@ -278,7 +439,13 @@ def record() -> int:
         px["Symbol"] = px["Symbol"].astype(str).str.upper()
         last = px.sort_values("Date").groupby("Symbol")["Close"].last()
         miss = new["price_at_signal"].isna() & (new["market"] == mkt)
-        new.loc[miss, "price_at_signal"] = new.loc[miss, "symbol"].map(last)
+        # Through resolve_symbol, not a bare .map: a JP signal recorded as
+        # '1301' has to find the panel's '1301.T' or it silently keeps a null
+        # entry price, and a null price_at_signal is exactly what made 121
+        # backfilled rows untrackable and the report structurally empty.
+        new.loc[miss, "price_at_signal"] = new.loc[miss, "symbol"].map(
+            lambda s: last.get(resolve_symbol(s, mkt, last.index))
+        )
 
     old = pd.read_parquet(LEDGER) if LEDGER.exists() else pd.DataFrame()
     if not old.empty:
@@ -397,11 +564,13 @@ def report(min_days: int, fetch_missing: bool = False) -> int:
     for mkt, grp in ready.groupby("market"):
         p = PANELS.get(mkt)
         if not p or not p.exists():
-            # EU/JP/KR have no persisted panel — their scans fetch live and keep
-            # nothing. That is 1,119 of the ledger's entries, i.e. most of the
-            # shortlist, invisible to tracking. --fetch-missing pulls them from
-            # yfinance; off by default because this is otherwise a pure read of
-            # local stores.
+            # Until 2026-09-16 this branch caught EU/JP/KR and the comment here
+            # said they "have no persisted panel". They do, and they are now in
+            # PANELS, so those markets take the local path above. What still
+            # lands here is a market with no partition at all (CN is held out
+            # deliberately — see PANELS for why) or a panel missing from disk.
+            # --fetch-missing pulls such rows from yfinance; off by default
+            # because this is otherwise a pure read of local stores.
             if fetch_missing:
                 got = _track_via_yf(grp, mkt, min_days)
                 rows.extend(got)
@@ -416,32 +585,36 @@ def report(min_days: int, fetch_missing: bool = False) -> int:
         panel_end = wide.index.max()
         # BENCHMARK, with a staleness check.
         #
-        # NIFTYBEES is in the IN panel but its last bar is 2026-07-13, a week
-        # behind the panel itself: it is an ETF (ISIN prefix INF) and the
-        # equity-only bhavcopy filter — added after an ETF shipped as a
-        # golden-cross pick — stopped updating it. Using it regardless yields a
-        # benchmark window of <2 bars for every recent signal, so `vs mkt` came
-        # out NaN for all 52 India entries with no explanation.
-        #
-        # Falling back to the panel's cross-sectional median is a DIFFERENT
-        # benchmark — equal-weighted market, not NIFTY 50 — so it is labelled
-        # rather than silently substituted.
+        # NIFTYBEES is in the IN panel but stops updating: it is an ETF (ISIN
+        # prefix INF) and the equity-only bhavcopy filter — added after an ETF
+        # shipped as a golden-cross pick — leaves it behind the panel. Using it
+        # regardless yields a benchmark window of <2 bars for every recent
+        # signal, so `vs mkt` came out NaN for all 52 India entries with no
+        # explanation. India therefore splices the real NIFTY 50 index onto it;
+        # see india_benchmark() for the construction and for why the panel
+        # median that used to sit here is gone.
         b = BENCH.get(mkt)
         bench, bench_name = None, None
-        if b in wide.columns:
+        if mkt == "IN":
+            try:
+                bench, bench_name = india_benchmark(wide=wide), "NIFTYBEES+NIFTY50"
+            except Exception as e:                            # noqa: BLE001
+                bench_notes.append(f"IN: {b}+NIFTY50 splice unavailable "
+                                   f"({type(e).__name__}: {str(e)[:60]}) — `vs mkt` is NaN")
+        elif b in wide.columns:
             cand = wide[b].dropna()
             if len(cand) and cand.index.max() >= panel_end - pd.Timedelta(days=3):
                 bench, bench_name = cand, b
-        if bench is None:
-            bench, bench_name = wide.median(axis=1), "panel-median (equal-wt)"
-            if b in wide.columns:
-                stale_to = wide[b].dropna().index.max()
-                bench_notes.append(
-                    f"{mkt}: {b} last bar {stale_to:%Y-%m-%d} vs panel {panel_end:%Y-%m-%d}"
-                    f" — using {bench_name}")
+        if bench is not None and bench.index.max() < panel_end - pd.Timedelta(days=3):
+            bench_notes.append(
+                f"{mkt}: {bench_name} last bar {bench.index.max():%Y-%m-%d} vs panel "
+                f"{panel_end:%Y-%m-%d} — stale, `vs mkt` is NaN rather than substituted")
+            bench, bench_name = None, None
+        if bench is None and mkt != "IN":
+            bench_notes.append(f"{mkt}: no usable benchmark ({b!r}) — `vs mkt` is NaN")
         for _, r in grp.iterrows():
-            sym = str(r["symbol"]).upper()
-            if sym not in wide.columns:
+            sym = resolve_symbol(r["symbol"], mkt, wide.columns)
+            if sym is None:
                 skipped["not_in_panel"] += 1
                 continue
             # A signal stamped today has no forward price yet. That is not a
@@ -470,8 +643,11 @@ def report(min_days: int, fetch_missing: bool = False) -> int:
                 entry, basis = float(prior.iloc[-1]), "panel-close"
 
             ret = (after.iloc[-1] / entry - 1) * 100
-            ba = bench[bench.index >= r["signal_date"]].dropna()
-            bret = ((ba.iloc[-1] / ba.iloc[0] - 1) * 100) if len(ba) > 1 else np.nan
+            bret = np.nan
+            if bench is not None:
+                ba = bench[bench.index >= r["signal_date"]].dropna()
+                if len(ba) > 1:
+                    bret = (ba.iloc[-1] / ba.iloc[0] - 1) * 100
             rows.append({**r.to_dict(), "entry_used": entry, "basis": basis,
                          "as_of": after.index[-1], "benchmark": bench_name,
                          "held_days": (after.index[-1] - pd.Timestamp(r["signal_date"])).days,
@@ -528,7 +704,8 @@ def report(min_days: int, fetch_missing: bool = False) -> int:
     out = HERE / "reports" / "signal_tracking.csv"
     out.parent.mkdir(parents=True, exist_ok=True)
     cols = ["symbol", "market", "filter", "detail", "score", "signal_date", "as_of",
-            "held_days", "entry_used", "basis", "ret_pct", "xret_pct", "provenance", "source"]
+            "held_days", "entry_used", "basis", "ret_pct", "xret_pct", "benchmark",
+            "provenance", "source"]
     r[[c for c in cols if c in r.columns]].sort_values(
         ["market", "signal_date", "ret_pct"], ascending=[True, True, False]
     ).to_csv(out, index=False)
