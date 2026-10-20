@@ -151,14 +151,23 @@ def validate(sample: int, tol: float) -> dict:
             checks.append({"symbol": sym, "status": "skip", "why": "no source answered"})
             continue
         verified += 1
-        agree = [s for s, v in answered.items() if v["verdict"] == "agree"]
-        dis = [s for s, v in answered.items() if v["verdict"] == "disagree"]
-        # Majority of the sources that ANSWERED. With a single answer that is just
-        # that answer; a tie counts as disagreement, because the gate's job is to
-        # catch bad data and a split jury is not a confirmation.
+        # A witness quoting an OLDER session than another witness for the same
+        # name is comparing against a different close — it abstains. Measured
+        # 2026-10-20: yfinance returned HDFCBANK @10-16 (2.31% off) while ours and
+        # alphavantage agreed @10-19 (0.06%); the 1-1 tie suppressed a correct
+        # send, as on 2026-09-11 (BHARTIARTL). If OUR price is the stale one, the
+        # current witness still disagrees, so the MODISONLTD case is still caught.
+        newest = max(v["date"] for v in answered.values())
+        stale = [s for s, v in answered.items() if v["date"] < newest]
+        voting = {s: v for s, v in answered.items() if s not in stale}
+        agree = [s for s, v in voting.items() if v["verdict"] == "agree"]
+        dis = [s for s, v in voting.items() if v["verdict"] == "disagree"]
+        # Majority of the CURRENT sources that answered. With a single answer that
+        # is just that answer; a tie counts as disagreement, because the gate's job
+        # is to catch bad data and a split jury is not a confirmation.
         checks.append({"symbol": sym, "status": "ok" if len(agree) > len(dis) else "MISMATCH",
-                       "ours": ours, "sources": answered,
-                       "agree": agree, "disagree": dis})
+                       "ours": ours, "sources": answered, "newest": newest,
+                       "agree": agree, "disagree": dis, "stale": stale})
 
     price_sources.record(ledger)
 
@@ -192,14 +201,21 @@ def validate(sample: int, tol: float) -> dict:
     # -gated and therefore trades daily, so one name carrying an older close is
     # stale data, not a holiday quirk. That is the MODISONLTD case — a single name
     # frozen seven weeks back while every other check passed.
+    #
+    # Judged on each name's NEWEST answer, not per source: a source that is behind
+    # on some names (yfinance, 2026-10-20: 3 names @10-16, 3 @10-19) is a lagging
+    # witness, not evidence the pick stopped trading. A name is off only when no
+    # source quotes it at the session the rest of the sample reached.
     off, stale_feed = [], []
+    dated = [c for c in checks if "newest" in c]
+    if len(dated) >= 2:
+        session = max(c["newest"] for c in dated)
+        off = [f"{c['symbol']}@{c['newest']}" for c in dated if c["newest"] != session]
     for src in price_sources.SOURCES:
         ds = [c["sources"][src]["date"] for c in checks if src in c.get("sources", {})]
         if len(ds) < 2:
             continue
         common = max(set(ds), key=ds.count)
-        off += [f"{c['symbol']}@{src}" for c in checks
-                if src in c.get("sources", {}) and c["sources"][src]["date"] != common]
         # A source whose whole feed is frozen agrees with itself perfectly, so the
         # per-name check above cannot see it. Lag is normal (yfinance is routinely
         # a day behind); a week is not.
@@ -232,8 +248,8 @@ def validate(sample: int, tol: float) -> dict:
                           for c in bad)
         reason = f"{len(bad)} price mismatch(es) beyond {tol}%: {names}"
     elif off:
-        reason = (f"close dates disagree within a source — {off}. These names are "
-                  f"liquidity-gated so they trade every day; an older close means "
+        reason = (f"no source quotes these names at the latest session — {off}. They "
+                  f"are liquidity-gated so they trade every day; an older close means "
                   f"stale data, not a quirk.")
     elif stale_feed:
         reason = f"source feed frozen — {'; '.join(stale_feed)}"
@@ -297,6 +313,7 @@ def main() -> int:
         # (1431.800048828125), which are noise here and make the line unreadable.
         detail = " · ".join(
             f"{s} {v['price']:.2f} ({v['diff_pct']}%) @{v['date']}"
+            + (" [older session, not voting]" if s in c.get("stale", ()) else "")
             for s, v in c["sources"].items())
         print(f"    {'ok' if c['status'] == 'ok' else '!!'} {c['symbol']:12s} "
               f"ours={c['ours']:<10} {detail}")
