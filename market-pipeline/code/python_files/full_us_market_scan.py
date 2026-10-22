@@ -411,7 +411,19 @@ def bulk_download_ohlc(tickers: list[str], period: str = "1y") -> dict[str, pd.D
       Subsequent runs: ~4 min (disk Parquet) | <1s (memory within session)
     """
     if _CACHE_OK:
-        return _US_CACHE.get_ohlc_bulk(tickers, force=False)
+        ohlc = _US_CACHE.get_ohlc_bulk(tickers, force=False)
+        # 🔴 yfinance can publish the newest session with Close=NaN for every name
+        # (2026-10-21), which the cache silently drops. Fill from Nasdaq and write
+        # the bar back so later steps (combined report, reconcile) see it too.
+        try:
+            import us_close_fallback as _fb
+            for t, df in _fb.patch_frames(ohlc).items():
+                path = _US_CACHE._ohlc_path(t)
+                _US_CACHE._write_parquet(path, df)
+                _US_CACHE._update_meta(f"ohlc:{t}", path, df)
+        except Exception as e:
+            print(f"  ⚠️  Nasdaq session fallback failed ({e}); panel may be a session behind")
+        return ohlc
 
     # Fallback: direct yfinance (no cache)
     result: dict[str, pd.DataFrame] = {}

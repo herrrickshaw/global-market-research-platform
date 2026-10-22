@@ -173,8 +173,13 @@ def refresh(market: str, backfill_days: int = 0) -> None:
         print(f"  {market}: {len(syms)} symbols, panel ends {dmax.date()}, "
               f"BACKFILL re-fetching {start} -> today")
     else:
-        cutoff = dmax
-        start = (dmax + pd.Timedelta(days=1)).strftime("%Y-%m-%d")
+        # 🔴 2026-10-22: this was `cutoff = dmax`. A partial earlier write (1,846
+        # symbols on 21 Oct) made dmax=21 Oct while the median was still 20 Oct, so
+        # the fetch window started 22 Oct and the ~8,000 symbols missing 21 Oct were
+        # never re-requested. Anchor on the median — the same yardstick as the
+        # freshness check below; the merge dedups rows we already hold.
+        cutoff = min(dmax, dmedian)
+        start = (cutoff + pd.Timedelta(days=1)).strftime("%Y-%m-%d")
         print(
             f"  {market}: {len(syms)} symbols, panel ends {dmax.date()}, "
             f"fetching {start} -> today"
@@ -230,6 +235,31 @@ def refresh(market: str, backfill_days: int = 0) -> None:
             frames.append(sub)
         if (i // BATCH) % 10 == 0:
             print(f"    …batch {i // BATCH + 1}/{(len(syms) - 1) // BATCH + 1}")
+
+    # 🔴 2026-10-22: yfinance served the 21 Oct US session as Close=NaN for every
+    # name, so the panel stayed a session behind however often this was retried.
+    # Fill the gap from Nasdaq (guarded against splits) — see us_close_fallback.py.
+    if market == "US":
+        try:
+            import us_close_fallback as _fb
+            target = _fb.expected_us_session()
+            have = {f["Symbol"].iat[0]: f["Date"].max() for f in frames}
+            last = con.execute(
+                f"SELECT Symbol, max(Date), arg_max(Close, Date) FROM read_parquet('{src}') GROUP BY 1"
+            ).fetchall()
+            ref = {}
+            for s_, d_, c_ in last:
+                d_ = pd.Timestamp(d_)
+                if s_ in have and pd.Timestamp(have[s_]) >= pd.Timestamp(target):
+                    continue
+                ref[s_] = (d_.date(), float(c_))
+            rows = [dict(Date=pd.Timestamp(target), Symbol=s_, Open=b[0], High=b[1],
+                         Low=b[2], Close=b[3], Volume=b[4])
+                    for s_, b in _fb.fetch_missing(ref, target).items()]
+            if rows:
+                frames.append(pd.DataFrame(rows))
+        except Exception as e:
+            print(f"  {market}: ⚠ Nasdaq session fallback failed ({e})")
 
     if not frames:
         print(f"  {market}: nothing fetched")
