@@ -12,6 +12,9 @@ import os
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
+# The bms package is not part of this repository; skip instead of breaking collection.
+pytest.importorskip("bms")
+
 from bms.config import CellConfig, PackConfig, EKFConfig, OCV_SOC_TABLE
 from bms.cell_model import CellModel, ocv_from_soc, docv_dsoc
 from bms.soc_estimator import EKFSOCEstimator
