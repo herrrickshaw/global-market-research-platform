@@ -68,7 +68,9 @@ def _r(v) -> float | None:
 
 
 def _b(v) -> bool | None:
-    if v is None:
+    # Unevaluated criteria are NaN (not None) in an object Series under pandas>=3,
+    # and bool(nan) is True — so test for missing first.
+    if v is None or (isinstance(v, float) and math.isnan(v)):
         return None
     try:
         return bool(v)
@@ -109,10 +111,6 @@ def scan_darvas(df: pd.DataFrame, lazy_load: bool = True) -> list[dict]:
         # Skip expensive metrics in daily phase — reduces token load by ~2-3%
         e20    = pd.Series(np.nan, index=d.index)  # Not used in core Darvas
         e200   = pd.Series(np.nan, index=d.index)  # Only for confirmation
-        roe    = pd.Series(np.nan, index=d.index)  # Buffett filter
-        pe     = pd.Series(np.nan, index=d.index)  # Buffett filter
-        pb     = pd.Series(np.nan, index=d.index)  # Buffett filter
-        de     = pd.Series(np.nan, index=d.index)  # Buffett filter
         macd   = pd.Series(np.nan, index=d.index)  # Optional momentum
         msig   = pd.Series(np.nan, index=d.index)  # Optional momentum
         bb_pct = pd.Series(np.nan, index=d.index)  # Optional support/resist
@@ -129,10 +127,6 @@ def scan_darvas(df: pd.DataFrame, lazy_load: bool = True) -> list[dict]:
         # Full load (for detailed analysis, backtesting, etc.)
         e20    = _col(d, 'ema_20')
         e200   = _col(d, 'ema_200')
-        roe    = _col(d, 'roe')
-        pe     = _col(d, 'pe')
-        pb     = _col(d, 'pb')
-        de     = _col(d, 'debt_to_equity')
         macd   = _col(d, 'macd')
         msig   = _col(d, 'macd_signal')
         vr     = _col(d, 'volume_ratio')
@@ -145,7 +139,12 @@ def scan_darvas(df: pd.DataFrame, lazy_load: bool = True) -> list[dict]:
         std    = _col(d, 'stoch_d')
         atr    = _col(d, 'atr_14')
 
-    # Non-optional metrics (always needed)
+    # Non-optional metrics (always needed). The Buffett fundamentals are plain column
+    # reads, not expensive indicators: they must be scored whenever present (D5-D7).
+    roe    = _col(d, 'roe')
+    pe     = _col(d, 'pe')
+    pb     = _col(d, 'pb')
+    de     = _col(d, 'debt_to_equity')
     opm    = _col(d, 'opm')
     mcap   = _col(d, 'market_cap')
     vol    = _col(d, 'volume')
