@@ -36,7 +36,10 @@ import data_registry as _R
 CACHE = Path(os.environ.get("BHAV_CACHE", _R.BHAV_CACHE))
 STORE = CACHE / "ohlcv.lmdb"
 CLEANED = CACHE / "cleaned_long.parquet"
-_MAP_SIZE = 512 * 1024 * 1024          # 512 MB virtual cap (sparse; grows as used)
+# 4 GB virtual cap (sparse; the file only grows as used). 512 MB overflowed on
+# 2026-10-26 once all 20 markets' seeds (~9.6M rows) were ingested together:
+# MDB_MAP_FULL on TW/UK/ZA, and the store came out EMPTY (see build()).
+_MAP_SIZE = 4 * 1024 * 1024 * 1024
 _META_KEY = b"__meta__"
 
 
@@ -92,13 +95,17 @@ def build(hist: Optional[Dict[str, pd.DataFrame]] = None, verbose: bool = True) 
             print(f"  ingesting {len(seeds)} market seed(s): "
                   f"{', '.join(s.name for s in seeds)}")
 
-    # fresh rebuild: remove any prior store so deleted pages aren't carried as
-    # free space (LMDB does not shrink its file in place).
+    # fresh rebuild into a SIDE directory, swapped in only once complete. The
+    # old code rmtree'd the live store first, so any failure mid-write (e.g.
+    # MDB_MAP_FULL, 2026-10-26) left readers an EMPTY store: every India name
+    # in the mailer read "not in cache". A failed build now leaves the previous
+    # store untouched. (A fresh directory also avoids carrying deleted pages as
+    # free space — LMDB does not shrink its file in place.)
     import shutil
-    if STORE.exists():
-        shutil.rmtree(STORE, ignore_errors=True)
+    tmp = STORE.with_name(STORE.name + ".building")
+    shutil.rmtree(tmp, ignore_errors=True)
 
-    env = lmdb.open(str(STORE), map_size=_MAP_SIZE, subdir=True)
+    env = lmdb.open(str(tmp), map_size=_MAP_SIZE, subdir=True)
     n = 0
     with env.begin(write=True) as txn:
         maxd = None
@@ -111,6 +118,12 @@ def build(hist: Optional[Dict[str, pd.DataFrame]] = None, verbose: bool = True) 
             maxd = last if maxd is None or last > maxd else maxd
         txn.put(_META_KEY, f"{n}|{maxd}".encode())
     env.sync(); env.close()
+    old = STORE.with_name(STORE.name + ".old")
+    shutil.rmtree(old, ignore_errors=True)
+    if STORE.exists():
+        STORE.rename(old)
+    tmp.rename(STORE)
+    shutil.rmtree(old, ignore_errors=True)
     if verbose:
         size = sum(f.stat().st_size for f in STORE.glob("*"))
         print(f"  LMDB store built: {n} symbols, {size/1e6:.1f} MB → {STORE.name} "

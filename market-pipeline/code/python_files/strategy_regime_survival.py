@@ -23,6 +23,9 @@
 #   mom_st       BUY 1-month return top tercile / SELL bottom     (short momentum)
 #   golden_cross BUY EMA10>EMA40 (50>200DMA proxy) / SELL below   (your GC filter)
 #   breakout     BUY within 5% of 52w high / SELL >20% below      (Darvas proxy)
+#   hi52         BUY top tercile of close/52w-high / SELL bottom  (cross-sectional
+#                52-week-high momentum, George & Hwang 2004)
+#   lowvol       BUY lowest-vol tercile (13w) / SELL highest      (low-risk anomaly)
 # Fundamental filters (piotroski/ccc/roce/value) need PIT fundamentals, not price —
 # those are covered by backtest_piotroski_plus.py / backtest_pe_anomalies.py.
 #
@@ -140,6 +143,8 @@ def signals(w: pd.DataFrame) -> dict:
         "mom_st": terc(r21),
         "golden_cross": (ema10w > ema40w).astype(int) - (ema10w <= ema40w).astype(int),
         "breakout": (off_high >= -0.05).astype(int) - (off_high <= -0.20).astype(int),
+        "hi52": terc(off_high),
+        "lowvol": terc(-w.pct_change(fill_method=None).rolling(13, min_periods=10).std()),
     }
 
 
@@ -237,6 +242,26 @@ def refresh_regime() -> int:
     return 0
 
 
+# Rule pins override the max-excess pick above. max-excess ranks raw mean
+# excess with no significance test, and on 2026-10-26 the desk-grade re-test
+# (global-market-scanners/signal_research.py: weekly rank IC, Newey-West t,
+# BH-FDR over 240 tests, regime-split, net of costs) found it had picked:
+#   KR bull = trend : 10d IC -0.022 (t -2.6) in bull weeks -> WRONG-WAY
+#   IN bull = trend : 10d IC +0.008 (t 1.0)  -> noise
+# while 52-week-high momentum was the strongest long-only signal in both
+# bull regimes (IN IC 0.047 t 4.3; KR 0.054 t 5.7; long-only net of costs
+# +2.1%/yr IN, +4.5%/yr KR at 21d). lowvol has the larger KR IC (0.111) but
+# ~0%/yr long-only after costs, and the mailer only acts on BUYs, so hi52.
+# Re-check pins whenever SIGNAL_RESEARCH_RESULTS.md is regenerated.
+PIN_EVIDENCE = "global-market-scanners SIGNAL_RESEARCH 2026-10-26"
+RULE_PINS = {"IN": {"bull": "hi52"}, "KR": {"bull": "hi52"}}
+
+
+def _excess(m: pd.DataFrame, regime: str, rule: str):
+    row = m[(m.regime == regime) & (m.strategy == rule)].dropna(subset=["excess_pct"])
+    return round(float(row.excess_pct.iloc[0]), 3) if len(row) else None
+
+
 def main() -> int:
     if "--refresh-regime" in sys.argv:
         return refresh_regime()
@@ -246,7 +271,8 @@ def main() -> int:
     zp = HERE / "cache_seed" / "zone_rules.json"
     if zp.exists():
         zone = json.loads(zp.read_text())
-    rules = ["trend", "revert", "mom126", "mom_st", "golden_cross", "breakout"]
+    rules = ["trend", "revert", "mom126", "mom_st", "golden_cross", "breakout",
+             "hi52", "lowvol"]
     recs, verdict, cur_regime, regime_asof = [], {}, {}, {}
     for mkt in MARKETS:
         try:
@@ -291,22 +317,35 @@ def main() -> int:
     # (trend/revert/mom126/mom_st — breakout/golden_cross need per-name state the
     # digest doesn't carry). current_regime = this market's latest breadth reading;
     # the digest applies bull_rule when currently bull, bear_rule when bear.
-    SUPPORTED = ["trend", "revert", "mom126", "mom_st"]
+    # hi52/lowvol are applicable by the digest but enter ONLY via RULE_PINS:
+    # max-excess has no significance test, and letting it pick among more
+    # candidates silently swapped rules nobody had re-validated (KR bear
+    # revert -> lowvol on the first run, 2026-10-26).
+    SUPPORTED = ["trend", "revert", "mom126", "mom_st", "hi52", "lowvol"]
+    AUTO_PICK = ["trend", "revert", "mom126", "mom_st"]
     zone_regime = {}
     for mkt in MARKETS:
         m = df[(df.market == mkt) & (df.strategy.isin(SUPPORTED))]
         if m.empty:
             continue
         def best(regime):
-            sub = m[m.regime == regime].dropna(subset=["excess_pct"])
+            sub = m[(m.regime == regime) & (m.strategy.isin(AUTO_PICK))].dropna(subset=["excess_pct"])
             sub = sub[sub.excess_pct > 0]
             if sub.empty:                       # nothing beats the index -> hold trend
                 return "trend", None
             row = sub.loc[sub.excess_pct.idxmax()]
             return row.strategy, round(float(row.excess_pct), 3)
         br, bx = best("bull"); er, ex = best("bear")
-        zone_regime[mkt] = {"bull_rule": br, "bull_excess": bx,
-                            "bear_rule": er, "bear_excess": ex,
+        pin = RULE_PINS.get(mkt, {})
+        bsrc = esrc = "max-excess"
+        if "bull" in pin:
+            br, bsrc = pin["bull"], f"pinned: {PIN_EVIDENCE}"
+            bx = _excess(m, "bull", br)
+        if "bear" in pin:
+            er, esrc = pin["bear"], f"pinned: {PIN_EVIDENCE}"
+            ex = _excess(m, "bear", er)
+        zone_regime[mkt] = {"bull_rule": br, "bull_excess": bx, "bull_source": bsrc,
+                            "bear_rule": er, "bear_excess": ex, "bear_source": esrc,
                             "current_regime": cur_regime.get(mkt, "bull"),
                             "active_rule": br if cur_regime.get(mkt) == "bull" else er,
                             "asof": regime_asof.get(mkt, "")}
@@ -336,7 +375,7 @@ def main() -> int:
               f"survives both: **{'YES' if v.get('survives_both') else 'NO'}**", "",
               "| strategy | regime | spread% (t) | book% | index% | excess% |",
               "|---|---|---|---|---|---|"]
-        for r in ["trend","revert","mom126","mom_st","golden_cross","breakout"]:
+        for r in ["trend","revert","mom126","mom_st","golden_cross","breakout","hi52","lowvol"]:
             for g in ("bull","bear"):
                 row = m[(m.strategy==r)&(m.regime==g)]
                 if row.empty: continue

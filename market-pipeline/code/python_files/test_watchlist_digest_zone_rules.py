@@ -103,6 +103,62 @@ def test_missing_horizon_field_excludes_name_not_crash():
     print("  test_missing_horizon_field_excludes_name_not_crash: PASS")
 
 
+def _rank_under(rule, rows, mkt="US"):
+    orig_rules, orig_regime = WD._zone_rules, WD._zone_regime
+    WD._zone_rules = lambda: {}
+    WD._zone_regime = lambda: {mkt: {"active_rule": rule, "current_regime": "bull"}}
+    try:
+        WD.assign_recommendations(rows)
+    finally:
+        WD._zone_rules, WD._zone_regime = orig_rules, orig_regime
+    return {r["symbol"]: r for r in rows}
+
+
+def test_hi52_buys_names_nearest_their_high():
+    rows = [dict(_row(s), market="KR", hi52=v) for s, v in
+            [("AT_HIGH", 0.0), ("NEAR", -3.0), ("MID1", -15.0), ("MID2", -18.0),
+             ("FAR", -40.0), ("FAREST", -55.0)]]
+    by = _rank_under("hi52", rows, "KR")
+    assert by["AT_HIGH"]["rec"] == "BUY" and by["FAREST"]["rec"] == "SELL", \
+        {k: v["rec"] for k, v in by.items()}
+    assert by["AT_HIGH"]["rec_rule"] == "hi52"
+    print("  test_hi52_buys_names_nearest_their_high: PASS")
+
+
+def test_lowvol_buys_calmest_names():
+    rows = [dict(_row(s), lowvol=v) for s, v in
+            [("CALM", -0.8), ("CALM2", -1.0), ("M1", -2.0), ("M2", -2.2),
+             ("WILD", -5.0), ("WILD2", -6.0)]]
+    by = _rank_under("lowvol", rows)
+    assert by["CALM"]["rec"] == "BUY" and by["WILD2"]["rec"] == "SELL", \
+        {k: v["rec"] for k, v in by.items()}
+    print("  test_lowvol_buys_calmest_names: PASS")
+
+
+def test_health_notes_flags_flipped_and_decaying_not_healthy():
+    health = {
+        "KR": {"asof": "2026-10-23", "signals": {"rev5": {"status": "FLIPPED", "recent_ic": -0.04}}},
+        "IN": {"asof": "2026-10-23", "signals": {"hi52": {"status": "DECAYING", "recent_ic": 0.01}}},
+        "US": {"asof": "2026-10-23", "signals": {"mom126": {"status": "HEALTHY", "recent_ic": 0.03}}},
+    }
+    notes = WD.health_notes({"KR": "revert", "IN": "hi52", "US": "mom126"}, health,
+                            today="2026-10-26")
+    text = " ".join(notes)
+    assert "FLIPPED" in text and "-0.040" in text, text
+    assert "DECAYING" in text
+    assert "6mo-momentum" not in text, "a HEALTHY rule must not be flagged"
+    assert "over 45 days old" not in text
+    print("  test_health_notes_flags_flipped_and_decaying_not_healthy: PASS")
+
+
+def test_health_notes_reports_stale_file_and_tolerates_missing():
+    health = {"JP": {"asof": "2026-07-01", "signals": {}}}
+    notes = WD.health_notes({"JP": "mom126", "EU": "revert"}, health, today="2026-10-26")
+    assert len(notes) == 1 and "JP" in notes[0] and "over 45 days old" in notes[0], notes
+    assert WD.health_notes({"US": "trend"}, {}) == []
+    print("  test_health_notes_reports_stale_file_and_tolerates_missing: PASS")
+
+
 if __name__ == "__main__":
     tests = [v for k, v in list(globals().items()) if k.startswith("test_")]
     for t in tests:

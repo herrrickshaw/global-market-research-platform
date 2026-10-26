@@ -57,6 +57,7 @@
 from __future__ import annotations
 
 import argparse
+import os
 import re
 import sys
 from pathlib import Path
@@ -161,6 +162,31 @@ def _pct_change(df: pd.DataFrame, bars: int = 1) -> Optional[float]:
         if len(c) < bars + 1:
             return None
         return float((c.iloc[-1] / c.iloc[-1 - bars] - 1.0) * 100.0)
+    except Exception:
+        return None
+
+
+def _off_high52(df: pd.DataFrame) -> Optional[float]:
+    """Close vs the 252-bar high, in % (0 = at the high, -20 = 20% below).
+    Feeds the cross-sectional `hi52` rule. None with < 200 bars of history."""
+    try:
+        c = pd.to_numeric(df["Close"], errors="coerce").dropna()
+        h = pd.to_numeric(df["High"], errors="coerce").dropna() if "High" in df.columns else c
+        if len(c) < 200:
+            return None
+        return float((c.iloc[-1] / h.iloc[-252:].max() - 1.0) * 100.0)
+    except Exception:
+        return None
+
+
+def _neg_vol63(df: pd.DataFrame) -> Optional[float]:
+    """Minus the 63-bar daily-return volatility, in % (higher = calmer).
+    Feeds the cross-sectional `lowvol` rule. None with < 50 returns."""
+    try:
+        r = pd.to_numeric(df["Close"], errors="coerce").dropna().pct_change().dropna()
+        if len(r) < 50:
+            return None
+        return float(-r.iloc[-63:].std() * 100.0)
     except Exception:
         return None
 
@@ -632,7 +658,72 @@ def _zone_regime() -> dict:
 
 
 RULE_LABEL = {"trend": "trend", "revert": "mean-revert",
-              "mom126": "6mo-momentum", "mom_st": "1mo-momentum"}
+              "mom126": "6mo-momentum", "mom_st": "1mo-momentum",
+              "hi52": "52w-high momentum", "lowvol": "low-volatility"}
+
+# row field each cross-sectional rule ranks on (top third = BUY, except revert)
+RULE_FIELD = {"revert": "d5", "mom_st": "d21", "mom126": "d126",
+              "hi52": "hi52", "lowvol": "lowvol"}
+
+
+# Live health of each rule's signal, from global-market-scanners'
+# signal_research.py: trailing-52-week rank IC vs the full 10y history, per
+# market x signal -> HEALTHY / DECAYING / FLIPPED / NOISE. A FLIPPED rule is
+# currently predicting in REVERSE, so its BUY/SELL calls should not be trusted
+# until the rule is re-picked. Path overridable via $SIGNAL_HEALTH.
+RULE_SIGNAL = {"revert": "rev5", "mom_st": "mom21", "mom126": "mom126",
+               "trend": "trend", "hi52": "hi52", "lowvol": "lowvol"}
+HEALTH_STALE_DAYS = 45
+_SIGNAL_HEALTH: Optional[dict] = None
+
+
+def _signal_health() -> dict:
+    global _SIGNAL_HEALTH
+    if _SIGNAL_HEALTH is None:
+        import json
+        p = Path(os.environ.get("SIGNAL_HEALTH", Path.home() / "repos" / "global-market-scanners"
+                               / "reports" / "signal_research" / "signal_health.json"))
+        try:
+            _SIGNAL_HEALTH = json.loads(p.read_text())
+        except Exception:
+            _SIGNAL_HEALTH = {}
+    return _SIGNAL_HEALTH
+
+
+def health_notes(rules_used: dict, health: dict, today=None) -> list:
+    """HTML warning lines for markets whose active rule's signal is FLIPPED
+    (red) or DECAYING (amber), plus one line if the health file is stale.
+    Pure: takes the {market: rule} map and the parsed health JSON."""
+    today = pd.Timestamp(today or pd.Timestamp.today()).normalize()
+    out, stale = [], []
+    for mkt, rule in sorted(rules_used.items()):
+        h = health.get(mkt)
+        sig = RULE_SIGNAL.get(rule)
+        if not h or not sig:
+            continue
+        st = h.get("signals", {}).get(sig, {})
+        status, ic = st.get("status"), st.get("recent_ic")
+        ic_txt = f" (last-52w IC {ic:+.3f})" if isinstance(ic, (int, float)) else ""
+        if status == "FLIPPED":
+            out.append(f'<p style="font-size:11px;color:#ca3433;margin:2px 0 0">'
+                       f'⚠️ {FLAG.get(mkt, mkt)} {RULE_LABEL.get(rule, rule)} rule is FLIPPED'
+                       f'{ic_txt}: it currently predicts in reverse — treat its '
+                       f'Buy/Sell calls as unreliable until the rule is re-picked.</p>')
+        elif status == "DECAYING":
+            out.append(f'<p style="font-size:11px;color:#b9770e;margin:2px 0 0">'
+                       f'{FLAG.get(mkt, mkt)} {RULE_LABEL.get(rule, rule)} rule is DECAYING'
+                       f'{ic_txt}: under half its long-run strength over the last '
+                       f'year — weigh its calls lightly.</p>')
+        try:
+            if (today - pd.Timestamp(h.get("asof"))).days > HEALTH_STALE_DAYS:
+                stale.append(mkt)
+        except Exception:
+            pass
+    if stale:
+        out.append(f'<p style="font-size:11px;color:#8aa0ae;margin:2px 0 0">Signal health '
+                   f'for {", ".join(stale)} is over {HEALTH_STALE_DAYS} days old — rerun '
+                   f'global-market-scanners/signal_research.py.</p>')
+    return out
 
 
 def assign_recommendations(rows: list) -> None:
@@ -669,7 +760,7 @@ def assign_recommendations(rows: list) -> None:
         # bug_check.py) as the exact loss-making MIRROR of the intended
         # signal in every market (e.g. US mom126: t-2.06 wrong-direction vs
         # t+2.15 for the real 126-day momentum this rule is supposed to be).
-        key = {"revert": "d5", "mom_st": "d21", "mom126": "d126"}.get(rule, "d5")
+        key = RULE_FIELD.get(rule, "d5")
         vals = [(r, r.get(key)) for r in grp if r.get(key) is not None]
         if len(vals) < 6:
             continue
@@ -878,6 +969,7 @@ def build_rows(watchlist: pd.DataFrame, frames_out: Optional[dict] = None) -> li
             # complete while quietly omitting exactly what you asked about.
             rows.append({"symbol": sym, "market": mkt, "mark": "❔", "d1": None,
                          "d5": None, "d21": None, "d126": None, "close": None, "last": None,
+                         "hi52": None, "lowvol": None,
                          "note": note, "status": status, "missing": True,
                          "liq": "?", "below_floor": False,
                          "why": why_listed(status, note),
@@ -918,6 +1010,7 @@ def build_rows(watchlist: pd.DataFrame, frames_out: Optional[dict] = None) -> li
         rows.append({"symbol": sym, "market": mkt, "mark": classify(d1), "d1": d1,
                      "d5": _pct_change(df, 5), "d21": _pct_change(df, 21),
                      "d126": _pct_change(df, 126), "close": last_close,
+                     "hi52": _off_high52(df), "lowvol": _neg_vol63(df),
                      "last": last_date, "note": note, "status": status,
                      "missing": False, "liq": liq, "below_floor": below,
                      "turn_usd": turn,
@@ -1219,6 +1312,7 @@ def render(rows: list, as_of: str, purged: Optional[list] = None,
             '<a href="#" style="color:#5f6368">zone_rules_by_market.md</a>): '
             + " · ".join(f'{FLAG.get(m, m)} {RULE_LABEL.get(rl, rl)}'
                          for m, rl in sorted(rules_used.items())) + '</p>')
+        body.extend(health_notes(rules_used, _signal_health()))
     # moneycontrol-style filter chip row
     chips = []
     for key, title in CATEGORIES:
