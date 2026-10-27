@@ -115,14 +115,23 @@ NOTES=()
   # full_european_market_scan.py): it had no CLI override, the only one of the
   # three that could not be dialed down for this.
   step "[R1-R3] parallel market scans (Europe · Japan · Korea)"
-  $PY full_european_market_scan.py --universe data/europe_broad_list.csv \
-    --label broad --workers 4 &
-  PID_EU=$!
+  # ensure_fresh (06:30, inside daily_mailer.sh --send) builds today's broad
+  # Europe workbook with this exact invocation whenever the EU cache is behind,
+  # minutes before this chain starts. Measured 2026-10-27: both ran, 06:33 and
+  # 06:37, same universe, same session. Reuse it; scan only if it is missing.
+  if ls european_scan/european_market_scan_broad_"$(date +%Y%m%d)"_*.xlsx >/dev/null 2>&1; then
+    echo "  Europe: today's broad workbook already built by ensure_fresh — skipping the scan"
+    PID_EU=""
+  else
+    $PY full_european_market_scan.py --universe data/europe_broad_list.csv \
+      --label broad --workers 4 &
+    PID_EU=$!
+  fi
   $PY full_japan_market_scan.py --workers 3 &
   PID_JP=$!
   $PY full_korea_market_scan.py --workers 3 &
   PID_KR=$!
-  wait $PID_EU || NOTES+=("Europe: full market scan")
+  if [ -n "$PID_EU" ]; then wait $PID_EU || NOTES+=("Europe: full market scan"); fi
   wait $PID_JP || NOTES+=("Japan: full market scan")
   wait $PID_KR || NOTES+=("Korea: full market scan")
 

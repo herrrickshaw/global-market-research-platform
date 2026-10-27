@@ -178,6 +178,20 @@ class TestSendGates:
         assert any(x.startswith("price_gate.py") for x in calls(sandbox))
 
 
+class TestStepOrder:
+    def test_watchlist_repair_runs_once_after_the_screens(self, sandbox):
+        # 2026-10-27: the pre-screen repair was dropped; the post-screen pass is
+        # the one that decides what watchlist_tiers syncs.
+        run(sandbox, "--send", "--draft")
+        c = calls(sandbox)
+        repairs = [i for i, x in enumerate(c) if x == "watchlist_repair.py"]
+        assert len(repairs) == 1, repairs
+        screens = [i for i, x in enumerate(c)
+                   if x.split()[0] in ("screen_value_rerating.py", "playbook_screener.py",
+                                       "smallcap_screener.py")]
+        assert len(screens) == 3 and max(screens) < repairs[0] < c.index("prediction_filter.py")
+
+
 class TestChain:
     def test_draft_never_chains_research(self, sandbox):
         r = run(sandbox, "--send", "--draft", timeout=120)

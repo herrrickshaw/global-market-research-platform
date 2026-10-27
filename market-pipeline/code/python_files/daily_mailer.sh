@@ -450,29 +450,23 @@ FAILURES=()
 
   if [ "$RUN_SEND" = "1" ]; then
 
-  # ── 4. watchlist + screens ─────────────────────────────────────────────────
-  step "[9/13] watchlist repair (renames/delists/ETFs + coverage gate)"
-  cap $CAP_WATCHLIST "[9/13] watchlist repair" \
-    $PY watchlist_repair.py || FAILURES+=("watchlist: repair")
-
-  step "[10/13] screens (value re-rating · playbook · small-cap)"
-  cap $CAP_SCREENS "[10/13] value re-rating screen" \
+  # ── 4. screens, then watchlist repair ──────────────────────────────────────
+  step "[9/13] screens (value re-rating · playbook · small-cap)"
+  cap $CAP_SCREENS "[9/13] value re-rating screen" \
     $PY screen_value_rerating.py || FAILURES+=("screen: value re-rating")
-  cap $CAP_SCREENS "[10/13] playbook screen" \
+  cap $CAP_SCREENS "[9/13] playbook screen" \
     $PY playbook_screener.py     || FAILURES+=("screen: playbook")
-  cap $CAP_SCREENS "[10/13] small-cap screen" \
+  cap $CAP_SCREENS "[9/13] small-cap screen" \
     $PY smallcap_screener.py --screen || FAILURES+=("screen: small-cap")
 
-  # 🔴 RE-GATE AFTER THE SCREENS, NOT JUST BEFORE THEM. The coverage gate at
-  # [9/13] runs before these screens can add rows, so a screen matching a stale
-  # JP/KR/EU scan file (left on disk by daily_research.sh) re-introduces parked
-  # rows into watchlist.csv within the same run — 31 of them reappeared this way
-  # between one morning's cleanup and the next. send_mailer's point-of-send
-  # filter already keeps them out of the actual email, so this was never a brief
-  # correctness bug, but the FILE re-accumulated daily and fed straight into
-  # watchlist_tiers' SYNC below. Cheap (idempotent, ~seconds) to just run again.
-  cap $CAP_WATCHLIST "[10/13] watchlist re-gate" \
-    $PY watchlist_repair.py || FAILURES+=("watchlist: re-gate after screens")
+  # Repair runs AFTER the screens, once. It used to run before them too, but
+  # the screens add rows (a screen matching a stale JP/KR/EU scan file left on
+  # disk by daily_research.sh re-introduced 31 parked rows in one run), so the
+  # post-screen pass is the one that decides what watchlist_tiers syncs below;
+  # the pre-screen pass only ever repaired rows this pass repairs again.
+  step "[10/13] watchlist repair (renames/delists/ETFs + coverage gate)"
+  cap $CAP_WATCHLIST "[10/13] watchlist repair" \
+    $PY watchlist_repair.py || FAILURES+=("watchlist: repair")
 
   step "[11/13] prediction filter -> tiers -> re-entry ranking"
   cap $CAP_PREDICT "[11/13] prediction filter" \

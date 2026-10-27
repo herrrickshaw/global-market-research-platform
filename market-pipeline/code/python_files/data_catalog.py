@@ -562,7 +562,11 @@ SCAN_REFRESH = {
     "US": "full_us_market_scan.py --workers 10 --min-price 2",
     "JP": "full_japan_market_scan.py --workers 3",
     "KR": "full_korea_market_scan.py --workers 3",
-    "EU": "full_european_market_scan.py --universe data/europe_broad_list.csv",
+    # Same invocation as daily_research.sh [R1], label included: signal_tracker
+    # reads european_market_scan_broad_*.xlsx, and research skips its own scan
+    # when today's broad workbook already exists — so this refresh must produce
+    # that file, not an unlabelled twin built four minutes earlier.
+    "EU": "full_european_market_scan.py --universe data/europe_broad_list.csv --label broad --workers 4",
 }
 
 # Price-store refreshers. India comes from the official bhavcopy; every other
