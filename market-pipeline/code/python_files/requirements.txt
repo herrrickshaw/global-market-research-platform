@@ -19,6 +19,9 @@ lmdb>=1.4
 xlrd>=2.0            # read Damodaran .xls industry datasets
 openpyxl>=3.1        # read/write .xlsx scan outputs
 
+# agents
+anthropic>=2.3       # agents/pipeline_triage (advisory triage; not on the send path)
+
 # market data sources
 yfinance>=0.2.40     # global OHLC (with stooq fallback in data_sources.py)
 nsepython>=2.9       # NSE live + holiday calendar
