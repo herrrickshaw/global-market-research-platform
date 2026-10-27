@@ -87,8 +87,11 @@ jobs:
       - name: Install the checked dependencies
         run: |
           python -m pip install --quiet --upgrade pip
+          # pyarrow: two checks (edgar second-writer, ccc NaN) round-trip a
+          # parquet file; pandas needs an engine for that or they crash with
+          # ImportError rather than asserting anything (red on 2026-10-27).
           python -m pip install --quiet \
-            pandas duckdb yfinance exchange_calendars tenacity filelock requests
+            pandas pyarrow duckdb yfinance exchange_calendars tenacity filelock requests
       # EXPECT ONE SKIP. refresh_panels resolves the warehouse path at import and
       # raises by design when it is absent (no silent fallback to a stale repo
       # copy), so its bar-validation check cannot run on a runner with no data.
