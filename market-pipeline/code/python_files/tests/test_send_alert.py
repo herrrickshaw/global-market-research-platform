@@ -15,14 +15,13 @@ import send_alert as sa
 
 @pytest.fixture
 def state_file(monkeypatch, tmp_path):
-    """Redirect the module's state lookup to a temp file we control."""
-    fake_mod = tmp_path / "send_alert.py"
-    fake_mod.write_text("")
-    monkeypatch.setattr(sa, "__file__", str(fake_mod))
-    (tmp_path / "state").mkdir()
+    """Point brief_state (the file's owner) at a temp record we control."""
+    import brief_state
     p = tmp_path / "state" / "last_brief_sent.json"
+    monkeypatch.setattr(brief_state, "STATE_FILE", p)
 
     def write(sent_at: dt.datetime, subject="Daily Market Brief"):
+        p.parent.mkdir(exist_ok=True)
         p.write_text(json.dumps({"sent_at": sent_at.isoformat(timespec="seconds"),
                                  "subject": subject, "to": "x@example.com", "pid": 1}))
         return p
@@ -32,7 +31,8 @@ def state_file(monkeypatch, tmp_path):
 
 class TestBriefActuallySent:
     def test_missing_state_means_not_sent(self, monkeypatch, tmp_path):
-        monkeypatch.setattr(sa, "__file__", str(tmp_path / "send_alert.py"))
+        import brief_state
+        monkeypatch.setattr(brief_state, "STATE_FILE", tmp_path / "nope.json")
         assert sa._brief_actually_sent_since() is None
 
     def test_sent_today_counts(self, state_file):
@@ -51,13 +51,15 @@ class TestBriefActuallySent:
         assert sa._brief_actually_sent_since(sent + dt.timedelta(minutes=5)) is None
 
     def test_corrupt_state_is_treated_as_not_sent(self, state_file, tmp_path):
+        (tmp_path / "state").mkdir(exist_ok=True)
         (tmp_path / "state" / "last_brief_sent.json").write_text("{not json")
         assert sa._brief_actually_sent_since() is None
 
 
 class TestReconcileFailures:
     def test_without_a_send_every_failure_stands(self, monkeypatch, tmp_path):
-        monkeypatch.setattr(sa, "__file__", str(tmp_path / "send_alert.py"))
+        import brief_state
+        monkeypatch.setattr(brief_state, "STATE_FILE", tmp_path / "nope.json")
         live, resolved = sa.reconcile_failures(["mailer: NOT SENT — gate", "India: scan"])
         assert live == ["mailer: NOT SENT — gate", "India: scan"] and resolved == []
 

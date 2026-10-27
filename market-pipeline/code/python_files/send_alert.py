@@ -53,25 +53,11 @@ def _brief_actually_sent_since(when: _dt.datetime | None = None):
     the later one contradicting the earlier.
 
     So a claim this specific gets re-checked against evidence at alert time
-    rather than trusted because it was true once.
+    rather than trusted because it was true once. The record itself is owned
+    by brief_state; this is the alert's question, asked of it.
     """
-    import json
-    from pathlib import Path
-    m = Path(__file__).resolve().parent / "state" / "last_brief_sent.json"
-    if not m.exists():
-        return None
-    try:
-        d = json.loads(m.read_text())
-        ts = _dt.datetime.fromisoformat(d["sent_at"])
-    except Exception:                                          # noqa: BLE001
-        return None
-    # Default: anything sent today counts. A pipeline that starts before
-    # midnight and alerts after it would wrongly discard a same-run send if this
-    # compared against "today" alone, so the run's own start is passed in when
-    # known and the fallback is generous rather than strict.
-    if when is not None:
-        return d if ts >= when else None
-    return d if ts.date() == _dt.date.today() else None
+    import brief_state
+    return brief_state.sent_since(when)
 
 
 # Every phrasing this codebase uses to claim the brief did not go out. Matching

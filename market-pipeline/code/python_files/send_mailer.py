@@ -197,20 +197,10 @@ def send(subject: str, text: str, html: str, attachments=None,
     # end-of-run alert reported "mailer: NOT SENT" at 08:08 from a FAILURES entry
     # recorded at 22:55, four and a half hours after a brief had in fact been
     # sent out-of-band at 03:36. Written after sendmail() returns, so it records
-    # a send that happened, never one that was merely attempted.
-    try:
-        import datetime as _dtm
-        import json as _json
-        from pathlib import Path as _P
-        _m = _P(__file__).resolve().parent / "state"
-        _m.mkdir(exist_ok=True)
-        (_m / "last_brief_sent.json").write_text(_json.dumps({
-            "sent_at": _dtm.datetime.now().isoformat(timespec="seconds"),
-            "subject": subject, "to": to, "pid": os.getpid(),
-        }, indent=2))
-    except Exception as _e:                                   # noqa: BLE001
-        # A marker failure must never turn a SUCCESSFUL send into a failure.
-        print(f"  (send marker not written: {str(_e)[:60]})")
+    # a send that happened, never one that was merely attempted. brief_state
+    # owns the file and never raises here.
+    import brief_state
+    brief_state.record_sent(subject, to, os.getpid())
     return True
 
 

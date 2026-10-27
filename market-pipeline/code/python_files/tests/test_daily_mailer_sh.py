@@ -21,11 +21,16 @@ ROOT = Path(__file__).resolve().parents[1]
 SCRIPT = ROOT / "daily_mailer.sh"
 LOCK = Path("/tmp/daily_pipeline.lock")
 
-STUB = """#!/bin/bash
+STUB = f"""#!/bin/bash
 # records argv, swallows stdin, succeeds — unless the script name is listed in
 # FAIL_ON (one per line), in which case it exits 1 like a gate that said no.
+# brief_state.py is the one script run for real: the lock branch's decision
+# depends on what it prints, and it is pure stdlib reading one JSON file.
 root="$(dirname "$0")/../.."
 echo "$@" >> "$root/calls.log"
+if [ "$1" = "brief_state.py" ]; then
+  BRIEF_STATE_FILE="$root/state/last_brief_sent.json" exec {sys.executable} {ROOT}/brief_state.py "${{@:2}}"
+fi
 cat >/dev/null
 if [ -f "$root/FAIL_ON" ]; then
   for a in "$@"; do grep -qxF "$a" "$root/FAIL_ON" && exit 1; done
@@ -92,10 +97,6 @@ class TestLock:
         (sandbox / "state" / "last_brief_sent.json").write_text(json.dumps({
             "sent_at": dt.datetime.now().isoformat(timespec="seconds"),
             "subject": "Daily Market Brief", "to": "x", "pid": 1}))
-        # the inline python that reads the state file must be real python
-        venv = sandbox / ".venv" / "bin" / "python3"
-        venv.write_text(f"#!/bin/bash\nif [ \"$1\" = \"-\" ]; then exec {sys.executable} \"$@\"; fi\n"
-                        + STUB.split("\n", 1)[1])
         r = run(sandbox, "--send")
         assert r.returncode == 0, r.stdout + r.stderr
         assert "not a lost send" in r.stdout

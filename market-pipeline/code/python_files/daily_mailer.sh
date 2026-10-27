@@ -148,17 +148,9 @@ if ! mkdir "$LOCKDIR" 2>/dev/null; then
     # say so, stay quiet, exit 0. Only a genuinely missing brief escalates.
     case " $* " in
       *" --send "*)
-        _sent_subject="$("$PY" - <<'EOF' 2>/dev/null
-import datetime as dt, json, pathlib, sys
-m = pathlib.Path("state/last_brief_sent.json")
-try:
-    d = json.loads(m.read_text())
-    if dt.datetime.fromisoformat(d["sent_at"]).date() == dt.date.today():
-        sys.stdout.write("%s|%s" % (d["sent_at"], d.get("subject", "")[:60]))
-except Exception:
-    pass
-EOF
-)"
+        # brief_state.py owns state/last_brief_sent.json; it prints
+        # "<sent_at>|<subject>" when a brief went out today, else nothing.
+        _sent_subject="$("$PY" brief_state.py --sent-today 2>/dev/null)"
         if [ -n "$_sent_subject" ]; then
           echo "  ✅ not a lost send — a brief for $(date +%F) already went out at"
           echo "     ${_sent_subject%%|*} ('${_sent_subject#*|}')."
