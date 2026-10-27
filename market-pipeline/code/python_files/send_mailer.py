@@ -262,6 +262,133 @@ def _technical_section() -> str:
         return ""
 
 
+def _csv(path: Path, **kw):
+    """A DataFrame from `path`, or an EMPTY one if the file is missing, empty or
+    unparseable. The 1-byte file reentry_engine writes on a zero-pick day made
+    pandas raise EmptyDataError, and the except around the whole prediction
+    block dropped every other line with it — 21 of ~30 briefs from 2026-09-15
+    shipped without the section. A missing optional input is "nothing to say",
+    never "say nothing"."""
+    import pandas as pd
+    try:
+        if not path.exists() or path.stat().st_size == 0:
+            return pd.DataFrame()
+        return pd.read_csv(path, **kw)
+    except (pd.errors.EmptyDataError, pd.errors.ParserError, ValueError):
+        return pd.DataFrame()
+
+
+def prediction_section(root: Path | str = ".") -> str:
+    """Prediction-lens block (2026-07-27): verdict counts from the routine
+    prediction filter + RSI zones + held SELL-REVIEW names + tiers + re-entry
+    + today's prediction purges. Each optional line is guarded on its own, so
+    one bad file costs one line, not the section. '' when there are no scores."""
+    import pandas as pd
+
+    import watchlist_markets as WM
+    root = Path(root)
+    s = _csv(root / "reports/watchlist_prediction_scores.csv")
+    if s.empty or "verdict" not in s.columns:
+        return ""
+    vc = s["verdict"].astype(str).str.split(" ").str[0].value_counts()
+    cnt = " · ".join(f"{k} {v}" for k, v in vc.items())
+    rows = ""
+
+    def line(label, fn):
+        nonlocal rows
+        try:
+            rows += fn() or ""
+        except Exception as e:                                        # noqa: BLE001
+            print(f"  prediction: {label} line skipped: {str(e)[:60]}")
+
+    def rsi():
+        if "rsi_zone" not in s.columns:
+            return ""
+        rz = s["rsi_zone"].value_counts()
+        return ('<div style="margin:4px 0"><b>RSI zones</b> '
+                '(per-market read: momentum IN, mean-revert US): '
+                + " · ".join(f"{k} {v}" for k, v in rz.items() if k != "?") + '</div>')
+
+    def sell_review():
+        h = _csv(root / "reports/held_sell_review.csv")
+        if h.empty:
+            return ""
+        names = ", ".join(f"{r.symbol} ({float(r.kalman_drift_ann_pct):+.0f}%/yr)"
+                          for r in h.head(12).itertuples())
+        return (f'<div style="margin:4px 0"><b>SELL-REVIEW (held, bear state + neg drift):</b> '
+                f'{names}' + (f" +{len(h)-12} more" if len(h) > 12 else "") + '</div>')
+
+    def tiers():
+        if not (root / "watchlist2.csv").exists():
+            return ""
+        w2, w3 = _csv(root / "watchlist2.csv"), _csv(root / "watchlist3.csv")
+        t = f'<div style="margin:4px 0"><b>Tiers:</b> validation watchlist (2) {len(w2)} names'
+        if len(w3):
+            anoms = ", ".join(f"{r.symbol} ({r.trigger})" for r in w3.tail(5).itertuples())
+            t += f' · <b>anomalies (3): {len(w3)}</b> — {anoms}'
+        else:
+            t += ' · anomalies (3): 0'
+        return t + '</div>'
+
+    def reentry_queue():
+        import datetime as dtt
+        p = root / "reports/reentry_candidates.csv"
+        if not p.exists():
+            return ""
+        fresh = (dtt.date.today() - dtt.date.fromtimestamp(p.stat().st_mtime)).days <= 1
+        rc = WM.restrict(_csv(p) if fresh else pd.DataFrame())
+        if rc is None or rc.empty:
+            return ""
+        names = ", ".join(f"{r.market}:{r.symbol} (rsi {float(r.rsi):.0f})"
+                          for r in rc.head(8).itertuples())
+        # 🔴 THE EDGE CLAIM HERE WAS WITHDRAWN 2026-07-29. This block once
+        # advertised "backtested excess +5-25%/63d, t 7-15"; the report it came
+        # from now measures IN 63d at excess -2.01% median, t=0.06, and an
+        # independent re-run agrees at t=0.27 on n=508. A retracted figure
+        # outlives its retraction wherever it was copied — do not restore it.
+        return (f'<div style="margin:4px 0"><b>↩ Re-entry queue '
+                f'(mean-reversion engine, UNVALIDATED):</b> {names} '
+                f'— <span style="color:#b00">no measured forward edge (t=0.06); '
+                f'paper-track only</span></div>')
+
+    def reentry_recent():
+        rrd = WM.restrict(_csv(root / "reports/reentry_recent.csv", parse_dates=["trigger_date"]))
+        if rrd is None or rrd.empty:
+            return ""
+        by = rrd.groupby("market").size().to_dict()
+        top = "; ".join(f"{r.market} {r.symbol} ({r.trigger_date:%d %b}, +{r.ret_at_trigger:.0f}%)"
+                        for r in rrd.head(10).itertuples())
+        return (f'<div style="margin:4px 0"><b>Recent re-entry names (last 45d):</b> '
+                f'{sum(by.values())} — ' + " · ".join(f"{k} {v}" for k, v in by.items())
+                + f'<br><span style="font-size:12px">{top}</span></div>')
+
+    def purged():
+        p = _csv(root / "watchlist_purged.csv")
+        if p.empty or "note" not in p.columns:
+            return ""
+        note = p["note"].astype(str)
+        today = p[note.str.contains("prediction", case=False)
+                  & note.str.contains(pd.Timestamp.today().strftime("%Y-%m-%d"))]
+        if today.empty:
+            return ""
+        return (f'<div style="margin:4px 0"><b>Purged today (prediction filter):</b> '
+                f'{len(today)} names — ' + ", ".join(today["symbol"].astype(str).head(10))
+                + (" …" if len(today) > 10 else "") + '</div>')
+
+    for label, fn in (("rsi", rsi), ("sell-review", sell_review), ("tiers", tiers),
+                      ("re-entry queue", reentry_queue), ("re-entry recent", reentry_recent),
+                      ("purged", purged)):
+        line(label, fn)
+
+    return ('<div style="background:#f4f0e8;border-left:4px solid #8a6d3b;'
+            'padding:10px 14px;margin:12px 0;border-radius:6px;font-size:13px">'
+            '<b>🔮 Prediction lens</b> (market regime × stock Markov state × '
+            f'Kalman drift): {cnt}' + rows +
+            '<div style="color:#777;font-size:11px;margin-top:4px">Kalman drift '
+            'is a ranking, not a forecast; Markov 21d column vetoes ENTER-OK. '
+            'Held names are never auto-purged — SELL-REVIEW is advisory.</div></div>')
+
+
 if __name__ == "__main__":
     import datetime as _dt
 
@@ -291,103 +418,7 @@ if __name__ == "__main__":
         except Exception as _e:
             print(f"  watchlist link skipped: {str(_e)[:60]}")
 
-    # Prediction-lens block (2026-07-27): verdict counts from the routine
-    # prediction filter + held SELL-REVIEW names + today's prediction purges.
-    pred_html = ""
-    try:
-        import pandas as _pd
-        import watchlist_markets as WM
-        _sc = Path("reports/watchlist_prediction_scores.csv")
-        if _sc.exists():
-            _s = _pd.read_csv(_sc)
-            _vc = _s["verdict"].str.split(" ").str[0].value_counts()
-            _cnt = " · ".join(f"{k} {v}" for k, v in _vc.items())
-            _rows = ""
-            if "rsi_zone" in _s.columns:
-                _rz = _s["rsi_zone"].value_counts()
-                _rows += ('<div style="margin:4px 0"><b>RSI zones</b> '
-                          '(per-market read: momentum IN, mean-revert US): '
-                          + " · ".join(f"{k} {v}" for k, v in _rz.items()
-                                       if k != "?") + '</div>')
-            _sr = Path("reports/held_sell_review.csv")
-            if _sr.exists():
-                _h = _pd.read_csv(_sr)
-                if len(_h):
-                    _names = ", ".join(
-                        f"{r.symbol} ({r.kalman_drift_ann_pct:+.0f}%/yr)"
-                        for r in _h.head(12).itertuples())
-                    _rows += (f'<div style="margin:4px 0"><b>SELL-REVIEW (held, '
-                              f'bear state + neg drift):</b> {_names}'
-                              + (f" +{len(_h)-12} more" if len(_h) > 12 else "") + '</div>')
-            _w2p, _w3p = Path("watchlist2.csv"), Path("watchlist3.csv")
-            if _w2p.exists():
-                _w2 = _pd.read_csv(_w2p)
-                _w3 = _pd.read_csv(_w3p) if _w3p.exists() else _pd.DataFrame()
-                _t = (f'<div style="margin:4px 0"><b>Tiers:</b> '
-                      f'validation watchlist (2) {len(_w2)} names')
-                if len(_w3):
-                    _anoms = ", ".join(f"{r.symbol} ({r.trigger})"
-                                       for r in _w3.tail(5).itertuples())
-                    _t += f' · <b>anomalies (3): {len(_w3)}</b> — {_anoms}'
-                else:
-                    _t += ' · anomalies (3): 0'
-                _rows += _t + '</div>'
-            _re = Path("reports/reentry_candidates.csv")
-            if _re.exists():
-                import datetime as _dtt
-                _fresh = (_dtt.date.today() - _dtt.date.fromtimestamp(
-                    _re.stat().st_mtime)).days <= 1
-                _rc = _pd.read_csv(_re) if _fresh else _pd.DataFrame()
-                _rc = WM.restrict(_rc)
-                if len(_rc):
-                    _names = ", ".join(f"{r.market}:{r.symbol} (rsi {r.rsi:.0f})"
-                                       for r in _rc.head(8).itertuples())
-                    # 🔴 THE EDGE CLAIM HERE WAS WITHDRAWN 2026-07-29. This block
-                    # advertised "backtested excess +5-25%/63d, t 7-15" straight
-                    # into the reader's inbox. The report it came from now
-                    # measures IN 63d at excess -2.01% median, t=0.06, and an
-                    # independently written re-run agrees at t=0.27 on n=508.
-                    # reentry_engine's docstring was corrected the same day but
-                    # the number had also been copied HERE, which is exactly how
-                    # a retracted figure outlives its retraction.
-                    _rows += (f'<div style="margin:4px 0"><b>↩ Re-entry queue '
-                              f'(mean-reversion engine, UNVALIDATED):</b> {_names} '
-                              f'— <span style="color:#b00">no measured forward '
-                              f'edge (t=0.06); paper-track only</span></div>')
-            _rr = Path("reports/reentry_recent.csv")
-            if _rr.exists():
-                _rrd = WM.restrict(_pd.read_csv(_rr, parse_dates=["trigger_date"]))
-                if len(_rrd):
-                    _by = _rrd.groupby("market").size().to_dict()
-                    _top = "; ".join(
-                        f"{r.market} {r.symbol} ({r.trigger_date:%d %b}, "
-                        f"+{r.ret_at_trigger:.0f}%)"
-                        for r in _rrd.head(10).itertuples())
-                    _rows += (f'<div style="margin:4px 0"><b>Recent re-entry names '
-                              f'(last 45d):</b> {sum(_by.values())} — '
-                              + " · ".join(f"{k} {v}" for k, v in _by.items())
-                              + f'<br><span style="font-size:12px">{_top}</span></div>')
-            _pg = Path("watchlist_purged.csv")
-            if _pg.exists():
-                _p = _pd.read_csv(_pg)
-                _today = _p[_p["note"].astype(str).str.contains("prediction", case=False)
-                            & _p["note"].astype(str).str.contains(
-                                _pd.Timestamp.today().strftime("%Y-%m-%d"))]
-                if len(_today):
-                    _rows += (f'<div style="margin:4px 0"><b>Purged today '
-                              f'(prediction filter):</b> {len(_today)} names — '
-                              + ", ".join(_today["symbol"].head(10))
-                              + (" …" if len(_today) > 10 else "") + '</div>')
-            pred_html = (
-                '<div style="background:#f4f0e8;border-left:4px solid #8a6d3b;'
-                'padding:10px 14px;margin:12px 0;border-radius:6px;font-size:13px">'
-                '<b>🔮 Prediction lens</b> (market regime × stock Markov state × '
-                f'Kalman drift): {_cnt}' + _rows +
-                '<div style="color:#777;font-size:11px;margin-top:4px">Kalman drift '
-                'is a ranking, not a forecast; Markov 21d column vetoes ENTER-OK. '
-                'Held names are never auto-purged — SELL-REVIEW is advisory.</div></div>')
-    except Exception as _e:
-        print(f"  prediction section skipped: {str(_e)[:60]}")
+    pred_html = prediction_section()
 
     html = (html
             + '<div style="margin:22px 0 10px;border-top:3px solid #0B2F4A"></div>'
