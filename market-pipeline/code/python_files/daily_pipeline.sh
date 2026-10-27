@@ -298,20 +298,17 @@ FAILURES=()
   # build time drifts, so one name over tolerance no longer blocks — only an
   # exact-match stale signature or a systematic (majority) breach does. Markets
   # that are shut keep the strict per-name rule. At 00:33 IST that is US only.
-  step "[13d/14] scan price reconcile (all markets)"
-  RECONCILE_OK=0
-  $PY scan_price_reconcile.py || { RECONCILE_OK=$?; echo "  ⚠ $RECONCILE_OK market(s) failed price reconcile"; FAILURES+=("reconcile: $RECONCILE_OK market(s) stale scan prices"); }
-
-  step "[13b/14] validate brief against screener.in"
-  VALIDATE_OK=1
-  $PY validate_brief.py --sample 6 && VALIDATE_OK=0
-  if [ "$VALIDATE_OK" -eq 0 ] && [ "$RECONCILE_OK" -eq 0 ]; then
+  # 2026-10-27: reconcile + validate_brief merged into price_gate.py (see
+  # daily_mailer.sh step [13/13], the live script); kept in step here.
+  step "[13/14] price gate (staleness IN/US + witness jury IN)"
+  GATE_OK=1
+  rm -f state/price_gate_reason.txt
+  $PY price_gate.py --markets IN US --sample 6 && GATE_OK=0
+  if [ "$GATE_OK" -eq 0 ]; then
       step "[14/14] build + send mailer"
       $PY send_mailer.py "$@" || { echo "  mailer build/send failed"; FAILURES+=("mailer: build/send"); }
   else
-      # Name the ACTUAL blocker (2026-07-28: reconcile blocked the send but the
-      # alert said "failed screener.in validation" — validation had PASSED 6/6)
-      if [ "$VALIDATE_OK" -ne 0 ]; then WHY="brief failed screener.in validation"; else WHY="price reconcile flagged $RECONCILE_OK market(s) (validation itself PASSED)"; fi
+      WHY="price gate: $(cat state/price_gate_reason.txt 2>/dev/null)"
       echo "  ❌ send SUPPRESSED — $WHY; saving draft instead"
       FAILURES+=("mailer: NOT SENT — $WHY")
       $PY send_mailer.py --draft || { echo "  draft save failed"; FAILURES+=("mailer: draft save"); }

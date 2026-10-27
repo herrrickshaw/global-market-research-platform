@@ -1,9 +1,9 @@
 """scan_files.py — one answer to "which scan workbook, and from which day?"
 
-Every scan writes `<prefix>_YYYYMMDD_HHMM.xlsx`. Three send-path modules used
-to carry their own copy of the regex that reads that stamp back, which is how
-`scan_price_reconcile` and `validate_brief` could in principle disagree about
-what "today's scan" means. They cannot now.
+Every scan writes `<prefix>_YYYYMMDD_HHMM.xlsx`. The send-path modules used
+to carry their own copies of the regex that reads that stamp back, which is
+how two gates could in principle disagree about what "today's scan" means.
+`price_gate` and `validate_brief` both read it from here now.
 
 The stamp is the day the workbook was BUILT. The session it holds is one
 earlier (the 03:00 India build holds the previous close) — callers that need

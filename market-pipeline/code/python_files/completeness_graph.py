@@ -137,7 +137,7 @@ SCHEDULED = [
     # now persists to disk instead of only ever being printed to a terminal
     ("custom_indices.py", "smallcap_validation_hold126.md"),
     ("cluster_indices.py", "cluster_indices.md"),
-    ("scan_price_reconcile.py", None),
+    ("price_gate.py", None),
 ]
 
 # Analyses whose panel must be gated for uncorrected corporate actions.

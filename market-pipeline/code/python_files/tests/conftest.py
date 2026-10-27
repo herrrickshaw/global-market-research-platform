@@ -3,9 +3,8 @@
 Hermetic by construction: nothing here touches the network, Postgres, Cassandra,
 the real scan workbooks or ``state/``. Every module under test reaches those
 through a small number of seams (``price_sources.fetch_all``,
-``scan_price_reconcile.fresh_quotes`` / ``warehouse_prev_close``,
-``send_alert._brief_actually_sent_since``'s state file) and the fixtures below
-replace exactly those seams.
+``price_gate.fresh_quotes`` / ``warehouse_prev_close``, ``brief_state.STATE_FILE``)
+and the fixtures below replace exactly those seams.
 """
 from __future__ import annotations
 

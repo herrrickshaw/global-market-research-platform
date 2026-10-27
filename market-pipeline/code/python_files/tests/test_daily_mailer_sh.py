@@ -33,7 +33,14 @@ if [ "$1" = "brief_state.py" ]; then
 fi
 cat >/dev/null
 if [ -f "$root/FAIL_ON" ]; then
-  for a in "$@"; do grep -qxF "$a" "$root/FAIL_ON" && exit 1; done
+  for a in "$@"; do
+    if grep -qxF "$a" "$root/FAIL_ON"; then
+      # a failing price gate writes its reason the way the real one does
+      [ "$a" = "price_gate.py" ] && [ -f "$root/GATE_REASON" ] \\
+        && cp "$root/GATE_REASON" "$root/state/price_gate_reason.txt"
+      exit 1
+    fi
+  done
 fi
 exit 0
 """
@@ -135,31 +142,40 @@ class TestSendGates:
         assert sends == ["send_mailer.py --send --draft"], sends
         assert "send SUPPRESSED" not in r.stdout
 
-    def test_2026_07_15_failed_validation_suppresses_and_saves_a_draft(self, sandbox):
-        (sandbox / "FAIL_ON").write_text("validate_brief.py\n")
+    def test_2026_07_15_failed_gate_suppresses_and_saves_a_draft(self, sandbox):
+        (sandbox / "FAIL_ON").write_text("price_gate.py\n")
         r = run(sandbox, "--send", "--draft")
-        assert "send SUPPRESSED" in r.stdout
-        assert "external price validation" in r.stdout
+        assert "send SUPPRESSED — price gate:" in r.stdout
         c = calls(sandbox)
         assert "send_mailer.py --draft" in c, "a suppressed send must still save the draft"
         assert not any(x == "send_mailer.py --send --draft" for x in c)
         alert = [x for x in c if x.startswith("send_alert.py")]
         assert alert and "NOT SENT" in alert[0]
 
-    def test_2026_07_28_failed_reconcile_names_the_reconcile_not_validation(self, sandbox):
-        (sandbox / "FAIL_ON").write_text("scan_price_reconcile.py\n")
+    def test_2026_07_28_alert_carries_the_gates_own_reason(self, sandbox):
+        # The gate writes WHY to a file; the shell must relay it verbatim rather
+        # than guess which check failed (the 2026-07-28 and 2026-08-29 mislabels).
+        (sandbox / "FAIL_ON").write_text("price_gate.py\n")
+        (sandbox / "GATE_REASON").write_text("US: 5/8 stale vs live (worst NVDA 9.0%)")
         r = run(sandbox, "--send", "--draft")
-        assert "send SUPPRESSED" in r.stdout
-        assert "price reconcile flagged 2 market(s) (validation itself PASSED)" in r.stdout
-        assert "send_mailer.py --draft" in calls(sandbox)
+        assert "price gate: US: 5/8 stale vs live (worst NVDA 9.0%)" in r.stdout
+        alert = [x for x in calls(sandbox) if x.startswith("send_alert.py")]
+        assert alert and "US: 5/8 stale vs live" in alert[0]
 
-    def test_a_failed_scan_step_is_reported_but_does_not_block_the_gates(self, sandbox):
+    def test_a_stale_reason_file_from_yesterday_is_not_reused(self, sandbox):
+        # Every run clears the file before the gate; a pass leaves no reason behind.
+        (sandbox / "state" / "price_gate_reason.txt").write_text("IN: yesterday's problem")
+        r = run(sandbox, "--send", "--draft")
+        assert r.returncode == 0 and "send SUPPRESSED" not in r.stdout
+        assert not (sandbox / "state" / "price_gate_reason.txt").exists()
+
+    def test_a_failed_scan_step_is_reported_but_does_not_block_the_gate(self, sandbox):
         (sandbox / "FAIL_ON").write_text("scan_bhavcopy.py\n")
         r = run(sandbox, "--send", "--draft")
         assert "scan failed" in r.stdout
         assert "[ALERT]" in r.stdout and "India: full screener scan" in r.stdout
-        # the gates still ran — they are what decides, not the scan's exit code
-        assert any(x.startswith("validate_brief.py") for x in calls(sandbox))
+        # the gate still ran — it is what decides, not the scan's exit code
+        assert any(x.startswith("price_gate.py") for x in calls(sandbox))
 
 
 class TestChain:

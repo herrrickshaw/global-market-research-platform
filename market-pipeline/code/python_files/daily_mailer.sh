@@ -509,35 +509,24 @@ FAILURES=()
     $PY strategy_regime_survival.py --refresh-regime \
     || echo "  regime refresh failed (continuing)"
 
-  # ── 5. THE SEND GATES ──────────────────────────────────────────────────────
-  # Both must pass. They catch different failures and neither subsumes the other:
-  # reconcile catches a STALE SCAN (the 2026-07-29 case, where JP/KR carried the
-  # previous day's closes on a day both fell 10-15%), while validate_brief checks
-  # our numbers against an INDEPENDENT source (screener.in). A brief can be
-  # internally consistent and a day old, or fresh and wrong.
+  # ── 5. THE SEND GATE ───────────────────────────────────────────────────────
+  # price_gate.py: workbook age + warehouse signature for IN and US, a live
+  # Yahoo spot-check for US (Yahoo is the only US source), and the witness
+  # jury for IN. A brief can be internally consistent and a day old, or fresh
+  # and wrong; the gate checks both. Only IN and US — the parked markets are
+  # not scanned here, and gating on a stale JP file would block the send over
+  # a market the brief does not mention.
   #
-  # Only IN and US are reconciled — the parked markets are not scanned here, so
-  # reconciling them would compare a stale file against a live quote and block
-  # the send over a market the brief does not mention.
-  RECONCILE_FAIL=0
-  step "[13/13] send gates: price reconcile (IN, US) + brief validation"
-  # Both gates FAIL SAFE under the ceiling: cap returns 124, which is non-zero,
-  # so a timed-out reconcile counts as a failed reconcile and a timed-out
-  # validation leaves VALIDATE_OK=1. A gate that cannot finish must never be
-  # read as a gate that passed — that is the whole point of having it.
-  for MKT in IN US; do
-    cap $CAP_GATES "[13/13] price reconcile $MKT" \
-      $PY scan_price_reconcile.py --market "$MKT" \
-      || { RECONCILE_FAIL=$((RECONCILE_FAIL+1)); echo "  ⚠ $MKT failed price reconcile"; }
-  done
-  [ "$RECONCILE_FAIL" -gt 0 ] && FAILURES+=("reconcile: $RECONCILE_FAIL market(s) stale scan prices")
-
-  VALIDATE_OK=1
-  cap $CAP_GATES "[13/13] brief validation" \
-    $PY validate_brief.py --sample 6 && VALIDATE_OK=0
+  # FAILS SAFE under the ceiling: cap returns 124, non-zero, so a gate that
+  # cannot finish is never read as a gate that passed.
+  step "[13/13] send gate: scan staleness (IN, US) + witness jury (IN)"
+  GATE_OK=1
+  rm -f state/price_gate_reason.txt
+  cap $CAP_GATES "[13/13] price gate" \
+    $PY price_gate.py --markets IN US --sample 6 && GATE_OK=0
 
   # ── 6. send ────────────────────────────────────────────────────────────────
-  if [ "$VALIDATE_OK" -eq 0 ] && [ "$RECONCILE_FAIL" -eq 0 ]; then
+  if [ "$GATE_OK" -eq 0 ]; then
       step "[SEND] build + send mailer"
       # ⚠️ The one ceiling with a real downside. send_mailer has no already-sent
       # guard, so killing it mid-SMTP could in principle leave the brief half
@@ -550,24 +539,15 @@ FAILURES=()
         $PY send_mailer.py "$@" \
         || { echo "  mailer build/send failed"; FAILURES+=("mailer: build/send"); }
   else
-      # Name the ACTUAL blocker. On 2026-07-28 the reconcile blocked the send and
-      # the alert said "failed screener.in validation" — validation had PASSED 6/6.
-      #
-      # 2026-08-29: that same string went stale a second way. screener.in was
-      # dropped as a witness on 2026-08-18 (the gate has run on yfinance +
-      # alphavantage ever since), but the label kept naming it — so every alert for
-      # 11 days blamed a source the gate no longer consults, and the gate read as
-      # circular against our own screener data. It is not: our prices come from
-      # NSE/BSE bhavcopy and no witness derives from it.
-      #
-      # So do NOT hardcode a source name here. The witness set is owned by
-      # price_sources.SOURCES and will change again; validate_brief already prints
-      # the live list ("validating … against yfinance, alphavantage, twelvedata")
-      # directly above this line. A label that cannot go stale beats a specific one.
-      if [ "$VALIDATE_OK" -ne 0 ]; then WHY="brief failed external price validation (sources listed above)"
-      else WHY="price reconcile flagged $RECONCILE_FAIL market(s) (validation itself PASSED)"; fi
-      echo "  ❌ send SUPPRESSED — $WHY; saving draft instead"
-      FAILURES+=("mailer: NOT SENT — $WHY")
+      # Name the ACTUAL blocker, in the gate's own words. The gate writes its
+      # reason to a file rather than this script parsing stdout, and the text
+      # names no source by hand: hardcoded labels went stale twice (2026-07-28
+      # blamed validation for a reconcile failure; 2026-08-29 blamed screener.in
+      # eleven days after it stopped being a witness).
+      WHY="$(cat state/price_gate_reason.txt 2>/dev/null)"
+      [ -z "$WHY" ] && WHY="price gate failed without a reason (see [13/13] above)"
+      echo "  ❌ send SUPPRESSED — price gate: $WHY; saving draft instead"
+      FAILURES+=("mailer: NOT SENT — price gate: $WHY")
       cap $CAP_SEND "[SEND] draft save" \
         $PY send_mailer.py --draft \
         || { echo "  draft save failed"; FAILURES+=("mailer: draft save"); }

@@ -291,25 +291,33 @@ def main() -> int:
         # arithmetic below needs them; only the wire format wants strings.
         print(json.dumps(r, indent=1, default=str))
         return 0 if r["ok"] else 1
+    print("\n".join(report_lines(r, a.tolerance)))
+    return 0 if r["ok"] else 1
 
-    # 🔴 THIS BRANCH IS THE PRODUCTION PATH. daily_mailer.sh calls this script
-    # WITHOUT --json and reads only the exit code, so anything that raises in
-    # here exits non-zero and is indistinguishable from a real validation
-    # failure — a formatting bug would silently suppress every send forever.
-    # Keep it in step with the shape `validate()` actually returns.
+
+def report_lines(r: dict, tol: float) -> list[str]:
+    """The human-readable evidence for one `validate()` result.
+
+    🔴 THIS IS THE PRODUCTION PATH. price_gate prints these lines and reads only
+    the verdict, so anything that raises in here exits non-zero and is
+    indistinguishable from a real validation failure — a formatting bug would
+    silently suppress every send forever. Keep it in step with the shape
+    `validate()` actually returns, including its early returns.
+    """
+    out = []
     srcs = ", ".join(price_sources.SOURCES)
-    print(f"  validating {r.get('scan','?')} against {srcs} "
-          f"(tolerance {a.tolerance}%, asof {r.get('asof','?')})")
+    out.append(f"  validating {r.get('scan', '?')} against {srcs} "
+               f"(tolerance {tol}%, asof {r.get('asof', '?')})")
     # .get with a default: the no-workbook early return carries no "mute" key,
     # and per the banner above a KeyError here would suppress the send.
     mute = r.get("mute") or {}
     for src, why in mute.items():
-        print(f"  ⚠ {src} answered nothing ({why}) — NOT voting; "
-              f"effective quorum {len(price_sources.SOURCES) - len(mute)} "
-              f"of {len(price_sources.SOURCES)}")
-    for c in r["checks"]:
+        out.append(f"  ⚠ {src} answered nothing ({why}) — NOT voting; "
+                   f"effective quorum {len(price_sources.SOURCES) - len(mute)} "
+                   f"of {len(price_sources.SOURCES)}")
+    for c in r.get("checks", []):
         if c["status"] == "skip":
-            print(f"    -  {c['symbol']:12s} skipped ({c['why']})")
+            out.append(f"    -  {c['symbol']:12s} skipped ({c['why']})")
             continue
         # round for display only: yfinance carries float32 artifacts
         # (1431.800048828125), which are noise here and make the line unreadable.
@@ -317,14 +325,13 @@ def main() -> int:
             f"{s} {v['price']:.2f} ({v['diff_pct']}%) @{v['date']}"
             + (" [older session, not voting]" if s in c.get("stale", ()) else "")
             for s, v in c["sources"].items())
-        print(f"    {'ok' if c['status'] == 'ok' else '!!'} {c['symbol']:12s} "
-              f"ours={c['ours']:<10} {detail}")
+        out.append(f"    {'ok' if c['status'] == 'ok' else '!!'} {c['symbol']:12s} "
+                   f"ours={c['ours']:<10} {detail}")
     if r["ok"]:
-        print(f"  ✓ validated: {r['verified']} names, every answering source agreed")
-        return 0
-    bar = "=" * 72
-    print(f"\n{bar}\n  ❌  BRIEF FAILED EXTERNAL VALIDATION — DO NOT SEND\n  {r['reason']}\n{bar}\n")
-    return 1
+        out.append(f"  ✓ validated: {r['verified']} names, every answering source agreed")
+    else:
+        out.append(f"  ❌ brief failed external validation: {r['reason']}")
+    return out
 
 
 if __name__ == "__main__":

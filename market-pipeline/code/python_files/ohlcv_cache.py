@@ -91,8 +91,8 @@ def _download(yf_symbols: List[str], period: Optional[str], start) -> Optional[p
 # ── expected last session, per market ────────────────────────────────────────
 # Session CLOSE in IST. US wraps past midnight IST, so it never "closes today".
 # 🔴 This is a second copy of what market_sessions.expected_session() answers
-# with real bell times and holiday calendars (scan_price_reconcile's copy was
-# removed 2026-10-27). Replacing this table with that call is the open
+# with real bell times and holiday calendars (the reconcile gate's copy was
+# removed 2026-10-27; see price_gate). Replacing this table with that call is the open
 # follow-up; it is left as-is here because ohlcv_cache has no test coverage yet.
 _CLOSE_IST = {"india": 15.5, "in": 15.5, "nse": 15.5, "bse": 15.5,
               "japan": 11.5, "jp": 11.5, "korea": 12.0, "kr": 12.0,
