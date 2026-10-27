@@ -163,28 +163,6 @@ def _yfinance(sym: str, asof: _dt.date) -> dict:
         return {"error": f"yf: {str(e)[:60]}"}
 
 
-def _stooq(sym: str, asof: _dt.date) -> dict:
-    """Stooq's daily CSV. Independent of both Yahoo and screener.in."""
-    try:
-        r = _get(f"https://stooq.com/q/d/l/?s={sym.lower()}.in&i=d")
-        if r.status_code != 200 or "Date" not in r.text[:64]:
-            return {"error": f"http {r.status_code}"}
-        best = None
-        for line in r.text.strip().splitlines()[1:]:
-            parts = line.split(",")
-            if len(parts) < 5:
-                continue
-            try:
-                d = _dt.date.fromisoformat(parts[0])
-            except ValueError:
-                continue
-            if d <= asof and (best is None or d > best[0]):
-                best = (d, float(parts[4]))
-        return {"price": best[1], "date": best[0]} if best else {"error": "no rows"}
-    except Exception as e:                                     # noqa: BLE001
-        return {"error": f"stooq: {str(e)[:60]}"}
-
-
 _CREDS = Path.home() / ".config" / "market-secrets" / "credentials.env"
 
 
@@ -330,99 +308,27 @@ def _twelvedata(sym: str, asof: _dt.date) -> dict:
         return {"error": f"td: {str(e)[:60]}"}
 
 
-def _screener(sym: str, asof: _dt.date) -> dict:
-    """screener.in's header. Kept as one voice among several, no longer the only one.
-
-    Returns an error rather than a price when the header carries no close date —
-    that is the market-open case, and an undated live tick is not evidence about
-    a close. Downgrading it to a price-only check is precisely the silent pass
-    that let the 2026-07-15 stale pick through.
-    """
-    try:
-        r = _get(f"https://www.screener.in/company/{sym}/")
-        if r.status_code != 200:
-            # BSE-only names 404 on the NSE-shaped URL. Unverifiable here, not bogus.
-            return {"error": f"http {r.status_code}"}
-        from bs4 import BeautifulSoup
-        soup = BeautifulSoup(r.text, "lxml")
-        top = soup.select_one("#top") or soup
-        txt = re.sub(r"\s+", " ", top.get_text(" ", strip=True))[:400]
-        price = re.search(r"₹\s*([\d,]+(?:\.\d+)?)", txt)
-        dm = re.search(r"(\d{1,2}\s+[A-Z][a-z]{2})\s*-?\s*close price", txt)
-        if not price:
-            return {"error": "no price in header"}
-        if not dm:
-            return {"error": "live quote (no close date)"}
-        day, mon = dm.group(1).split()
-        d = _dt.datetime.strptime(f"{day} {mon} {asof.year}", "%d %b %Y").date()
-        # screener prints "11 Aug" with no year, so a date landing after `asof`
-        # is ambiguous: either last December read as this December (a real year
-        # rollover) or simply a close NEWER than the day we asked about. Only the
-        # first is a year error. Rolling back on any overshoot dated a 2026-08-11
-        # close as 2025-08-11 — a year-stale reading of perfectly current data,
-        # which the date check would then report as catastrophic staleness.
-        if (d - asof).days > 180:
-            d = d.replace(year=asof.year - 1)
-        return {"price": float(price.group(1).replace(",", "")), "date": d}
-    except Exception as e:                                     # noqa: BLE001
-        return {"error": f"screener: {str(e)[:60]}"}
-
-
-# 🔴 stooq is DELIBERATELY ABSENT despite _stooq() existing above. Measured
-# 2026-08-12: stooq.com/q/d/l/ returns an HTML page rather than CSV for NSE names
-# under every suffix tried (.in, .ns, bare), i.e. it does not serve this market.
-# Registering a source that can never answer would not make the gate stronger —
-# it would add a permanent 100%-error column to the accuracy ledger and dilute
-# the very track record the ledger exists to measure. Kept as a function so the
-# next person can re-test it cheaply rather than rediscover the finding.
+# ─── the registry ─────────────────────────────────────────────────────────────
+# Three witnesses, three paths to the market: Yahoo→NSE, Alpha Vantage→BSE,
+# Twelve Data→NSE direct. All answer with the last COMPLETED session, so they
+# can testify during market hours. WHY THREE: validate_brief counts a tie as a
+# mismatch, so with two witnesses one stale vote suppresses a correct send
+# (2026-08-29, INFY). Two is the count at which being right and being outvoted
+# look identical.
 #
-# 🔴 screener IS NO LONGER REGISTERED (2026-08-18, by request: witness this market
-# some other way). _screener() is kept above, working, so restoring it is adding
-# one dict entry — same treatment _stooq gets, and for the same reason: the
-# finding should be cheap to revisit.
-#
-# THE SEARCH THAT PRODUCED THIS LINE. Everything below was tested against the
-# gate's own sample on 2026-08-18, all six names, known-good 2026-08-17 NSE closes:
-#
-#   alphavantage  WORKS via .BSE — registered. Worst basis 0.263% vs 2.0% tol.
-#   EODHD         404 Ticker Not Found on .NSE and .BSE. Key is a FREE plan
-#                 (20 req/day) and India is not in it. Revisit only if upgraded.
-#   stooq         re-tested per the note above: still HTML, not CSV, on .in/.ns/
-#                 .bo/bare. The 2026-08-12 finding holds — it does not serve NSE.
-#   nsepython     equity_history raises KeyError('data') standalone; it needs
-#                 browser cookies, which is not something an unattended 06:30 job
-#                 should depend on. (Installed, so cheap to re-check.)
-#   moneycontrol  priceapi techCharts endpoint no longer returns JSON.
-#   Hugging Face  no live feed exists. Of 100 'stock' datasets, 3 are India-related
-#                 and all are static bulk dumps (newest touched 2026-08-13, one
-#                 abandoned in 2023). A gate needs YESTERDAY's close; a snapshot
-#                 hub structurally cannot serve that. Dead end, not a near miss.
-#   PyPI survey   jugaad-data is maintained but reads NSE bhavcopy — CIRCULAR, it
-#                 is the scan's own source. yahooquery is Yahoo again, so it would
-#                 add a column to the ledger without adding a witness. bsedata is
-#                 live-quote only (fails the date-anchored rule) and last released
-#                 2024. investpy has been dead since Investing.com blocked it in
-#                 2022. twelvedata is alive and covers India — REGISTERED
-#                 2026-08-29 (free tier 800/day, 8/min; needs TWELVEDATA_KEY).
-#
-# All three answer with the last COMPLETED session, so unlike screener.in they can
-# testify DURING market hours — the defect that suppressed the 2026-08-11 brief.
-# That took a second fix: yfinance appeared to have this property and did not (it
-# served today's live tick under today's date until 2026-08-18). The set is also
-# exchange-diverse (Yahoo→NSE, Alpha Vantage→BSE, Twelve Data→NSE), so a
-# single-exchange feed problem no longer convinces everyone at once.
-#
-# 🔴 WHY THREE. A TIE IS A MISMATCH (validate_brief's majority rule), so with two
-# witnesses ONE odd vote suppresses the send — and on 2026-08-29 that fired against
-# a CORRECT brief: yfinance was still on the 27-Aug close while the scan and Alpha
-# Vantage both had 28-Aug and agreed to 0.03% on INFY. Official NSE bhavcopy later
-# confirmed the scan. The gate had already earned its keep that same morning by
-# catching a genuinely stale scan, so the answer was a third voice, not a weaker
-# gate. Two is the count at which being right and being outvoted look identical.
+# RETIRED, with the finding that retired them (code in git history before
+# 2026-10-27 if a re-test is ever wanted):
+#   screener.in   2026-08-18 — serves an undated live quote once NSE opens, so
+#                 it could not testify mid-session (suppressed the 08-11 brief).
+#   stooq         2026-08-12 — returns HTML, not CSV, for NSE names under every
+#                 suffix; it does not serve this market.
+# Surveyed and rejected 2026-08-18: EODHD (no India on the free plan), nsepython
+# (needs browser cookies), moneycontrol (endpoint gone), Hugging Face datasets
+# (static dumps), jugaad-data (reads bhavcopy — circular), yahooquery (Yahoo
+# again — a column, not a witness), bsedata (live-quote only), investpy (dead).
 #
 # ⚠️ Until TWELVEDATA_KEY exists in the credential store, _twelvedata returns an
-# error and validate_brief drops it from the quorum — the gate is back to two
-# witnesses and the tie problem above is NOT yet fixed in practice.
+# error and validate_brief drops it from the quorum — back to two witnesses.
 SOURCES = {"yfinance": _yfinance, "alphavantage": _alphavantage,
            "twelvedata": _twelvedata}
 

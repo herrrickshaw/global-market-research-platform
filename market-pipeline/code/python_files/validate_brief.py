@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """
-validate_brief.py — cross-check the India scan against screener.in BEFORE sending.
+validate_brief.py — cross-check the India scan against independent price
+witnesses (price_sources.SOURCES) BEFORE sending.
 
 WHY THIS EXISTS
 ---------------
@@ -23,13 +24,13 @@ unattended 00:30 run is held to it too, not just the runs a human watches.
 
 WHAT IT CHECKS
 --------------
-Samples the most liquid India picks (most liquid => most likely NSE-listed and
-present on screener.in) and compares against screener.in's public company page:
+Samples the most liquid India picks (most liquid => most likely to be quoted by
+every witness) and asks each witness for the close on/before the scan's day:
 
   1. CLOSE DATE   — the strong check. Detects stale data directly; a price can
                     coincidentally look plausible, a wrong date cannot hide.
-  2. PRICE        — within tolerance (screener.in rounds to ~4 significant
-                    figures: it shows Rs 1,099 for 1098.8, Rs 289 for 289.75).
+  2. PRICE        — within tolerance, by majority of the witnesses that answered
+                    at the current session (see _judge for the abstain rules).
 
 Exit codes:
   0  validated — safe to send
@@ -51,11 +52,10 @@ import pandas as pd
 import price_sources
 import scan_files
 
-UA = {"User-Agent": "Mozilla/5.0 (research)"}
-BASE = "https://www.screener.in/company/{}/"
-
-# screener.in rounds to ~4 sig figs, so exact equality is wrong to demand:
-#   1098.8 -> "Rs 1,099" (0.02%)   860.55 -> "Rs 861" (0.05%)   289.75 -> "Rs 289" (0.26%)
+# Exact equality is wrong to demand: Alpha Vantage quotes BSE against our NSE
+# close (worst basis measured 0.263%), and the retired screener.in rounded to
+# four significant figures. 2% is 7x the widest normal basis and still far
+# below the ~4% gaps that have marked every real staleness incident.
 PRICE_TOL_PCT = 2.0
 MIN_VERIFIED = 3          # below this we cannot claim the brief was validated
 WITNESS_LAG_DAYS = 5      # a name's only witnesses this far behind the sample abstain
