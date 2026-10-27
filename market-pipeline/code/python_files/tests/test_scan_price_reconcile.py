@@ -45,7 +45,7 @@ def market(monkeypatch, scan_workbook, tmp_path):
     monkeypatch.setattr(spr, "HERE", tmp_path)
     monkeypatch.setattr(spr, "warehouse_prev_close",
                         lambda m: pd.DataFrame(columns=["symbol", "ltp"]))
-    monkeypatch.setattr(spr, "market_open_now", lambda m: False)
+    monkeypatch.setattr(spr.ms, "is_open", lambda m, at=None: False)
 
     def _make(prices: dict[str, float], stamp=None):
         rows = [{"Symbol": s, "LTP": p, "Turnover_USD": 1_000_000 - i}
@@ -86,13 +86,13 @@ class TestReconcile:
 
     def test_2026_07_28_in_session_one_breach_is_drift_not_failure(self, market, monkeypatch):
         market(SCAN)
-        monkeypatch.setattr(spr, "market_open_now", lambda m: True)
+        monkeypatch.setattr(spr.ms, "is_open", lambda m, at=None: True)
         _fresh(monkeypatch, dict(SCAN, RELIANCE=1300.0))     # 8% move, one name
         assert spr.reconcile("IN", sample=8, tolerance=2.0) is True
 
     def test_in_session_majority_breach_still_fails(self, market, monkeypatch):
         market(SCAN)
-        monkeypatch.setattr(spr, "market_open_now", lambda m: True)
+        monkeypatch.setattr(spr.ms, "is_open", lambda m, at=None: True)
         live = {s: p * 1.10 for s, p in SCAN.items()}          # the whole sample moved
         _fresh(monkeypatch, live)
         assert spr.reconcile("IN", sample=8, tolerance=2.0) is False
@@ -103,7 +103,7 @@ class TestReconcile:
         market(SCAN)
         wh = pd.DataFrame({"symbol": list(SCAN)[:5], "ltp": list(SCAN.values())[:5]})
         monkeypatch.setattr(spr, "warehouse_prev_close", lambda m: wh)
-        monkeypatch.setattr(spr, "market_open_now", lambda m: True)
+        monkeypatch.setattr(spr.ms, "is_open", lambda m, at=None: True)
         _fresh(monkeypatch, SCAN)
         assert spr.reconcile("IN", sample=8, tolerance=2.0) is False
 

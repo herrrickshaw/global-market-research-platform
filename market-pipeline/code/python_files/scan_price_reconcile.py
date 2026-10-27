@@ -40,6 +40,7 @@ from pathlib import Path
 
 import pandas as pd
 
+import market_sessions as ms
 import scan_files
 
 HERE = Path(__file__).resolve().parent
@@ -57,21 +58,6 @@ MARKETS = {
     "EU": ("european_scan/european_market_scan_*.xlsx", "Symbol", "LTP", ""),
 }
 LIQ_COL = "Turnover_USD"   # present in all five All_Stocks sheets
-
-
-def market_open_now(mkt: str) -> bool:
-    """Rough in-session check (IST clock). When a market is trading, scan-vs-
-    fresh gaps are intraday drift, not staleness — tolerance loosens 2x.
-    (First live run flagged ASML 3.6% and SKHY 8.8% during EU/US sessions.)"""
-    from datetime import datetime
-    now = datetime.now()
-    h = now.hour + now.minute / 60
-    if now.weekday() >= 5:
-        return False
-    windows = {"IN": (9.25, 15.5), "JP": (5.5, 11.5), "KR": (5.5, 12.0),
-               "EU": (12.5, 21.0), "US": (19.0, 25.999)}  # US eve wraps midnight
-    lo, hi = windows.get(mkt, (0, 0))
-    return (lo <= h <= hi) or (mkt == "US" and h <= 1.5)
 
 
 # ── in-session quorum ─────────────────────────────────────────────────────────
@@ -220,7 +206,12 @@ def reconcile(market: str, sample: int, tolerance: float) -> bool:
     tickers = [str(s) + suffix if suffix and not str(s).endswith(suffix) else str(s)
                for s in liquid[sym_col]]
     fresh = fresh_quotes(tickers)
-    in_session = market_open_now(market)
+    # When a market is trading, scan-vs-fresh gaps are intraday drift, not
+    # staleness — tolerance loosens 2x. (First live run flagged ASML 3.6% and
+    # SKHY 8.8% during EU/US sessions.) market_sessions knows the bell times
+    # AND the holiday calendars; the hand-coded IST windows this replaced did
+    # not, so on an exchange holiday they called a closed market open.
+    in_session = ms.is_open(market)
     if in_session:
         tolerance = tolerance * 2
         print(f"  [{market}] market in session — tolerance loosened to {tolerance:.1f}% (intraday drift)")
