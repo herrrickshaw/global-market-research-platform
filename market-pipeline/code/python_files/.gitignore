@@ -58,3 +58,7 @@ cache_seed/data_sources.parquet
 cache_seed/data_sufficiency_history.parquet
 cache_seed/india_ccc_screen.parquet
 cache_seed/cleaned_long.parquet
+
+# pytest (tests/ is hermetic; caches are noise)
+__pycache__/
+.pytest_cache/

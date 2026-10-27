@@ -3,6 +3,7 @@
 # requirements-dev.txt`). Versions pinned so `make lint`/`make format` give
 # identical results for everyone, matching the pinning convention already used
 # in ../../../repos/global-stock-screener/.github/workflows.
+pytest==9.1.1
 ruff==0.15.20
 mypy==1.19.1
 pylint==3.3.9
