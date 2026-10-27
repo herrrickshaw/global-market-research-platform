@@ -2,6 +2,102 @@
 
 Decisions and material changes to the pipeline, newest first.
 
+## 2026-10-27 — daily_mailer.sh: the incident essays live here now, not in the script
+
+`daily_mailer.sh` was 655 lines, 355 of them comments, four of them essays of
+20–49 lines recording the incident behind a design choice. Those are decisions,
+and decisions belong in this file; the script keeps a one- or two-line pointer
+at each site. Nothing below changes behaviour. Same day: the send gate was
+merged into `price_gate.py`, `scan_files.py` / `brief_state.py` replaced
+duplicated parsers, `market_open_now` gave way to `market_sessions.is_open`,
+the retired witnesses were deleted, and the duplicate watchlist repair and
+Europe scan were dropped — each in its own commit on
+`mailer/evidence-based-zone-rules`.
+
+### Why daily_mailer.sh exists, and why two phases (header, was lines 1–49)
+
+`daily_pipeline.sh` had grown to 38 steps and ~9 hours, of which the mailer
+was one step. It also ran five market scans, five correlation scans, monthly
+backtests, warehouse ingest, an rclone cloud backup, an IUDX flood-sensor
+collector and an annual IMD rainfall refresh. On 2026-07-29 the brief was
+ready at 22:55 and the job did not finish until 08:08 the next morning: every
+one of those 9h13m was spent on work the email did not need, the backup alone
+taking 4h19m. The coupling was also misleading: a failure in any of the 38
+steps landed in the same FAILURES array and the same alert, so "the daily
+brief failed" has meant a rainfall refresh erroring out, and the reverse — the
+brief blocked by a stale scan of a market it no longer covers. So the mailer
+does exactly what the email needs; research and ops moved to
+`daily_research.sh` / `daily_ops.sh` on their own schedules.
+
+Scope is India and US only (`watchlist_markets.COVERED`). Europe, Japan and
+Korea are parked because their fundamentals cannot support a per-name claim
+(quality scores in ratio-named columns — `watchlist_markets.PARKED`), so
+scanning them for a brief that will not mention them is pure latency. Their
+scans run in `daily_research.sh`, which is where a market gets rehabilitated.
+
+**Why the old 00:30 slot was wrong.** US markets close at 16:00 ET = 01:30 IST
+under EDT, 02:30 IST under EST. Scheduled at 00:30 IST, the pipeline scanned
+the US mid-session every weekday by construction — which is why the reconcile
+kept flagging US drift and its tolerance had to be loosened to 4%. The fix was
+a later start, not a wider tolerance: PHASE 1 (`--data`) at 03:00 IST, after
+the US close in both DST regimes; PHASE 2 (`--send`) at 06:30 IST, both
+markets shut, so a gate difference means staleness rather than drift. Phase 1
+has three and a half hours of slack before phase 2 needs its output.
+
+### The pipeline is not slow, it is suspended (caffeinate, was lines 53–87)
+
+Measured 2026-08-15: the data phase spanned 03:05→07:27 (262 min) and pmset
+logged 37 "Entering Sleep state" events inside that window; the 11-minute runs
+on 08-13 and 08-14 logged zero. Step boundaries land exactly on sleep
+timestamps. The actual work is tiny — the step [3/13] rebuild everyone blamed
+(re-pivot 268 dates, re-clean 7,941 symbols, rewrite cleaned_long, rebuild the
+94 MB LMDB) profiles at ~29 s (clean 17.1 s, LMDB 5.8 s, regroup 2.2 s,
+parquet 0.2 s). It reported 61 minutes because the machine slept through most
+of it. The sleep also silently defeated the `cap()` watchdog, which then
+counted time in `sleep 5` increments that do not advance while suspended.
+
+`caffeinate -s -i -m -w $$`: `-w` ties the assertion to the shell's lifetime
+(no re-exec, no trap); `-i` blocks idle sleep, the "Sleep Service Back to
+Sleep / PrevIdle" the log shows; `-m` keeps the disk up; `-s` was once omitted
+as AC-only, which is true, but it is the only flag that blocks the sleep that
+actually costs time — 2026-08-27 measured the send phase at 121.7 min wall for
+~5 min of compute, 11 Maintenance Sleep events on battery, 116.9 min asleep.
+**On battery none of this helps**: nothing caffeinate offers blocks
+Maintenance Sleep. Running the 03:00/06:30 slots on AC is the only real fix.
+
+### Why every step has a wall-clock ceiling (`cap()`, was lines 186–205)
+
+On 2026-08-07 step [5/13] opened an HTTPS socket that never delivered a byte
+and blocked for 4h50m at 0% CPU. No step had a time limit, so the run stopped
+advancing while holding the lock; the 06:30 send found the lock held by a live
+pid, printed "already running" and exited 0 — launchd recorded success for
+both jobs and no brief went out. A hang is strictly worse than a crash here:
+every error is already visible through `|| FAILURES+=(...)`, only a hang is
+silent. The socket was fixed (sentiment_pipeline.py bounds its RSS fetch), but
+that is one call in one step; `cap` is the structural guard. It returns the
+command's own status or 124 on timeout (GNU timeout's convention), so every
+existing failure handler fires unchanged plus an explicit TIMEOUT entry.
+
+### Why research is chained from the send, not scheduled (was lines 582–607)
+
+`daily_research.sh` used to run on its own clock guess (08:30), independent of
+whether `--send` had finished. If the send overran, research started on top of
+it and exited on the lock (research silently skipped for the day); if the send
+finished early, research sat idle. Launched from the end of the send instead:
+nothing downstream waits on research, and the mailer must not block for the
+~2 h research run, so it is backgrounded and disowned. The EXIT trap still
+holds the lock for the script's last instructions; research's own mkdir finds
+it briefly occupied and falls into its wait loop, worst case one 60 s poll.
+Only a real send phase chains (`RUN_SEND=1`, `IS_DRAFT=0`, checked across all
+args): `--data` and `--draft` are partial or test invocations.
+
+On 2026-07-30 the chain fired but the child was killed before writing a byte:
+launchd tears down a job's whole process group when the parent exits unless
+the plist sets `AbandonProcessGroup` (`disown` only stops bash sending SIGHUP).
+The plists now set it, and the launch's own output goes to
+`daily_research_chain_<stamp>.log` rather than /dev/null, so a future launch
+failure leaves evidence instead of a single "started" line.
+
 ## 2026-09-21 — trailing_returns: patterns tightened, split suspects excluded
 
 The 2026-09-21 daily scan flagged a pattern on 7,451 of 7,910 filter_watchlist

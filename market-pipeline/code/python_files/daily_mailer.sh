@@ -1,90 +1,27 @@
 #!/bin/bash
 # daily_mailer.sh — build and send the Daily Market Brief. Nothing else.
-#
-# WHY THIS EXISTS. daily_pipeline.sh had grown to 38 steps and ~9 hours, of which
-# the mailer was one step. It also ran five market scans, five correlation scans,
-# monthly backtests, warehouse ingest, an rclone cloud backup, an IUDX
-# FLOOD-SENSOR collector and an annual IMD RAINFALL refresh. On 2026-07-29 the
-# brief was ready at 22:55 and the job did not finish until 08:08 the next
-# morning — every one of those 9h13m spent on work the email did not need, with
-# the backup alone taking 4h19m.
-#
-# That coupling is not just slow, it is misleading: a failure in any of those 38
-# steps lands in the same FAILURES array and the same alert, so "the daily brief
-# failed" has meant a rainfall refresh erroring out. And the reverse — the brief
-# being blocked by a stale scan of a market it no longer covers.
-#
-# So this script does exactly what the email needs, and the research and ops work
-# moves to daily_research.sh / daily_ops.sh on their own schedules.
-#
-# SCOPE: India and US only, matching watchlist_markets.COVERED. Europe, Japan and
-# Korea are parked because their fundamentals cannot support a per-name claim
-# (quality scores in ratio-named columns — see watchlist_markets.PARKED), so
-# scanning them for a brief that will not mention them is pure latency. Their
-# scans still run in daily_research.sh, which is where a market gets rehabilitated.
+# India + US only (watchlist_markets.COVERED); the parked markets' scans and
+# all research/ops work run in daily_research.sh, chained from the end of a
+# real send. History and rationale: CHANGELOG.md, 2026-10-27 entry.
 #
 #   ./daily_mailer.sh            # data + send in one pass
 #   ./daily_mailer.sh --data     # PHASE 1 only: refresh India + US market data
 #   ./daily_mailer.sh --send     # PHASE 2 only: screen -> validate -> SEND
 #   ./daily_mailer.sh --draft    # everything except the send
 #
-# 🔴 WHY TWO PHASES, AND WHY THE OLD 00:30 SLOT WAS WRONG. US markets close at
-# 16:00 ET = 01:30 IST under EDT, 02:30 IST under EST. The pipeline was scheduled
-# at 00:30 IST, so it scanned the US MID-SESSION every single weekday, by
-# construction. That is why [13d] kept flagging US drift and why its tolerance
-# had to be loosened to 4% — the scan was capturing an intraday price and
-# comparing it against a later one. The fix is not a wider tolerance, it is a
-# later start.
-#
-#   PHASE 1 (--data)  03:00 IST — after the US close in BOTH DST regimes, so
-#                     India's 15:30 close and the US 16:00 ET close are final.
-#   PHASE 2 (--send)  06:30 IST — both markets shut, nothing moving. A reconcile
-#                     here compares a settled scan against a settled quote, so a
-#                     difference means STALENESS rather than drift, which is the
-#                     only condition under which that gate means anything.
-#
-# Splitting them also means a slow scan cannot delay the brief: phase 1 has three
-# and a half hours of slack before phase 2 needs its output.
-#
-# Expected runtime ~25-40 min for phase 1, ~5 min for phase 2.
+#   PHASE 1 (--data)  03:00 IST — after the US close in BOTH DST regimes.
+#   PHASE 2 (--send)  06:30 IST — both markets shut, so a gate difference means
+#                     staleness, not drift. (The old single 00:30 slot scanned
+#                     the US mid-session every weekday.)
+# Expected runtime ~15-40 min for phase 1, ~5-8 min for phase 2.
 set -uo pipefail
 cd "$(dirname "$0")"
 
 # ── hold a power assertion for the whole run ──────────────────────────────────
-# 🔴 THE PIPELINE IS NOT SLOW, IT IS SUSPENDED. Measured 2026-08-15: the data
-# phase spanned 03:05→07:27 (262 min) and pmset logged 37 "Entering Sleep state"
-# events inside that window. The 11-minute runs on 08-13 and 08-14 logged ZERO.
-# Step boundaries land exactly on sleep timestamps — step [4/13]'s marker is
-# 04:33:55, which is a sleep event to the second.
-#
-# The actual work is tiny. Profiled on the same data: the step [3/13] rebuild
-# everyone assumed was the cost — re-pivot 268 dates, re-clean 7,941 symbols,
-# rewrite cleaned_long, rebuild the 94 MB LMDB — totals ~29 SECONDS
-# (clean 17.1s, LMDB 5.8s, regroup 2.2s, parquet 0.2s). It reported 61 minutes
-# because the machine slept through most of it. Making that rebuild incremental
-# would have saved 29s of a 3,670s step.
-#
-# This also silently defeated the cap() watchdog: it counts elapsed time in
-# `sleep 5` increments, which do not advance while the system is suspended, so
-# a 61-minute step never tripped CAP_BHAVCOPY=2400 and no TIMEOUT was logged.
-#
-# caffeinate -w ties the assertion to this shell's lifetime, so it releases on
-# exit however we exit — no re-exec, no trap, nothing left holding the machine
-# awake if the run dies. -i prevents idle sleep (what the log shows: "Sleep
-# Service Back to Sleep", PrevIdle), -m keeps the disk spun up.
-#
-# -s was previously omitted on the grounds that it only applies on AC. That is
-# true — `man caffeinate`: "valid only when system is running on AC power" — but
-# omitting it buys nothing, and it is the only flag that blocks the sleep that
-# actually costs us time. 2026-08-27 measured the send phase at 121.7 min wall
-# for ~5 min of compute: 11 "Entering Sleep state due to 'Maintenance Sleep' …
-# Using Batt" events, 116.9 min asleep, which tripped both CAP_ENSURE_FRESH and
-# the [11/13] cap purely on wall-clock. So -s is now included: it is a no-op on
-# battery and correct on AC.
-#
-# ⚠️ ON BATTERY THIS DOES NOT HELP. -i cannot block Maintenance Sleep; nothing
-# caffeinate offers can. Running the 03:00/06:30 slots on AC is the only real
-# fix for the 2h send phase — see the 2026-08-27 audit.
+# The pipeline is not slow, it is suspended: 2026-08-15's 262-min data phase
+# held 37 sleep events around ~29 s of real work (CHANGELOG 2026-10-27). -w ties
+# the assertion to this shell; -s/-i/-m block the sleeps that cost time on AC.
+# ⚠️ On battery nothing blocks Maintenance Sleep — run the 03:00/06:30 slots on AC.
 if command -v caffeinate >/dev/null 2>&1; then
   caffeinate -s -i -m -w "$$" &
   echo "  power assertion held for pid $$ (caffeinate -s -i -m)"
@@ -184,25 +121,11 @@ step() {
 }
 
 # ── per-step wall-clock ceiling ──────────────────────────────────────────────
-# 🔴 WHY. On 2026-08-07 step [5/13] opened an HTTPS socket that never delivered a
-# byte and blocked for 4h50m at 0% CPU. Nothing in this script could notice: no
-# step had a time limit, so the run simply stopped advancing while holding
-# $LOCKDIR. The 06:30 send then found the lock held by a live pid, printed
-# "already running" and **exit 0** — launchd recorded success for both jobs and
-# no brief went out. A hang is strictly worse than a crash here, because every
-# step is guarded with `|| FAILURES+=(...)` and therefore every *error* is
-# already visible; only a hang is silent.
-#
-# The underlying socket was fixed (sentiment_pipeline.py now bounds its RSS
-# fetch), but that is one call in one step. This is the structural guard: no step
-# may run forever, whatever it is waiting on.
-#
 #   cap <seconds> <label> <command...>
-#
-# Returns the command's own exit status, or 124 on timeout (GNU timeout's
-# convention). 124 is non-zero, so every existing `|| FAILURES+=(...)` handler
-# fires unchanged and the alert email still goes out — a timed-out step is
-# reported exactly like a failed one, plus an explicit TIMEOUT entry naming it.
+# No step may run forever: a hang holds the lock and loses the brief silently
+# (2026-08-07, a 4h50m HTTPS socket at 0% CPU; CHANGELOG 2026-10-27). Returns
+# the command's own status, or 124 on timeout so every `|| FAILURES+=(...)`
+# handler fires unchanged plus an explicit TIMEOUT entry.
 CAP_POLL=5
 
 # Kill a process and all its descendants, deepest first — a bare `kill` on the
@@ -580,41 +503,13 @@ FAILURES=()
 } 2>&1 | tee -a "$LOG"
 
 # ── chain the research partition ────────────────────────────────────────────
-# daily_research.sh used to run on its own fixed clock guess (08:30), independent
-# of whether --send had actually finished by then. That is not a partition of
-# THIS run, it is a second run that happens to be scheduled nearby — if --send
-# overran, research would start on top of it and immediately exit on the lock
-# (wasted cron cycle, research silently skipped for the day); if --send finished
-# early, research sat idle for no reason.
-#
-# Launched here instead: the brief has already been sent (or the alert already
-# fired) by this point, so nothing downstream is waiting on research, and
-# daily_mailer.sh must not block for the ~2h research run before it can exit.
-# Backgrounded and disowned so it does not.
-#
-# The EXIT trap above (line ~76) still holds /tmp/daily_pipeline.lock for the
-# few remaining instructions of THIS script, so daily_research.sh's own mkdir
-# will find it briefly occupied and fall into its wait loop — harmless, since
-# that loop polls a live pid and the trap releases the lock within a second of
-# this line running; worst case is one unneeded 60s poll interval on a ~2h run.
-# It is not, and does not need to be, a hand-off synchronised any tighter than
-# that.
-#
-# Only fires after a REAL send phase (RUN_SEND=1, IS_DRAFT=0), which is the
-# actual end of "today's run" — not after --data alone, and not after --draft,
-# which are partial/test invocations that should not also trigger 2 hours of
-# research work. Checked across ALL args, not just $1: --draft can appear
-# anywhere in "$@".
+# Research starts when the send ends, not on its own clock (a fixed 08:30 slot
+# either collided with an overrunning send or sat idle). Only after a REAL send
+# phase — never --data or --draft. Backgrounded and disowned; the lock hand-off
+# is one 60 s poll at worst. Its launch output goes to its own file, never
+# /dev/null, and the plists set AbandonProcessGroup so launchd does not kill
+# it with the parent (2026-07-30). CHANGELOG 2026-10-27.
 if [ "$RUN_SEND" = "1" ] && [ "$IS_DRAFT" = "0" ]; then
-  # 🔴 NOT /dev/null. On 2026-07-30 the chain fired (confirmed in
-  # launchd_mailer_send.log) but the child was killed before writing a single
-  # byte — launchd tears down a job's whole PROCESS GROUP when the parent exits
-  # unless the plist sets AbandonProcessGroup; `disown` only stops bash sending
-  # SIGHUP, it does not protect against that. The plists now set it. Redirecting
-  # this launch's own output to /dev/null was what turned a real failure into a
-  # silent one — there was no daily_research_*.log AT ALL to diagnose from, only
-  # the one line here saying it had "started". Routed to its own file now so a
-  # future launch failure (wrong cwd, missing venv, whatever) leaves evidence.
   nohup ./daily_research.sh > "daily_research_chain_$(date +%Y%m%d_%H%M%S).log" 2>&1 &
   disown
   echo "  chained: daily_research.sh started in the background (pid $!)"
