@@ -32,15 +32,15 @@ from __future__ import annotations
 
 import argparse
 import glob
-import re
 import subprocess
 import sys
-from datetime import date, datetime
+from datetime import date
 from io import StringIO
 from pathlib import Path
-from typing import Optional
 
 import pandas as pd
+
+import scan_files
 
 HERE = Path(__file__).resolve().parent
 
@@ -155,19 +155,9 @@ def fresh_quotes(tickers: list[str]) -> dict[str, float]:
     return out
 
 
-_SCAN_DATE = re.compile(r"_(\d{8})_\d{4}\.xlsx$")
-
-
-def scan_age_days(path: str) -> Optional[int]:
+def scan_age_days(path: str) -> int | None:
     """Days between the workbook's own datestamp and today. None if unparseable."""
-    m = _SCAN_DATE.search(Path(path).name)
-    if not m:
-        return None
-    try:
-        stamp = datetime.strptime(m.group(1), "%Y%m%d").date()
-    except ValueError:
-        return None
-    return (date.today() - stamp).days
+    return scan_files.age_days(path)
 
 
 def reconcile(market: str, sample: int, tolerance: float) -> bool:

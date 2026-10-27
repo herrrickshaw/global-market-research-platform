@@ -23,7 +23,7 @@ class TestQuorum:
 
     def test_2026_08_12_half_of_eight_does_not_fail(self):
         # 4/8 breaching used to suppress; a majority of 8 is 5.
-        assert 4 < spr._quorum(8)
+        assert spr._quorum(8) > 4
 
 
 class TestScanAge:

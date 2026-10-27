@@ -16,7 +16,6 @@ import send_alert as sa
 @pytest.fixture
 def state_file(monkeypatch, tmp_path):
     """Redirect the module's state lookup to a temp file we control."""
-    import pathlib
     fake_mod = tmp_path / "send_alert.py"
     fake_mod.write_text("")
     monkeypatch.setattr(sa, "__file__", str(fake_mod))

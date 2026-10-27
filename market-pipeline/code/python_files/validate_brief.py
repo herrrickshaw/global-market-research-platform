@@ -43,16 +43,13 @@ from __future__ import annotations
 
 import argparse
 import datetime as _dt
-import glob
 import json
-import re
 import sys
-import time
 
 import pandas as pd
-import requests
 
 import price_sources
+import scan_files
 
 UA = {"User-Agent": "Mozilla/5.0 (research)"}
 BASE = "https://www.screener.in/company/{}/"
@@ -65,33 +62,11 @@ WITNESS_LAG_DAYS = 5      # a name's only witnesses this far behind the sample a
 
 
 def _latest_scan() -> str:
-    fs = sorted(glob.glob("indian_full_scan/indian_full_scan_*.xlsx"))
-    return fs[-1] if fs else ""
+    return scan_files.latest("IN")
 
 
 def _scan_staleness_note(path: str) -> str:
-    """'' if the workbook is today's, otherwise a line naming the real problem.
-
-    Without this, a workbook left over from a day the scan did not run shows up
-    here as ordinary price mismatches against screener.in — true, but it points
-    at the prices rather than at the missing run. On Sat 2026-08-01 that read as
-    '1 price mismatch beyond 2.0%' when the actual fact was that Friday's
-    workbook was still on disk because the 03:00 job never fired.
-    """
-    name = path.rsplit("/", 1)[-1]
-    m = re.search(r"_(\d{8})_\d{4}\.xlsx$", name)
-    if not m:
-        return ""
-    try:
-        stamp = _dt.datetime.strptime(m.group(1), "%Y%m%d").date()
-    except ValueError:
-        return ""
-    age = (_dt.date.today() - stamp).days
-    if age <= 0:
-        return ""
-    return (f"  ⚠ SCAN IS {age} DAY(S) OLD — {name}; expected "
-            f"{_dt.date.today():%Y-%m-%d}. The scan step did not run, so any mismatch "
-            f"below is stale data, not a bad pick.")
+    return scan_files.staleness_note(path)
 
 
 def _scan_date(path: str) -> _dt.date:
@@ -99,13 +74,7 @@ def _scan_date(path: str) -> _dt.date:
     'now', which is what lets the gate run at any hour: the question becomes 'what
     did this close at on or before <scan day>?', and that has the same answer at
     11:00 as it does at 06:30."""
-    m = re.search(r"_(\d{8})_\d{4}\.xlsx$", path.rsplit("/", 1)[-1])
-    if m:
-        try:
-            return _dt.datetime.strptime(m.group(1), "%Y%m%d").date()
-        except ValueError:
-            pass
-    return _dt.date.today()
+    return scan_files.stamp(path) or _dt.date.today()
 
 
 def _session(fetched: list):

@@ -73,7 +73,7 @@ class TestUS:
         assert ms.expected_session("US", at) == dt.date(2026, 8, 18)
 
     def test_independence_day_observed_is_not_a_session(self):
-        xc = pytest.importorskip("exchange_calendars")
+        pytest.importorskip("exchange_calendars")
         assert dt.date(2026, 7, 3) not in ms._sessions_for("XNYS", 2026)
 
 

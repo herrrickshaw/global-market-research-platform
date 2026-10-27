@@ -133,7 +133,7 @@ def _install_sources(monkeypatch, table: dict[str, dict[str, dict]]):
     import price_sources
 
     names = sorted({s for v in table.values() for s in v})
-    monkeypatch.setattr(price_sources, "SOURCES", {n: None for n in names})
+    monkeypatch.setattr(price_sources, "SOURCES", dict.fromkeys(names))
 
     def fetch_all(sym, asof, polite=0.0):
         got = table.get(sym, {})
