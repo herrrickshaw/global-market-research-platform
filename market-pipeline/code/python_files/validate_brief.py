@@ -61,6 +61,7 @@ BASE = "https://www.screener.in/company/{}/"
 #   1098.8 -> "Rs 1,099" (0.02%)   860.55 -> "Rs 861" (0.05%)   289.75 -> "Rs 289" (0.26%)
 PRICE_TOL_PCT = 2.0
 MIN_VERIFIED = 3          # below this we cannot claim the brief was validated
+WITNESS_LAG_DAYS = 5      # a name's only witnesses this far behind the sample abstain
 
 
 def _latest_scan() -> str:
@@ -107,6 +108,54 @@ def _scan_date(path: str) -> _dt.date:
     return _dt.date.today()
 
 
+def _session(fetched: list):
+    """Newest close any source quoted for any name fetched so far (None if none)."""
+    dates = [v["date"] for _, _, a in fetched for v in a.values()]
+    return max(dates) if dates else None
+
+
+def _judge(sym: str, ours: float, answered: dict, session) -> dict:
+    """One name's verdict from the sources that answered for it.
+
+    `session` is the newest close any source quoted for any name in the sample.
+    """
+    # AGREED RULE: pass on one, suppress on zero. A name with no answering
+    # source is unverifiable — skipped, not failed, because a 404 on a
+    # BSE-only name (AUSTENG) says nothing about the pick.
+    if not answered:
+        return {"symbol": sym, "status": "skip", "why": "no source answered"}
+    newest = max(v["date"] for v in answered.values())
+    # Every witness for this name is LAGGING the session the rest of the sample
+    # reached, but only by a few days — so they abstain and the name is
+    # unverifiable, exactly as if nobody had answered. Measured 2026-10-27: BSE
+    # (BSE Ltd) is answered only by yfinance (alphavantage rejects `BSE.BSE`,
+    # twelvedata 404s), which quoted the 10-23 close while ours was the correct
+    # 10-26 bhavcopy close; the lone stale vote suppressed a correct send. The
+    # same-name rule below could not help: there was no second witness to be
+    # newer than it. Beyond WITNESS_LAG_DAYS the name still votes and the `off`
+    # check still fails it — that is the MODISONLTD shape (frozen for weeks).
+    if newest < session and (session - newest).days <= WITNESS_LAG_DAYS:
+        seen = "; ".join(f"{s} {v['price']:.2f} @{v['date']}" for s, v in answered.items())
+        return {"symbol": sym, "status": "skip",
+                "why": f"only lagging witnesses, {seen} vs session {session} — abstained"}
+    # A witness quoting an OLDER session than another witness for the same
+    # name is comparing against a different close — it abstains. Measured
+    # 2026-10-20: yfinance returned HDFCBANK @10-16 (2.31% off) while ours and
+    # alphavantage agreed @10-19 (0.06%); the 1-1 tie suppressed a correct
+    # send, as on 2026-09-11 (BHARTIARTL). If OUR price is the stale one, the
+    # current witness still disagrees, so the MODISONLTD case is still caught.
+    stale = [s for s, v in answered.items() if v["date"] < newest]
+    voting = {s: v for s, v in answered.items() if s not in stale}
+    agree = [s for s, v in voting.items() if v["verdict"] == "agree"]
+    dis = [s for s, v in voting.items() if v["verdict"] == "disagree"]
+    # Majority of the CURRENT sources that answered. With a single answer that
+    # is just that answer; a tie counts as disagreement, because the gate's job
+    # is to catch bad data and a split jury is not a confirmation.
+    return {"symbol": sym, "status": "ok" if len(agree) > len(dis) else "MISMATCH",
+            "ours": ours, "sources": answered, "newest": newest,
+            "agree": agree, "disagree": dis, "stale": stale}
+
+
 def validate(sample: int, tol: float) -> dict:
     f = _latest_scan()
     if not f:
@@ -123,10 +172,14 @@ def validate(sample: int, tol: float) -> dict:
 
     asof = _scan_date(f)
     run_ts = _dt.datetime.now().isoformat(timespec="seconds")
-    checks, verified, ledger = [], 0, []
+    ledger, fetched = [], []
 
     for r in picks.to_dict("records"):
-        if verified >= sample:
+        # Stop once enough names would vote at the session the sample has reached
+        # so far. Judged again on the final session below, so a name counted here
+        # can still turn into an abstention once a later name moves the session on.
+        session = _session(fetched)
+        if session and sum(_judge(*f, session)["status"] != "skip" for f in fetched) >= sample:
             break
         sym, ours = str(r["Symbol"]), float(r["LTP"])
         answered = {}
@@ -143,31 +196,11 @@ def validate(sample: int, tol: float) -> dict:
                 answered[src] = {"price": theirs, "date": got["date"],
                                  "diff_pct": round(diff, 2), "verdict": verdict}
             ledger.append(row)
+        fetched.append((sym, ours, answered))
 
-        # AGREED RULE: pass on one, suppress on zero. A name with no answering
-        # source is unverifiable — skipped, not failed, because a 404 on a
-        # BSE-only name (AUSTENG) says nothing about the pick.
-        if not answered:
-            checks.append({"symbol": sym, "status": "skip", "why": "no source answered"})
-            continue
-        verified += 1
-        # A witness quoting an OLDER session than another witness for the same
-        # name is comparing against a different close — it abstains. Measured
-        # 2026-10-20: yfinance returned HDFCBANK @10-16 (2.31% off) while ours and
-        # alphavantage agreed @10-19 (0.06%); the 1-1 tie suppressed a correct
-        # send, as on 2026-09-11 (BHARTIARTL). If OUR price is the stale one, the
-        # current witness still disagrees, so the MODISONLTD case is still caught.
-        newest = max(v["date"] for v in answered.values())
-        stale = [s for s, v in answered.items() if v["date"] < newest]
-        voting = {s: v for s, v in answered.items() if s not in stale}
-        agree = [s for s, v in voting.items() if v["verdict"] == "agree"]
-        dis = [s for s, v in voting.items() if v["verdict"] == "disagree"]
-        # Majority of the CURRENT sources that answered. With a single answer that
-        # is just that answer; a tie counts as disagreement, because the gate's job
-        # is to catch bad data and a split jury is not a confirmation.
-        checks.append({"symbol": sym, "status": "ok" if len(agree) > len(dis) else "MISMATCH",
-                       "ours": ours, "sources": answered, "newest": newest,
-                       "agree": agree, "disagree": dis, "stale": stale})
+    session = _session(fetched)
+    checks = [_judge(*f, session) for f in fetched]
+    verified = sum(c["status"] != "skip" for c in checks)
 
     price_sources.record(ledger)
 
