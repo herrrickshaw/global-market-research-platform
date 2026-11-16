@@ -110,7 +110,7 @@ def discover_new_listings(lookback_days: int = LOOKBACK_DAYS,
     Returns list of NSE ticker symbols (new listings only).
     """
     try:
-        from nse import NSE
+        from nse_compat import NSE
         import data_registry as _R
         cache_dir = _R.MARKET_CACHE
     except ImportError:

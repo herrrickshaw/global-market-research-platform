@@ -168,7 +168,7 @@ def clean_name(name: str) -> str:
 def _nse_names() -> list:
     rows = []
     try:
-        from nse import NSE
+        from nse_compat import NSE
         with NSE(download_folder="/tmp", server=False) as n:
             for off in range(7):
                 d = datetime.today() - timedelta(days=off)

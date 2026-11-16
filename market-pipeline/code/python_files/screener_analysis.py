@@ -275,7 +275,7 @@ def fetch_all_nse_symbols() -> list:
 
     # Fallback: nse-library bhavcopy
     try:
-        from nse import NSE
+        from nse_compat import NSE
         with NSE(download_folder=str(DOWNLOAD_DIR), server=False) as nse:
             today = datetime.today()
             for offset in range(7):

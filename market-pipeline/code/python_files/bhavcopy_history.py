@@ -330,7 +330,7 @@ def fetch_history(n_days: int = 400, workers: int = 8, exchanges=("NSE", "BSE"),
     frames = []  # (exchange, day, df) for the missing days only
 
     if missing and "NSE" in exchanges:
-        from nse import NSE
+        from nse_compat import NSE  # rewrites www.nseindia.com -> .in (301 since 2026-11-13)
         nse_client = NSE(download_folder=str(NSE_DIR))
         ok = 0
         for ts in missing:

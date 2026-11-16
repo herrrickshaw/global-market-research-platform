@@ -128,7 +128,7 @@ class NSEDataFetcher:
 
         # Fallback: nse library bhavcopy
         try:
-            from nse import NSE
+            from nse_compat import NSE
             today = datetime.today()
             with NSE(download_folder=str(CACHE_DIR), server=False) as nse:
                 for offset in range(7):

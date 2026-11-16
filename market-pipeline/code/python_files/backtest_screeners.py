@@ -967,7 +967,7 @@ def get_indian_symbols(top: int = 0) -> "List[tuple]":
     from datetime import datetime as _dt, timedelta as _td
     import pandas as _pd
     try:
-        from nse import NSE
+        from nse_compat import NSE
         today = _dt.today()
         with NSE(download_folder=str(DOWNLOAD_DIR), server=False) as nse:
             for offset in range(7):

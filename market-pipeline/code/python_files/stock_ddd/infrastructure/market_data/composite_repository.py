@@ -382,7 +382,7 @@ class NSEPythonLiveService(ILiveMarketDataService):
                 pass
         # Fallback: nse-library bhavcopy
         try:
-            from nse import NSE
+            from nse_compat import NSE
             today = datetime.today()
             with NSE(download_folder="/tmp", server=False) as nse_lib:
                 for offset in range(7):

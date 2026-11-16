@@ -36,7 +36,7 @@ import pandas as pd
 
 # Primary NSE/BSE market-data libraries
 try:
-    from nse import NSE
+    from nse_compat import NSE
 except ImportError:
     sys.exit("❌  pip install 'nse[local]'")
 

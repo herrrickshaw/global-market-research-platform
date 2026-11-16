@@ -343,7 +343,7 @@ def get_nse_symbols(top: int = 0) -> list:
     # Fallback: nse-library bhavcopy
     syms = []
     try:
-        from nse import NSE
+        from nse_compat import NSE
 
         today = datetime.today()
         with NSE(download_folder=str(OUT_DIR), server=False) as nse:
