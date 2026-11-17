@@ -6,11 +6,11 @@ Living catalog; re-run `data_ledger.py` to refresh volume/latest/updated from di
 
 | market | rows | tickers | latest | updated | source | off-peak window | rate note |
 |---|--:|--:|--:|--:|---|---|---|
-| IN | 4,683,266 | 7,944 | 2026-09-29 | 2026-09-29 | NSE/BSE bhavcopy | 18:00+ IST (EOD) | official archive — no throttle |
-| US | 16,571,221 | 10,058 | 2026-09-28 | 2026-09-29 | NASDAQ/yfinance | post-US-close / 03:00-07:00 IST | yfinance throttles in US hours |
-| KR | 5,403,183 | 2,779 | 2026-09-28 | 2026-09-29 | FinanceDataReader/KRX | after 12:30 IST (KRX close) | FDR gentle; batch |
-| JP | 7,463,203 | 3,572 | 2026-09-29 | 2026-09-29 | JPX/yfinance | after 11:30 IST (TSE close) | yfinance; J-Quants for validation |
-| EU | 3,839,025 | 1,666 | 2026-09-28 | 2026-09-29 | yfinance (17 exchanges) | after 21:30 IST (EU close) | yfinance; Volume sparse |
+| IN | 4,825,150 | 8,237 | 2026-11-12 | 2026-11-12 | NSE/BSE bhavcopy | 18:00+ IST (EOD) | official archive — no throttle |
+| US | 16,770,907 | 10,138 | 2026-11-13 | 2026-11-13 | NASDAQ/yfinance | post-US-close / 03:00-07:00 IST | yfinance throttles in US hours |
+| KR | 5,485,478 | 2,790 | 2026-11-13 | 2026-11-13 | FinanceDataReader/KRX | after 12:30 IST (KRX close) | FDR gentle; batch |
+| JP | 7,553,579 | 3,572 | 2026-11-13 | 2026-11-13 | JPX/yfinance | after 11:30 IST (TSE close) | yfinance; J-Quants for validation |
+| EU | 3,874,092 | 1,666 | 2026-11-13 | 2026-11-13 | yfinance (17 exchanges) | after 21:30 IST (EU close) | yfinance; Volume sparse |
 | CN | 10,010,203 | 5,188 | 2026-07-01 | 2026-08-17 | akshare A-shares | after 12:30 IST (SSE/SZSE close) | akshare; avoid peak |
 
 ## Fundamentals
@@ -29,8 +29,8 @@ Living catalog; re-run `data_ledger.py` to refresh volume/latest/updated from di
 
 | scope | rows | updated | builder | note |
 |---|--:|--:|---|---|
-| IN/US/KR | 12,001 | 2026-09-29 | `financial_ratios.py` | rebuilt daily [15b] |
-| 6 markets | 8,800 | 2026-10-01 | `build_all_ratios.py` | adds JP/EU/CN |
+| IN/US/KR | 7,903 | 2026-11-15 | `financial_ratios.py` | rebuilt daily [15b] |
+| 6 markets | 8,801 | 2026-11-16 | `build_all_ratios.py` | adds JP/EU/CN |
 
 ## Reference (free exchange masters)
 

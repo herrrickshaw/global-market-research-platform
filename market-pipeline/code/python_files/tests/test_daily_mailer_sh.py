@@ -203,3 +203,20 @@ class TestChain:
         r = run(sandbox, "--data", timeout=120)
         assert "data=1 send=0" in r.stdout
         assert "chained" not in r.stdout
+
+
+def test_stale_if_records_cause_only_when_upstream_failed():
+    """stale_if tags dependents of a failed step and never touches control flow."""
+    script = f"""set -uo pipefail
+eval "$(sed -n '/^FAILURES=()/,/^}}/p' {SCRIPT})"
+stale_if "India: bhavcopy refresh" "India scan" "rerun --data"
+echo "n_before=${{#STALE[@]}}"
+FAILURES+=("India: bhavcopy refresh")
+stale_if "India: bhavcopy refresh" "India scan" "rerun --data"
+stale_if "US: full market scan" "US report" "rerun --data"
+echo "n_after=${{#STALE[@]}}"
+echo "${{STALE[0]}}"
+"""
+    out = subprocess.run(["/bin/bash", "-c", script], capture_output=True, text=True).stdout
+    assert "n_before=0" in out and "n_after=1" in out
+    assert "India scan ran on cached data" in out and "remedy: rerun --data" in out

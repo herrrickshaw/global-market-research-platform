@@ -27,6 +27,12 @@ if command -v caffeinate >/dev/null 2>&1; then
   echo "  power assertion held for pid $$ (caffeinate -s -i -m)"
 fi
 
+# launchd's default soft fd limit is 256: the 2026-11-12 US scan died with
+# "Errno 24 Too many open files" (and yfinance "unable to open database file")
+# mid bulk download. Raise it for this run and every child.
+ulimit -n 10240 2>/dev/null || ulimit -n "$(ulimit -Hn)" 2>/dev/null || true
+echo "  fd limit: $(ulimit -n)"
+
 # Never inherit python3 from the caller's PATH. A manual run from a plain shell
 # resolved it to homebrew 3.14 on 2026-07-22: step [0] flagged missing deps,
 # every scan died, and the validation gate correctly suppressed the send.
@@ -241,6 +247,22 @@ for a in "$@"; do
 done
 
 FAILURES=()
+# Cause chain: when an upstream step failed, its dependents still run (on cached
+# input, by design — the price gate is the single decider). stale_if records WHICH
+# outputs rest on that cached input and what to do about it, so the alert names a
+# cause instead of a bare list of failures. Never changes control flow.
+STALE=()
+stale_if() {   # stale_if "<upstream FAILURES entry>" "<dependents>" "<remedy>"
+  local f
+  for f in "${FAILURES[@]:-}"; do
+    if [ "$f" = "$1" ]; then
+      STALE+=("STALE INPUT: $2 ran on cached data because '$1' failed — remedy: $3")
+      echo "  ↳ stale input: $2 (upstream '$1' failed)"
+      return 0
+    fi
+  done
+  return 0
+}
 {
   echo "=== daily mailer $(date) · data=$RUN_DATA send=$RUN_SEND ==="
 
@@ -346,6 +368,9 @@ FAILURES=()
     $PY -u scan_bhavcopy.py \
     || { echo "  scan failed (will use latest cache)"; FAILURES+=("India: full screener scan"); }
 
+  stale_if "India: bhavcopy refresh" "India scan [4/13] and report [5/13]" \
+    "fix the bhavcopy source, then run ./daily_mailer.sh --data before --send"
+
   step "[5/13] India combined report (fundamentals + street talk)"
   cap $CAP_REPORT_IN "[5/13] India combined report" \
     $PY daily_combined_report.py --market IN --html \
@@ -364,6 +389,9 @@ FAILURES=()
   cap $CAP_SCAN_US "[7/13] US full market scan" \
     $PY -u full_us_market_scan.py --workers 10 --min-price 2 \
     || { echo "  US full market scan failed (continuing)"; FAILURES+=("US: full market scan"); }
+
+  stale_if "US: full market scan" "US combined report [8/13]" \
+    "rerun ./daily_mailer.sh --data (the scan needs ~45 min, Mac on AC)"
 
   step "[8/13] US combined report (reuses the fresh US scan)"
   cap $CAP_REPORT_US "[8/13] US combined report" \
@@ -442,6 +470,9 @@ FAILURES=()
   cap $CAP_GATES "[13/13] price gate" \
     $PY price_gate.py --markets IN US --sample 6 && GATE_OK=0
 
+  # Lineage: which scans/prices/gate verdict this run's brief rests on. Never fatal.
+  $PY run_manifest.py || true
+
   # ── 6. send ────────────────────────────────────────────────────────────────
   if [ "$GATE_OK" -eq 0 ]; then
       step "[SEND] build + send mailer"
@@ -496,7 +527,7 @@ FAILURES=()
     # brief that actually went out.
     cap $CAP_ALERT "[ALERT] send_alert" \
       $PY send_alert.py --pipeline daily_mailer.sh --log "$LOG" \
-      "${FAILURES[@]}" || echo "  alert email itself failed to send"
+      "${FAILURES[@]}" ${STALE[@]+"${STALE[@]}"} || echo "  alert email itself failed to send"
   fi
 
   echo "=== done $(date) ==="

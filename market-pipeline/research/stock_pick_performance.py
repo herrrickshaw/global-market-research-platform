@@ -170,7 +170,7 @@ def score(d: pd.DataFrame, min_days: int) -> tuple[pd.DataFrame, dict]:
     no_market_panel = int((~d["market"].isin(ST.PANELS.keys())).sum())
     if no_market_panel:
         skipped["no_panel_file"] += no_market_panel  # e.g. EU rows from gmail_brief
-    d = d[d["market"].isin(ST.PANELS.keys())].copy()  # IN/US only, local panels
+    d = d[d["market"].isin(ST.PANELS.keys())].copy()  # markets with a local panel
     benches = {"IN": (_india_benchmark(), "NIFTYBEES+NIFTY50")}
     for mkt, grp in d.groupby("market"):
         p = ST.PANELS.get(mkt)
@@ -186,9 +186,13 @@ def score(d: pd.DataFrame, min_days: int) -> tuple[pd.DataFrame, dict]:
         if mkt in benches:
             bench, bench_name = benches[mkt]
         else:
-            b = ST.BENCH.get(mkt)  # US: SPY, full coverage in this panel
-            bench = wide[b].dropna() if b in wide.columns else pd.Series(dtype=float)
-            bench_name = b
+            # US: SPY, full coverage in this panel. EU/JP/KR have no index ETF in their panels, so
+            # their rows score with NaN vs-benchmark (counted in no_benchmark_coverage). The empty
+            # series needs a DatetimeIndex: a RangeIndex cannot be compared with entry_date.
+            b = ST.BENCH.get(mkt)
+            bench = (wide[b].dropna() if b in wide.columns
+                     else pd.Series(dtype=float, index=pd.DatetimeIndex([])))
+            bench_name = b or "none"
 
         for _, r in grp.iterrows():
             sym = r["symbol"]

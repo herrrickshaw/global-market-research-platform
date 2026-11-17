@@ -1,6 +1,6 @@
 # Data sources registry — provenance, access, auth, reachability
 
-Master list of every upstream the platform pulls from. Re-run `source_registry.py` to refresh reachability (last checked **2026-10-01**). Distinct from `data_ledger.md` (on-disk assets); this is the SOURCES catalog — constantly referenced & updated. 🟢 official exchange/regulator · ⚪ third-party aggregator.
+Master list of every upstream the platform pulls from. Re-run `source_registry.py` to refresh reachability (last checked **2026-11-16**). Distinct from `data_ledger.md` (on-disk assets); this is the SOURCES catalog — constantly referenced & updated. 🟢 official exchange/regulator · ⚪ third-party aggregator.
 
 > `reach` is a **bare-URL liveness** ping. A `403/401` on a keyed/cookie'd source (EDGAR needs a UA, NSE needs a cookie, J-Quants needs the `x-api-key`) is **expected** — use the method in the `access` column, not a plain GET. Only a connection error means the host is actually unreachable.
 
@@ -30,9 +30,9 @@ Master list of every upstream the platform pulls from. Re-run `source_registry.p
 | market | provider | reach | access | auth | off-peak / rate | notes |
 |---|---|:--:|---|---|---|---|
 | CN | 🟢 [Shanghai SE (SSE)](https://english.sse.com.cn/) | HTTP 200 | query.sse.com.cn JSON API (+Referer) | none | anytime (validation) | English portal live; query API returns JSON for 60x/68x; financials mostly PDF |
-| CN | 🟢 [Shenzhen SE (SZSE)](http://www.szse.cn/English/) | ConnectionError | disclosure/report APIs (session-gated) | none | anytime (validation) | portal reachable; direct API finicky (50x on guess) — akshare is the practical wrap |
+| CN | 🟢 [Shenzhen SE (SZSE)](http://www.szse.cn/English/) | HTTP 200 | disclosure/report APIs (session-gated) | none | anytime (validation) | portal reachable; direct API finicky (50x on guess) — akshare is the practical wrap |
 | CN | 🟢 [Beijing SE (BSE)](https://www.bse.cn/) | HTTP 200 | listings/disclosures | none | anytime | NEEQ-graduated small caps; niche coverage |
-| CN | 🟢 [CSRC](http://www.csrc.gov.cn/csrc_en/) | ReadTimeout | regulatory filings (PDF) | none | anytime | regulator; rules + enforcement, not bulk financials |
+| CN | 🟢 [CSRC](http://www.csrc.gov.cn/csrc_en/) | HTTP 200 | regulatory filings (PDF) | none | anytime | regulator; rules + enforcement, not bulk financials |
 
 ## Reference / universe
 
