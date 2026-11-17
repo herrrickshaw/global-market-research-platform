@@ -91,7 +91,10 @@ jobs:
       - name: Install test dependencies
         run: |
           pip install --upgrade pip
-          pip install pytest numpy pandas scipy openpyxl psycopg2-binary
+          # requests: put_call_parity/broker.py imports it lazily inside the
+          # request path, which tests/test_openalgo_broker.py exercises with a
+          # mocked session — the module still has to import (red 2026-11-17).
+          pip install pytest numpy pandas scipy openpyxl psycopg2-binary requests
 
       - name: Run BMS suite
         run: python -m pytest tests/ -v
