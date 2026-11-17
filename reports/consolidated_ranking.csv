@@ -1,0 +1,8 @@
+country,wage_ppp_usd,effective_tax_pct,yr1_debtfree_usd,yr1_debtloaded_usd,debt_data,yr10_rentadj_usd,rent_basis,years_to_permanence,rank_yr1_debtfree,rank_yr1_debtloaded,rank_yr10_rentadj
+United States,82933,23.22,34215.0,20738.0,measured,,,,1,5,
+Netherlands,75370,21.24,30077.0,30077.0,none gathered,50492.0,new lettings,5.0,2,1,1.0
+Australia,67000,17.02,25900.0,25900.0,none gathered,39667.0,sitting tenant,1.0,3,2,2.0
+Canada,69417,24.16,23591.0,23591.0,none gathered,36275.0,new lettings,1.0,4,3,3.0
+United Kingdom,63691,18.84,23239.0,23239.0,none gathered,35359.0,sitting tenant,5.0,5,4,4.0
+Germany,69433,33.77,17249.0,17249.0,none gathered,27062.0,new lettings,3.0,6,6,5.0
+Japan,49446,24.51,8945.0,8945.0,none gathered,2753.0,new lettings,2.0,7,7,6.0

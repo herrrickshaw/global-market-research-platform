@@ -1,0 +1,49 @@
+# Ruff configuration — see .github/workflows/ci.yml (the `lint` job).
+#
+# SCOPE: this is a BUG gate, not a style gate. The rules below are the classic
+# pyflakes smoke-test set — syntax errors, undefined names, broken f-strings,
+# malformed comparisons. Things that are wrong in any codebase regardless of
+# house style, and that no reviewer would defend.
+#
+# It deliberately does NOT enable the style/modernisation families (E, W, I,
+# UP, B, SIM, DTZ, ...). Ruff's defaults report 6,683 findings across this
+# repo; gating on that from day one would mean either one enormous mechanical
+# diff or a check that is permanently red and therefore ignored. A narrow gate
+# that is actually enforced beats a broad one that isn't.
+#
+# To widen later: add a family to `select`, run `ruff check --fix`, and land
+# the cleanup as its own commit so it doesn't bury real changes.
+#
+# NOTE ON `--config`: market-pipeline/code/python_files/pyproject.toml carries
+# its own, much broader ruff config (E,F,I,W,UP,B,C4,SIM) with a documented
+# backlog of ~306 pre-existing findings awaiting a deliberate sweep. Ruff
+# resolves config per-file from the nearest ancestor, so that subtree would
+# otherwise be linted under those rules and CI would be red on findings that
+# predate it. CI therefore runs `ruff check . --config ruff.toml`, which forces
+# this single config repo-wide. The nested pyproject.toml stays authoritative
+# for that subtree's own tooling (`make lint` there is unaffected) — it is that
+# subtree's cleanup plan, not CI's gate.
+
+target-version = "py311"
+
+extend-exclude = [
+    # Colab notebook export: the body contains `!pip install` and `%cd` shell
+    # magics, so it is not valid Python and never has been. It accounts for
+    # every one of the 52 invalid-syntax errors in the repo. Two identical
+    # copies exist (Downloads/ and market-pipeline/), hence the glob;
+    # market-pipeline/code/python_files/pyproject.toml already excludes its own.
+    "**/deoldify.py",
+
+    # Colab/Jupyter notebooks: cells legitimately reference names defined in
+    # earlier cells and use IPython magics, so undefined-name analysis reports
+    # false positives on them. Lint the extracted .py modules instead.
+    "*.ipynb",
+]
+
+[lint]
+select = [
+    "E9",   # syntax / indentation errors
+    "F63",  # broken comparisons (`is` on literals, invalid membership tests)
+    "F7",   # misplaced statements (break/continue/return outside their block)
+    "F82",  # undefined names
+]
