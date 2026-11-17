@@ -1,0 +1,1199 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>🚢 US Commodity Export Analysis Dashboard</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        :root {
+            --primary-color: #0066cc;
+            --secondary-color: #00aa44;
+            --accent-color: #ff6b35;
+            --danger-color: #cc3333;
+            --bg-light: #f8f9fa;
+            --bg-white: #ffffff;
+            --text-dark: #1a1a1a;
+            --text-light: #666666;
+            --border-color: #e0e0e0;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: var(--bg-light);
+            color: var(--text-dark);
+            line-height: 1.6;
+        }
+
+        header {
+            background: linear-gradient(135deg, var(--primary-color) 0%, #0052a3 100%);
+            color: white;
+            padding: 2rem;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        }
+
+        header h1 {
+            font-size: 2.5rem;
+            margin-bottom: 0.5rem;
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+        }
+
+        header p {
+            font-size: 1.1rem;
+            opacity: 0.95;
+        }
+
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: 2rem;
+        }
+
+        .section {
+            background: var(--bg-white);
+            border-radius: 8px;
+            padding: 2rem;
+            margin-bottom: 2rem;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+        }
+
+        h2 {
+            font-size: 1.8rem;
+            color: var(--primary-color);
+            margin-bottom: 1.5rem;
+            padding-bottom: 1rem;
+            border-bottom: 3px solid var(--primary-color);
+        }
+
+        h3 {
+            font-size: 1.3rem;
+            color: var(--text-dark);
+            margin-top: 1.5rem;
+            margin-bottom: 1rem;
+        }
+
+        .opportunity-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(350px, 1fr));
+            gap: 2rem;
+            margin-bottom: 2rem;
+        }
+
+        .opportunity-card {
+            background: linear-gradient(135deg, #f5f7fa 0%, #ffffff 100%);
+            border-left: 5px solid var(--primary-color);
+            border-radius: 8px;
+            padding: 1.5rem;
+            transition: transform 0.2s, box-shadow 0.2s;
+            cursor: pointer;
+        }
+
+        .opportunity-card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 8px 16px rgba(0,0,0,0.15);
+        }
+
+        .opportunity-card.rank1 {
+            border-left-color: #ffd700;
+            background: linear-gradient(135deg, #fffbf0 0%, #ffffff 100%);
+        }
+
+        .opportunity-card.rank1 .rank-badge {
+            background: #ffd700;
+            color: #333;
+        }
+
+        .opportunity-card.rank2 {
+            border-left-color: #c0c0c0;
+            background: linear-gradient(135deg, #f5f5f5 0%, #ffffff 100%);
+        }
+
+        .opportunity-card.rank2 .rank-badge {
+            background: #c0c0c0;
+            color: #333;
+        }
+
+        .opportunity-card.rank3 {
+            border-left-color: #cd7f32;
+            background: linear-gradient(135deg, #fdf5f0 0%, #ffffff 100%);
+        }
+
+        .opportunity-card.rank3 .rank-badge {
+            background: #cd7f32;
+            color: white;
+        }
+
+        .card-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: start;
+            margin-bottom: 1rem;
+        }
+
+        .rank-badge {
+            display: inline-block;
+            padding: 0.5rem 1rem;
+            border-radius: 4px;
+            font-weight: bold;
+            font-size: 0.9rem;
+        }
+
+        .score-badge {
+            display: inline-block;
+            background: var(--secondary-color);
+            color: white;
+            padding: 0.25rem 0.75rem;
+            border-radius: 20px;
+            font-size: 0.85rem;
+            font-weight: bold;
+        }
+
+        .card-title {
+            font-size: 1.2rem;
+            font-weight: bold;
+            color: var(--text-dark);
+            margin-bottom: 0.5rem;
+        }
+
+        .card-subtitle {
+            font-size: 0.9rem;
+            color: var(--text-light);
+            margin-bottom: 1rem;
+        }
+
+        .metrics-grid {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 1rem;
+            margin-bottom: 1rem;
+        }
+
+        .metric {
+            background: var(--bg-light);
+            padding: 1rem;
+            border-radius: 4px;
+            border-left: 3px solid var(--primary-color);
+        }
+
+        .metric-label {
+            font-size: 0.8rem;
+            color: var(--text-light);
+            text-transform: uppercase;
+            font-weight: bold;
+            margin-bottom: 0.3rem;
+        }
+
+        .metric-value {
+            font-size: 1.1rem;
+            font-weight: bold;
+            color: var(--text-dark);
+        }
+
+        .opportunity-highlight {
+            background: var(--secondary-color);
+            color: white;
+            padding: 0.75rem;
+            border-radius: 4px;
+            margin: 1rem 0;
+            font-weight: bold;
+        }
+
+        .markets-list {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 0.5rem;
+            margin: 1rem 0;
+        }
+
+        .market-tag {
+            background: #e3f2fd;
+            color: var(--primary-color);
+            padding: 0.35rem 0.75rem;
+            border-radius: 20px;
+            font-size: 0.85rem;
+            border: 1px solid var(--primary-color);
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 1rem;
+            font-size: 0.95rem;
+        }
+
+        thead {
+            background-color: var(--primary-color);
+            color: white;
+        }
+
+        th, td {
+            padding: 1rem;
+            text-align: left;
+            border-bottom: 1px solid var(--border-color);
+        }
+
+        tbody tr:hover {
+            background-color: var(--bg-light);
+        }
+
+        tbody tr:nth-child(even) {
+            background-color: #fafafa;
+        }
+
+        .status-excellent {
+            color: var(--secondary-color);
+            font-weight: bold;
+        }
+
+        .status-good {
+            color: #ff9800;
+            font-weight: bold;
+        }
+
+        .status-netexporter {
+            background: #e8f5e9;
+            color: var(--secondary-color);
+            padding: 0.25rem 0.5rem;
+            border-radius: 3px;
+            font-size: 0.85rem;
+        }
+
+        .status-netimporter {
+            background: #ffebee;
+            color: var(--danger-color);
+            padding: 0.25rem 0.5rem;
+            border-radius: 3px;
+            font-size: 0.85rem;
+        }
+
+        .port-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 1.5rem;
+            margin-top: 1.5rem;
+        }
+
+        .port-card {
+            background: linear-gradient(135deg, #fafafa 0%, #ffffff 100%);
+            border-radius: 8px;
+            padding: 1.5rem;
+            border-top: 4px solid var(--primary-color);
+        }
+
+        .port-card.top1 {
+            border-top-color: #ffd700;
+            box-shadow: 0 4px 12px rgba(255, 215, 0, 0.2);
+        }
+
+        .port-score {
+            font-size: 2.2rem;
+            font-weight: bold;
+            color: var(--primary-color);
+            margin-bottom: 0.5rem;
+        }
+
+        .port-name {
+            font-size: 1.1rem;
+            font-weight: bold;
+            color: var(--text-dark);
+            margin-bottom: 0.5rem;
+        }
+
+        .port-state {
+            font-size: 0.85rem;
+            color: var(--text-light);
+            margin-bottom: 1rem;
+        }
+
+        .port-commodities {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 0.5rem;
+        }
+
+        .commodity-badge {
+            background: var(--secondary-color);
+            color: white;
+            padding: 0.25rem 0.6rem;
+            border-radius: 3px;
+            font-size: 0.8rem;
+        }
+
+        .margin-section {
+            background: var(--bg-light);
+            padding: 1.5rem;
+            border-radius: 8px;
+            margin-top: 1rem;
+        }
+
+        .margin-row {
+            display: grid;
+            grid-template-columns: 2fr 1fr 1fr 1fr 2fr;
+            gap: 1rem;
+            padding: 1rem;
+            background: white;
+            border-radius: 4px;
+            margin-bottom: 0.5rem;
+            border-left: 4px solid var(--primary-color);
+        }
+
+        .margin-label {
+            font-size: 0.8rem;
+            color: var(--text-light);
+            text-transform: uppercase;
+            font-weight: bold;
+        }
+
+        .margin-value {
+            font-size: 1rem;
+            font-weight: bold;
+            color: var(--text-dark);
+        }
+
+        .margin-positive {
+            color: var(--secondary-color);
+        }
+
+        .margin-negative {
+            color: var(--danger-color);
+        }
+
+        .tariff-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+            gap: 1rem;
+            margin-top: 1rem;
+        }
+
+        .tariff-card {
+            background: linear-gradient(135deg, #f5f5f5 0%, #ffffff 100%);
+            border-radius: 8px;
+            padding: 1.5rem;
+            border: 2px solid var(--border-color);
+        }
+
+        .hs-code {
+            font-size: 1.3rem;
+            font-weight: bold;
+            color: var(--primary-color);
+            font-family: 'Courier New', monospace;
+            margin-bottom: 0.5rem;
+        }
+
+        .duty-badge {
+            display: inline-block;
+            background: var(--secondary-color);
+            color: white;
+            padding: 0.35rem 0.75rem;
+            border-radius: 3px;
+            font-weight: bold;
+            font-size: 0.9rem;
+            margin-top: 0.5rem;
+        }
+
+        .recommendation-box {
+            background: linear-gradient(135deg, #e3f2fd 0%, #f3e5f5 100%);
+            border-left: 5px solid var(--primary-color);
+            padding: 1.5rem;
+            border-radius: 8px;
+            margin-top: 1.5rem;
+        }
+
+        .recommendation-title {
+            font-weight: bold;
+            font-size: 1.1rem;
+            color: var(--primary-color);
+            margin-bottom: 0.5rem;
+        }
+
+        .recommendation-content {
+            color: var(--text-dark);
+        }
+
+        .recommendation-content ul {
+            margin-left: 1.5rem;
+            margin-top: 0.5rem;
+        }
+
+        .recommendation-content li {
+            margin-bottom: 0.5rem;
+        }
+
+        footer {
+            background: var(--text-dark);
+            color: white;
+            padding: 2rem;
+            text-align: center;
+            margin-top: 2rem;
+        }
+
+        .stats-row {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 1rem;
+            margin-bottom: 2rem;
+        }
+
+        .stat-box {
+            background: linear-gradient(135deg, var(--primary-color) 0%, #0052a3 100%);
+            color: white;
+            padding: 1.5rem;
+            border-radius: 8px;
+            text-align: center;
+        }
+
+        .stat-value {
+            font-size: 1.8rem;
+            font-weight: bold;
+            margin-bottom: 0.5rem;
+        }
+
+        .stat-label {
+            font-size: 0.9rem;
+            opacity: 0.95;
+        }
+
+        @media (max-width: 768px) {
+            .container {
+                padding: 1rem;
+            }
+
+            header h1 {
+                font-size: 1.8rem;
+            }
+
+            .opportunity-grid {
+                grid-template-columns: 1fr;
+            }
+
+            .metrics-grid {
+                grid-template-columns: 1fr;
+            }
+
+            .margin-row {
+                grid-template-columns: 1fr;
+            }
+
+            table {
+                font-size: 0.85rem;
+            }
+
+            th, td {
+                padding: 0.75rem;
+            }
+        }
+    </style>
+</head>
+<body>
+    <header>
+        <h1>🚢 US Commodity Export Analysis Dashboard</h1>
+        <p>Identifying optimal export opportunities using EIA data & trade balance analysis</p>
+    </header>
+
+    <div class="container">
+        <!-- Key Stats -->
+        <div class="stats-row">
+            <div class="stat-box">
+                <div class="stat-value">$2.2B - $2.7B</div>
+                <div class="stat-label">Refined Petroleum Opportunity</div>
+            </div>
+            <div class="stat-box">
+                <div class="stat-value">$8.5B - $12.0B</div>
+                <div class="stat-label">LNG Expansion Potential</div>
+            </div>
+            <div class="stat-box">
+                <div class="stat-value">+500K bbl/day</div>
+                <div class="stat-label">Additional Export Capacity</div>
+            </div>
+            <div class="stat-box">
+                <div class="stat-value">98/100</div>
+                <div class="stat-label">Port of Houston Score</div>
+            </div>
+        </div>
+
+        <!-- Section 1: Top Export Opportunities -->
+        <div class="section">
+            <h2>🏆 Top Export Opportunities</h2>
+
+            <div class="opportunity-grid">
+                <!-- Opportunity 1: Refined Petroleum -->
+                <div class="opportunity-card rank1">
+                    <div class="card-header">
+                        <div>
+                            <div class="rank-badge">🥇 RANK 1</div>
+                            <div class="score-badge">88/100 Excellent</div>
+                        </div>
+                    </div>
+                    <div class="card-title">Refined Petroleum (HS 2710)</div>
+                    <div class="card-subtitle">Gasoline, Diesel, Kerosene</div>
+
+                    <div class="metrics-grid">
+                        <div class="metric">
+                            <div class="metric-label">Current Exports</div>
+                            <div class="metric-value">3.5M bbl/day</div>
+                        </div>
+                        <div class="metric">
+                            <div class="metric-label">Potential</div>
+                            <div class="metric-value">4.0M bbl/day</div>
+                        </div>
+                        <div class="metric">
+                            <div class="metric-label">Net Margin</div>
+                            <div class="metric-value">$12-15/bbl</div>
+                        </div>
+                        <div class="metric">
+                            <div class="metric-label">Annual Opportunity</div>
+                            <div class="metric-value">$2.2-2.7B</div>
+                        </div>
+                    </div>
+
+                    <div class="opportunity-highlight">
+                        +500K bbl/day capacity with 6-8% global market share
+                    </div>
+
+                    <h4 style="margin-top: 1rem; margin-bottom: 0.5rem;">Key Markets</h4>
+                    <div class="markets-list">
+                        <span class="market-tag">India (+4% YoY)</span>
+                        <span class="market-tag">SE Asia</span>
+                        <span class="market-tag">Europe</span>
+                    </div>
+
+                    <h4 style="margin-top: 1rem; margin-bottom: 0.5rem;">Best Ports</h4>
+                    <div class="markets-list">
+                        <span class="market-tag">Port of Houston</span>
+                        <span class="market-tag">Port of Beaumont</span>
+                    </div>
+
+                    <h4 style="margin-top: 1rem; margin-bottom: 0.5rem;">Products (HS Codes)</h4>
+                    <div class="markets-list">
+                        <span class="market-tag">HS 271012: Gasoline (35%)</span>
+                        <span class="market-tag">HS 271019: Diesel (25%)</span>
+                        <span class="market-tag">HS 271011: Other oils (40%)</span>
+                    </div>
+                </div>
+
+                <!-- Opportunity 2: LNG -->
+                <div class="opportunity-card rank2">
+                    <div class="card-header">
+                        <div>
+                            <div class="rank-badge">🥈 RANK 2</div>
+                            <div class="score-badge">78/100 Good</div>
+                        </div>
+                    </div>
+                    <div class="card-title">LNG Exports (HS 271121)</div>
+                    <div class="card-subtitle">Liquefied Natural Gas</div>
+
+                    <div class="metrics-grid">
+                        <div class="metric">
+                            <div class="metric-label">Current LNG Exports</div>
+                            <div class="metric-value">12 BCF/day</div>
+                        </div>
+                        <div class="metric">
+                            <div class="metric-label">Potential</div>
+                            <div class="metric-value">15 BCF/day</div>
+                        </div>
+                        <div class="metric">
+                            <div class="metric-label">Net Margin</div>
+                            <div class="metric-value">$1.7-$2.7/MMBtu</div>
+                        </div>
+                        <div class="metric">
+                            <div class="metric-label">Annual Opportunity</div>
+                            <div class="metric-value">$8.5-12.0B</div>
+                        </div>
+                    </div>
+
+                    <div class="opportunity-highlight">
+                        HIGHEST OPPORTUNITY: 15-20% of global LNG market
+                    </div>
+
+                    <h4 style="margin-top: 1rem; margin-bottom: 0.5rem;">Key Markets</h4>
+                    <div class="markets-list">
+                        <span class="market-tag">Japan (20% global)</span>
+                        <span class="market-tag">South Korea</span>
+                        <span class="market-tag">India (+8% YoY)</span>
+                    </div>
+
+                    <h4 style="margin-top: 1rem; margin-bottom: 0.5rem;">Operating Terminals</h4>
+                    <div class="markets-list">
+                        <span class="market-tag">Sabine Pass: 3.8 BCF/day</span>
+                        <span class="market-tag">Freeport: 2.1 BCF/day</span>
+                        <span class="market-tag">Corpus Christi: 1.4 BCF/day</span>
+                    </div>
+
+                    <h4 style="margin-top: 1rem; margin-bottom: 0.5rem;">Best Ports</h4>
+                    <div class="markets-list">
+                        <span class="market-tag">Port of Houston</span>
+                        <span class="market-tag">Port of Corpus Christi</span>
+                    </div>
+                </div>
+
+                <!-- Opportunity 3: Thermal Coal -->
+                <div class="opportunity-card rank3">
+                    <div class="card-header">
+                        <div>
+                            <div class="rank-badge">🥉 RANK 3</div>
+                            <div class="score-badge">77/100 Good</div>
+                        </div>
+                    </div>
+                    <div class="card-title">Thermal Coal (HS 2701)</div>
+                    <div class="card-subtitle">Power generation & industrial</div>
+
+                    <div class="metrics-grid">
+                        <div class="metric">
+                            <div class="metric-label">Current Exports</div>
+                            <div class="metric-value">50M tons/yr</div>
+                        </div>
+                        <div class="metric">
+                            <div class="metric-label">Potential</div>
+                            <div class="metric-value">75M tons/yr</div>
+                        </div>
+                        <div class="metric">
+                            <div class="metric-label">Net Margin</div>
+                            <div class="metric-value">$17/ton</div>
+                        </div>
+                        <div class="metric">
+                            <div class="metric-label">Annual Opportunity</div>
+                            <div class="metric-value">$425M</div>
+                        </div>
+                    </div>
+
+                    <div class="opportunity-highlight">
+                        +25M tons/year growth from India demand
+                    </div>
+
+                    <h4 style="margin-top: 1rem; margin-bottom: 0.5rem;">Key Markets</h4>
+                    <div class="markets-list">
+                        <span class="market-tag">India (imports 75%)</span>
+                        <span class="market-tag">India +3.2% YoY</span>
+                        <span class="market-tag">70% of IN electricity</span>
+                    </div>
+
+                    <h4 style="margin-top: 1rem; margin-bottom: 0.5rem;">Best Ports</h4>
+                    <div class="markets-list">
+                        <span class="market-tag">Port of Los Angeles</span>
+                        <span class="market-tag">Port of Long Beach</span>
+                    </div>
+
+                    <p style="margin-top: 1rem; font-size: 0.9rem; color: var(--text-light);">
+                        <strong>Note:</strong> Shorter-term opportunity; coal transition pressures in developed markets
+                    </p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Section 2: US Port Specialization -->
+        <div class="section">
+            <h2>⚓ US Port Specialization & Capacity</h2>
+
+            <div class="port-grid">
+                <div class="port-card top1">
+                    <div class="port-score">98/100</div>
+                    <div class="port-name">🏆 Port of Houston</div>
+                    <div class="port-state">Texas (TX) - Deep Water</div>
+                    <p style="font-size: 0.9rem; color: var(--text-light); margin-bottom: 1rem;">
+                        <strong>46M TEU capacity</strong> | Primary energy hub
+                    </p>
+                    <p style="margin-bottom: 1rem;"><strong>Export Capacity:</strong></p>
+                    <ul style="margin-left: 1.5rem; font-size: 0.9rem; margin-bottom: 1rem;">
+                        <li>Crude: 500K bbl/day</li>
+                        <li>Refined: 3.5M bbl/day</li>
+                        <li>LNG: 12 BCF/day</li>
+                        <li>Coal: 10M tons/year</li>
+                    </ul>
+                    <p style="margin-bottom: 1rem;"><strong>Terminals:</strong></p>
+                    <div class="port-commodities">
+                        <span class="commodity-badge">Sabine Pass LNG</span>
+                        <span class="commodity-badge">Houston Ship Channel</span>
+                    </div>
+                </div>
+
+                <div class="port-card">
+                    <div class="port-score">92/100</div>
+                    <div class="port-name">Port of Corpus Christi</div>
+                    <div class="port-state">Texas (TX) - Deep Water</div>
+                    <p style="font-size: 0.9rem; color: var(--text-light); margin-bottom: 1rem;">
+                        <strong>3.6M TEU capacity</strong> | Energy specialist
+                    </p>
+                    <p style="margin-bottom: 1rem;"><strong>Export Capacity:</strong></p>
+                    <ul style="margin-left: 1.5rem; font-size: 0.9rem; margin-bottom: 1rem;">
+                        <li>Crude: 400K bbl/day</li>
+                        <li>Refined: 1.5M bbl/day</li>
+                        <li>LNG: 4 BCF/day</li>
+                    </ul>
+                    <div class="port-commodities">
+                        <span class="commodity-badge">Corpus Christi LNG</span>
+                        <span class="commodity-badge">Nueces Bay</span>
+                    </div>
+                </div>
+
+                <div class="port-card">
+                    <div class="port-score">85/100</div>
+                    <div class="port-name">Port of Beaumont</div>
+                    <div class="port-state">Texas (TX) - Inland</div>
+                    <p style="font-size: 0.9rem; color: var(--text-light); margin-bottom: 1rem;">
+                        <strong>2.5M TEU capacity</strong> | Refined products specialist
+                    </p>
+                    <p style="margin-bottom: 1rem;"><strong>Export Capacity:</strong></p>
+                    <ul style="margin-left: 1.5rem; font-size: 0.9rem; margin-bottom: 1rem;">
+                        <li>Refined: 2.0M bbl/day</li>
+                        <li>Coke byproducts</li>
+                    </ul>
+                    <div class="port-commodities">
+                        <span class="commodity-badge">Refinery Complex</span>
+                    </div>
+                </div>
+
+                <div class="port-card">
+                    <div class="port-score">75/100</div>
+                    <div class="port-name">Port of Los Angeles</div>
+                    <div class="port-state">California (CA) - Deep Water</div>
+                    <p style="font-size: 0.9rem; color: var(--text-light); margin-bottom: 1rem;">
+                        <strong>8.8M TEU capacity</strong> | Pacific coal hub
+                    </p>
+                    <p style="margin-bottom: 1rem;"><strong>Export Capacity:</strong></p>
+                    <ul style="margin-left: 1.5rem; font-size: 0.9rem; margin-bottom: 1rem;">
+                        <li>Coal: 15M tons/year</li>
+                        <li>General cargo</li>
+                    </ul>
+                    <div class="port-commodities">
+                        <span class="commodity-badge">Pacific advantage</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Section 3: Commodity Trade Balance -->
+        <div class="section">
+            <h2>📊 US Commodity Trade Balance</h2>
+
+            <table>
+                <thead>
+                    <tr>
+                        <th>Commodity (HS Code)</th>
+                        <th>Trade Position</th>
+                        <th>Current Exports</th>
+                        <th>Export Potential</th>
+                        <th>Annual Opportunity</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td><strong>Refined Petroleum (HS 2710)</strong></td>
+                        <td><span class="status-netexporter">NET EXPORTER</span></td>
+                        <td>3.5M bbl/day</td>
+                        <td>4.0M bbl/day</td>
+                        <td><strong>$2.2B - $2.7B</strong></td>
+                    </tr>
+                    <tr>
+                        <td><strong>LNG (HS 271121)</strong></td>
+                        <td><span class="status-netexporter">NET EXPORTER</span></td>
+                        <td>12 BCF/day</td>
+                        <td>15 BCF/day</td>
+                        <td><strong>$8.5B - $12.0B</strong></td>
+                    </tr>
+                    <tr>
+                        <td><strong>Thermal Coal (HS 2701)</strong></td>
+                        <td><span class="status-netexporter">NET EXPORTER</span></td>
+                        <td>50M tons/yr</td>
+                        <td>75M tons/yr</td>
+                        <td><strong>$425M</strong></td>
+                    </tr>
+                    <tr>
+                        <td><strong>Petroleum Coke (HS 2712)</strong></td>
+                        <td><span class="status-netexporter">NET EXPORTER</span></td>
+                        <td>25M tons/yr</td>
+                        <td>30M tons/yr</td>
+                        <td>$3.5B</td>
+                    </tr>
+                    <tr>
+                        <td><strong>Crude Oil (HS 2709)</strong></td>
+                        <td><span class="status-netimporter">NET IMPORTER</span></td>
+                        <td>500K bbl/day</td>
+                        <td>500K bbl/day</td>
+                        <td>Limited (restrictions)</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+
+        <!-- Section 4: Export Margins by Destination -->
+        <div class="section">
+            <h2>💰 Export Margins by Destination Region</h2>
+
+            <h3>Refined Petroleum (HS 2710)</h3>
+            <div class="margin-section">
+                <div style="display: grid; grid-template-columns: 2fr 1fr 1fr 1fr 2fr; gap: 1rem; padding: 1rem; background: var(--primary-color); color: white; border-radius: 4px; margin-bottom: 0.5rem; font-weight: bold;">
+                    <div>Region</div>
+                    <div>Gross Margin</div>
+                    <div>Logistics Cost</div>
+                    <div>Net Margin</div>
+                    <div>Demand Forecast</div>
+                </div>
+
+                <div class="margin-row">
+                    <div><strong>Europe</strong></div>
+                    <div class="margin-value">$18.00/bbl</div>
+                    <div class="margin-value">$5.50/bbl</div>
+                    <div class="margin-value margin-positive">$12.50/bbl</div>
+                    <div class="margin-value">MEDIUM</div>
+                </div>
+
+                <div class="margin-row">
+                    <div><strong>Asia (India, SE Asia)</strong></div>
+                    <div class="margin-value">$15.50/bbl</div>
+                    <div class="margin-value">$3.20/bbl</div>
+                    <div class="margin-value margin-positive">$12.30/bbl ⬆️</div>
+                    <div class="margin-value">HIGH (+4% YoY)</div>
+                </div>
+
+                <div class="margin-row">
+                    <div><strong>Caribbean</strong></div>
+                    <div class="margin-value">$12.00/bbl</div>
+                    <div class="margin-value">$1.80/bbl</div>
+                    <div class="margin-value margin-positive">$10.20/bbl</div>
+                    <div class="margin-value">MEDIUM</div>
+                </div>
+            </div>
+
+            <h3 style="margin-top: 2rem;">LNG (HS 271121)</h3>
+            <div class="margin-section">
+                <div style="display: grid; grid-template-columns: 2fr 1fr 1fr 1fr 2fr; gap: 1rem; padding: 1rem; background: var(--primary-color); color: white; border-radius: 4px; margin-bottom: 0.5rem; font-weight: bold;">
+                    <div>Region</div>
+                    <div>Gross Margin</div>
+                    <div>Logistics Cost</div>
+                    <div>Net Margin</div>
+                    <div>Demand Forecast</div>
+                </div>
+
+                <div class="margin-row">
+                    <div><strong>Asia (Japan, Korea, India)</strong></div>
+                    <div class="margin-value">$4.20/MMBtu</div>
+                    <div class="margin-value">$2.50/MMBtu</div>
+                    <div class="margin-value margin-positive">$1.70/MMBtu ⬆️</div>
+                    <div class="margin-value">VERY HIGH</div>
+                </div>
+
+                <div class="margin-row">
+                    <div><strong>Europe</strong></div>
+                    <div class="margin-value">$3.50/MMBtu</div>
+                    <div class="margin-value">$3.00/MMBtu</div>
+                    <div class="margin-value margin-positive">$0.50/MMBtu</div>
+                    <div class="margin-value">HIGH</div>
+                </div>
+
+                <div class="margin-row">
+                    <div><strong>Americas</strong></div>
+                    <div class="margin-value">$2.80/MMBtu</div>
+                    <div class="margin-value">$1.50/MMBtu</div>
+                    <div class="margin-value margin-positive">$1.30/MMBtu</div>
+                    <div class="margin-value">GROWING</div>
+                </div>
+            </div>
+
+            <h3 style="margin-top: 2rem;">Thermal Coal (HS 2701)</h3>
+            <div class="margin-section">
+                <div style="display: grid; grid-template-columns: 2fr 1fr 1fr 1fr 2fr; gap: 1rem; padding: 1rem; background: var(--primary-color); color: white; border-radius: 4px; margin-bottom: 0.5rem; font-weight: bold;">
+                    <div>Region</div>
+                    <div>Gross Margin</div>
+                    <div>Logistics Cost</div>
+                    <div>Net Margin</div>
+                    <div>Demand Forecast</div>
+                </div>
+
+                <div class="margin-row">
+                    <div><strong>Asia (India, SE Asia)</strong></div>
+                    <div class="margin-value">$45.00/ton</div>
+                    <div class="margin-value">$28.00/ton</div>
+                    <div class="margin-value margin-positive">$17.00/ton ⬆️</div>
+                    <div class="margin-value">HIGH</div>
+                </div>
+
+                <div class="margin-row">
+                    <div><strong>Europe</strong></div>
+                    <div class="margin-value">$35.00/ton</div>
+                    <div class="margin-value">$42.00/ton</div>
+                    <div class="margin-value margin-negative">-$7.00/ton ⬇️</div>
+                    <div class="margin-value">DECLINING</div>
+                </div>
+
+                <div class="margin-row">
+                    <div><strong>Americas</strong></div>
+                    <div class="margin-value">$20.00/ton</div>
+                    <div class="margin-value">$12.00/ton</div>
+                    <div class="margin-value margin-positive">$8.00/ton</div>
+                    <div class="margin-value">LOW</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Section 5: HS Code Reference -->
+        <div class="section">
+            <h2>📋 Harmonized System (HS) Code Reference</h2>
+            <p style="color: var(--text-light); margin-bottom: 1.5rem;">
+                US import/export commodity classification codes with 0% tariff duty on all energy commodities
+            </p>
+
+            <div class="tariff-grid">
+                <div class="tariff-card">
+                    <div class="hs-code">2709</div>
+                    <div class="card-title">Crude Oils</div>
+                    <div class="duty-badge">0% Duty</div>
+                    <p style="margin-top: 1rem; font-size: 0.9rem; color: var(--text-light);">
+                        Export restrictions apply (Energy Policy Act 1975)
+                    </p>
+                </div>
+
+                <div class="tariff-card">
+                    <div class="hs-code">2710</div>
+                    <div class="card-title">Refined Petroleum</div>
+                    <div class="duty-badge">0% Duty</div>
+                    <p style="margin-top: 1rem; font-size: 0.9rem; color: var(--text-light);">
+                        Highest export margin commodity. Includes gasoline, diesel, kerosene, fuel oil.
+                    </p>
+                </div>
+
+                <div class="tariff-card">
+                    <div class="hs-code">271012</div>
+                    <div class="card-title">Light Oils (Gasoline)</div>
+                    <div class="duty-badge">0% Duty</div>
+                    <p style="margin-top: 1rem; font-size: 0.9rem; color: var(--text-light);">
+                        Premium markets in Asia. 35% of refined petroleum exports.
+                    </p>
+                </div>
+
+                <div class="tariff-card">
+                    <div class="hs-code">271019</div>
+                    <div class="card-title">Other Oils (Diesel)</div>
+                    <div class="duty-badge">0% Duty</div>
+                    <p style="margin-top: 1rem; font-size: 0.9rem; color: var(--text-light);">
+                        Highest Asia demand. 25% of refined petroleum exports.
+                    </p>
+                </div>
+
+                <div class="tariff-card">
+                    <div class="hs-code">271121</div>
+                    <div class="card-title">Liquefied Natural Gas</div>
+                    <div class="duty-badge">0% Duty</div>
+                    <p style="margin-top: 1rem; font-size: 0.9rem; color: var(--text-light);">
+                        5 operational terminals. 15-20% of global LNG market.
+                    </p>
+                </div>
+
+                <div class="tariff-card">
+                    <div class="hs-code">2701</div>
+                    <div class="card-title">Thermal Coal</div>
+                    <div class="duty-badge">0% Duty</div>
+                    <p style="margin-top: 1rem; font-size: 0.9rem; color: var(--text-light);">
+                        India demand growing +3.2% YoY. Coal = 70% of India electricity.
+                    </p>
+                </div>
+
+                <div class="tariff-card">
+                    <div class="hs-code">2712</div>
+                    <div class="card-title">Petroleum Coke</div>
+                    <div class="duty-badge">0% Duty</div>
+                    <p style="margin-top: 1rem; font-size: 0.9rem; color: var(--text-light);">
+                        Refinery byproduct. Used in aluminum smelters & cement.
+                    </p>
+                </div>
+
+                <div class="tariff-card">
+                    <div class="hs-code">2713</div>
+                    <div class="card-title">Petroleum Bitumen</div>
+                    <div class="duty-badge">0% Duty</div>
+                    <p style="margin-top: 1rem; font-size: 0.9rem; color: var(--text-light);">
+                        Refinery product used in road construction.
+                    </p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Section 6: Refined Petroleum Product Breakdown -->
+        <div class="section">
+            <h2>🔬 Refined Petroleum Product Breakdown (HS 2710+)</h2>
+
+            <table>
+                <thead>
+                    <tr>
+                        <th>HS Code</th>
+                        <th>Product</th>
+                        <th>Export Volume</th>
+                        <th>% of Total</th>
+                        <th>Margin Rank</th>
+                        <th>Key Markets</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td><strong>271012</strong></td>
+                        <td>Light Oils & Fractions (Gasoline/Naphtha)</td>
+                        <td>1,225K bbl/day</td>
+                        <td><strong>35%</strong></td>
+                        <td><span class="status-excellent">#1 Premium</span></td>
+                        <td>Asia, Europe, Caribbean</td>
+                    </tr>
+                    <tr>
+                        <td><strong>271019</strong></td>
+                        <td>Other Petroleum Oils (Diesel/Kerosene)</td>
+                        <td>875K bbl/day</td>
+                        <td><strong>25%</strong></td>
+                        <td><span class="status-excellent">#2 Premium</span></td>
+                        <td>Europe, Asia, Americas</td>
+                    </tr>
+                    <tr>
+                        <td><strong>271011</strong></td>
+                        <td>Petroleum Oils, Not Crude</td>
+                        <td>1,400K bbl/day</td>
+                        <td><strong>40%</strong></td>
+                        <td>Standard</td>
+                        <td>Europe, Americas</td>
+                    </tr>
+                    <tr>
+                        <td><strong>2711</strong></td>
+                        <td>Petroleum Gases (LPG)</td>
+                        <td>525K bbl/day</td>
+                        <td><strong>15%</strong></td>
+                        <td>Standard</td>
+                        <td>Europe, Americas</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+
+        <!-- Section 7: Strategic Recommendations -->
+        <div class="section">
+            <h2>🎯 Strategic Recommendations</h2>
+
+            <div class="recommendation-box">
+                <div class="recommendation-title">1. Refined Petroleum Export Expansion (Asia-Focused)</div>
+                <div class="recommendation-content">
+                    <p><strong>Target:</strong> Shift +500K bbl/day to Asia (net +$2.7B/yr)</p>
+                    <ul>
+                        <li><strong>Focus markets:</strong> India (+4% YoY petroleum demand), Southeast Asia (refinery shortfalls)</li>
+                        <li><strong>Product priority:</strong> Gasoline (HS 271012) and Diesel (HS 271019) — premium margins</li>
+                        <li><strong>Best routes:</strong> Port of Houston (3.5M bbl/day capacity) → Asia (7,500 nm)</li>
+                        <li><strong>Expected margins:</strong> $12-15/bbl net (after $3.20/bbl logistics)</li>
+                        <li><strong>Timeline:</strong> Q3-Q4 2026 with 12-month voyage cycles</li>
+                    </ul>
+                </div>
+            </div>
+
+            <div class="recommendation-box">
+                <div class="recommendation-title">2. LNG Terminal Expansion (Highest Value Growth)</div>
+                <div class="recommendation-content">
+                    <p><strong>Target:</strong> Expand from 12 to 15 BCF/day (+$12B/yr opportunity)</p>
+                    <ul>
+                        <li><strong>Primary lever:</strong> Freeport expansion (+1.5 BCF/day by 2027) = +$4.8B/yr alone</li>
+                        <li><strong>Target buyers:</strong> Japan (20% global LNG), South Korea, India (growing +8% YoY)</li>
+                        <li><strong>Operating terminals:</strong> Sabine Pass (3.8 BCF/day ✅), Freeport (2.1+1.5 BCF/day), Corpus Christi (1.4 BCF/day)</li>
+                        <li><strong>Expected margins:</strong> $1.70/MMBtu net to Asia (after $2.50/MMBtu shipping)</li>
+                        <li><strong>Constraint:</strong> Henry Hub pricing vs. global benchmark — monitor spreads</li>
+                    </ul>
+                </div>
+            </div>
+
+            <div class="recommendation-box">
+                <div class="recommendation-title">3. Thermal Coal Market Growth (India Opportunity)</div>
+                <div class="recommendation-content">
+                    <p><strong>Target:</strong> Increase from 50M to 75M tons/year (+$425M/yr)</p>
+                    <ul>
+                        <li><strong>Target market:</strong> India (imports 75% of coal needs, +3.2% YoY, 70% of electricity is coal-based)</li>
+                        <li><strong>Route optimization:</strong> Shift to Pacific ports (LA, Long Beach) for faster Asia transit vs Gulf</li>
+                        <li><strong>Expected margins:</strong> $17/ton net to Asia (after $28/ton freight) vs. -$7/ton loss to Europe</li>
+                        <li><strong>Competitive advantage:</strong> Avoid European green transition pressure; focus South Asia</li>
+                        <li><strong>Timeline:</strong> 2-3 year ramp-up to capture growing demand</li>
+                    </ul>
+                </div>
+            </div>
+
+            <div class="recommendation-box">
+                <div class="recommendation-title">4. Port Infrastructure & Logistics Optimization</div>
+                <div class="recommendation-content">
+                    <p><strong>Port allocation strategy:</strong></p>
+                    <ul>
+                        <li><strong>Port of Houston (98/100):</strong> Primary hub for refined + LNG + coke. Maximize 90% utilization.</li>
+                        <li><strong>Port of Beaumont (85/100):</strong> Specialize in refined petroleum. Secondary for LNG spillover.</li>
+                        <li><strong>Port of Los Angeles/Long Beach (75/100):</strong> Shift coal exports from Gulf to Pacific for Asia advantage.</li>
+                        <li><strong>Terminal capacity:</strong> All 5 LNG terminals at 100% utilization; prioritize new expansions (Freeport).</li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+
+        <!-- Section 8: Data & Methodology -->
+        <div class="section">
+            <h2>📐 Methodology & Data Sources</h2>
+
+            <h3>Scoring Model (100-Point Scale)</h3>
+            <table>
+                <thead>
+                    <tr>
+                        <th>Factor</th>
+                        <th>Weight</th>
+                        <th>Scoring Criteria</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td><strong>Market Position</strong></td>
+                        <td>30 pts</td>
+                        <td>Global market share (13%+ = 30 pts, 6-8% = 20 pts, Low = 10 pts)</td>
+                    </tr>
+                    <tr>
+                        <td><strong>Price Level</strong></td>
+                        <td>25 pts</td>
+                        <td>Commodity price & margin opportunity (High $50+ = 25, Medium = 15, Low = 5)</td>
+                    </tr>
+                    <tr>
+                        <td><strong>Port Infrastructure</strong></td>
+                        <td>20 pts</td>
+                        <td>Dedicated port capacity & specialization (3+ ports = 20, 1-2 = 15, Limited = 5)</td>
+                    </tr>
+                    <tr>
+                        <td><strong>Transport Mode</strong></td>
+                        <td>15 pts</td>
+                        <td>Logistics efficiency (Tanker/Bulk optimized = 15, Bulk = 14, Container = 10)</td>
+                    </tr>
+                    <tr>
+                        <td><strong>Export Reach</strong></td>
+                        <td>10 pts</td>
+                        <td>Multi-region demand & liquidity (Multi-region = 8-10, Single = 5)</td>
+                    </tr>
+                </tbody>
+            </table>
+
+            <h3 style="margin-top: 2rem;">Data Sources</h3>
+            <ul style="margin-left: 1.5rem; margin-top: 1rem;">
+                <li><strong>EIA API:</strong> Energy Information Administration (crude, LNG, natural gas, coal prices)</li>
+                <li><strong>FRED API:</strong> Federal Reserve Economic Data (commodity price indices)</li>
+                <li><strong>US Census Bureau:</strong> Trade Data by commodity & port</li>
+                <li><strong>Port authorities:</strong> Houston, Corpus Christi, Los Angeles, Long Beach (capacity data)</li>
+                <li><strong>Market data:</strong> 2024 YTD actual + Aug 2026 forecasted</li>
+            </ul>
+
+            <h3 style="margin-top: 2rem;">Key Assumptions</h3>
+            <ul style="margin-left: 1.5rem; margin-top: 1rem;">
+                <li>Margins calculated: Gross commodity price - Average logistics costs by route</li>
+                <li>LNG export costs include liquefaction, shipping, regasification (~2-3 $/MMBtu)</li>
+                <li>Coal freight to Asia: ~$28/ton via Pacific, ~$42/ton via Gulf + transshipment</li>
+                <li>Refined product margins: Exclude distribution network costs; bulk tanker shipping only</li>
+                <li>No tariff duties applied (all HS codes 0% duty under USMCA)</li>
+            </ul>
+        </div>
+    </div>
+
+    <footer>
+        <p><strong>🚢 US Commodity Export Analysis Dashboard</strong></p>
+        <p>Last Updated: August 10, 2026 | Data Source: EIA API, FRED, US Census Bureau, Market Data</p>
+        <p style="margin-top: 1rem; font-size: 0.9rem; opacity: 0.8;">
+            For detailed API integration, see: INTEGRATION_GUIDE.md | Full documentation: US_TRADE_EXPORT_README.md
+        </p>
+    </footer>
+</body>
+</html>

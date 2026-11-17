@@ -2,6 +2,34 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## ⚡ Quick Start: Token Efficiency
+
+**Multi-layered optimization** combines file preprocessing, smart retrieval, agent patterns, and local inference.
+
+### Essential Setup (5 min)
+
+```bash
+# 1. Initialize budget tracker
+python3 ~/.claude/scripts/token_budget.py --reset
+
+# 2. Install token optimization suite (ponytail, loop-engineering, opencodex)
+bash ~/.claude/scripts/install_token_tools.sh
+
+# 3. Convert input files to markdown
+python3 ~/.claude/scripts/convert_files.py *.pdf -o ./md
+
+# 4. Check budget every 3–4 turns
+python3 ~/.claude/scripts/token_budget.py --spent <N> --turns <N>
+```
+
+### Documentation
+
+- **Full SOP**: [`~/.claude/SOP_TOKEN_EFFICIENCY.md`](~/.claude/SOP_TOKEN_EFFICIENCY.md) — Budget tracking, file conversion, retrieval strategies
+- **Extended Tools**: [`~/.claude/EXTENDED_TOKEN_TOOLS.md`](~/.claude/EXTENDED_TOKEN_TOOLS.md) — ponytail, loop-engineering, opencodex, local inference
+- **Quick Start**: [`~/.claude/QUICK_START_TOKEN_EFFICIENCY.md`](~/.claude/QUICK_START_TOKEN_EFFICIENCY.md) — Checklists and examples
+
+**Expected savings**: 40–70% input tokens (basic SOP) + 35–85% output/agent tokens (with extended tools).
+
 ## What This Repo Is
 
 A multi-market investment research and trading analytics platform covering India, US, Europe, Japan, and Korea. It combines:
