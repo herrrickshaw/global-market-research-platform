@@ -1,0 +1,35 @@
+name: daily-bundle-validation
+
+# Runs bundle_validation.py in CI: pulls the current cache_seed/portfolio_bundles.json
+# from Dropbox (the account's established backup channel — see market-pipeline/DATA_POINTERS.md),
+# validates the model-portfolio bundles against public benchmarks (SPDR/NSE), and
+# uploads the resulting report.
+#
+# Scope note: this covers ONLY the bundle-validation step. The full daily_pipeline.sh
+# (OHLCV collection across 5 markets, watchlist_digest, the mailer) is deeply coupled
+# to this machine — hardcoded /Users/umashankar paths, a local Postgres instance, and
+# screener.in credentials — and does not run in a cloud runner without further work.
+# bundle_validation.py was chosen because it only needs cache_seed/portfolio_bundles.json
+# (a small JSON already backed up to Dropbox) plus public benchmark downloads, so it
+# runs standalone here today.
+#
+# Delegates the actual Dropbox/Google Drive sync and artifact upload to the reusable
+# herrrickshaw/.github workflow (same callable-workflow pattern as quality.yml).
+
+on:
+  schedule:
+    - cron: "0 1 * * *"   # 06:30 IST daily
+  workflow_dispatch: {}
+
+jobs:
+  validate-bundles:
+    uses: herrrickshaw/.github/.github/workflows/daily-stock-scanner.yml@main
+    with:
+      working-directory: market-pipeline/code/python_files
+      install: pip install pandas numpy openpyxl
+      script: python3 bundle_validation.py
+      data-pull: |
+        dropbox:market-pipeline-cache/cache_seed/portfolio_bundles.json ./cache_seed
+      report-glob: "reports/bundle_validation.md"
+      artifact-name: bundle-validation-report
+    secrets: inherit
