@@ -452,14 +452,14 @@ Net realistic:                  10-14% annually
 
 **Transaction Costs**:
 - Novy-Marx & Velikov (2016): "A taxonomy of anomalies and their trading costs"
-- Frazzini, Israel & Moskowitz (2016): "Trading costs"
+- Frazzini, Israel & Moskowitz (2015): "Trading Costs of Asset Pricing Anomalies" *(year corrected from 2016 on 2026-08-20 — JFE 116(2):235-257)*
 
 **Survivorship Bias**:
 - Dimson, Marsh & Staunton (2002): "Triumph of the optimists: 100 years of global investment returns"
 
 **Risk Metrics**:
 - Sharpe (1966): "Mutual fund performance"
-- Calmar (1991): Risk-adjusted performance measurement
+- Young (1991): Risk-adjusted performance measurement
 
 **Multi-Period Validation**:
 - Harvey, Liu & Zhu (2016): "...and the cross-section of expected returns" (meta-analysis of 316 factors)

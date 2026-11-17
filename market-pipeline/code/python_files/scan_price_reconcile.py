@@ -1,0 +1,292 @@
+#!/usr/bin/env python3
+"""
+scan_price_reconcile.py — warehouse-first staleness gate for EVERY market's scan.
+
+WHY (2026-07-27): the mailer shipped-then-blocked on INFY carrying Friday's close
+on a +3.7% Monday — one yfinance call inside the scan silently fell back to a
+stale cache. validate_brief.py only samples India via screener.in; the other four
+markets had NO price validation at all. This module closes that gap for all five.
+
+HOW — two independent checks per market, cheapest first:
+
+  1. WAREHOUSE SIGNATURE (free, no network): a scan row whose LTP is exactly the
+     previous session's `market_daily.snapshots.ltp` is *suspicious*; many such
+     rows among the liquid names = the scan re-served yesterday's prices.
+  2. LIVE SPOT-CHECK (small, fresh yfinance batch): re-quote the top-N liquid
+     names with a FRESH session (no cache) and flag |scan − fresh| > tolerance.
+
+WHAT COUNTS AS A FAILURE depends on whether the market is trading (2026-07-28):
+a market OPEN at build time drifts, and drift is not a data defect, so a single
+name over tolerance no longer suppresses the brief — see the _quorum() note.
+Staleness still fails in every session state.
+
+Exit code = number of markets that FAILED (stale beyond threshold), so
+daily_pipeline.sh can gate the mailer on it exactly like validate_brief.
+
+Usage:
+  python scan_price_reconcile.py                 # all markets, sample 8
+  python scan_price_reconcile.py --market JP     # one market
+  python scan_price_reconcile.py --sample 12 --tolerance 2.5
+"""
+from __future__ import annotations
+
+import argparse
+import glob
+import re
+import subprocess
+import sys
+from datetime import date, datetime
+from io import StringIO
+from pathlib import Path
+from typing import Optional
+
+import pandas as pd
+
+HERE = Path(__file__).resolve().parent
+
+# market → (scan glob, symbol column, price column, yfinance suffix)
+# The scan is produced at 03:00 and consumed at 06:30 the SAME day, so a
+# workbook older than today means the producing job did not run.
+MAX_SCAN_AGE_DAYS = 0
+
+MARKETS = {
+    "IN": ("indian_full_scan/indian_full_scan_*.xlsx", "Symbol", "LTP", ".NS"),
+    "US": ("us_full_scan/us_full_scan_*.xlsx", "Symbol", "LTP", ""),
+    "JP": ("japan_scan/japan_market_scan_*.xlsx", "YF_Ticker", "LTP_JPY", ""),
+    "KR": ("korea_scan/korea_market_scan_*.xlsx", "YF_Ticker", "LTP_KRW", ""),
+    "EU": ("european_scan/european_market_scan_*.xlsx", "Symbol", "LTP", ""),
+}
+LIQ_COL = "Turnover_USD"   # present in all five All_Stocks sheets
+
+
+def market_open_now(mkt: str) -> bool:
+    """Rough in-session check (IST clock). When a market is trading, scan-vs-
+    fresh gaps are intraday drift, not staleness — tolerance loosens 2x.
+    (First live run flagged ASML 3.6% and SKHY 8.8% during EU/US sessions.)"""
+    from datetime import datetime
+    now = datetime.now()
+    h = now.hour + now.minute / 60
+    if now.weekday() >= 5:
+        return False
+    windows = {"IN": (9.25, 15.5), "JP": (5.5, 11.5), "KR": (5.5, 12.0),
+               "EU": (12.5, 21.0), "US": (19.0, 25.999)}  # US eve wraps midnight
+    lo, hi = windows.get(mkt, (0, 0))
+    return (lo <= h <= hi) or (mkt == "US" and h <= 1.5)
+
+
+# ── in-session quorum ─────────────────────────────────────────────────────────
+# 2026-07-28: the 00:30 run built a sound brief and did NOT send it. One name
+# (NVDA, 4.63% vs a 4% in-session tolerance) failed [13d] and suppressed the
+# whole mailer. The US scan runs at 00:33 IST = 15:03 ET — mid-session, by
+# construction, every weekday. A single liquid name moving >4% intraday is an
+# ordinary Tuesday, not evidence of a bad scan.
+#
+# REVERSES part of the 2026-07-27 call ("a materially-off brief price should
+# block a send even when the cause is the market moving"). That was reasoned
+# from SKHY 9.4%, which looked like drift and was actually a STALE CACHE —
+# _is_stale() judging freshness by fetch time. That bug is fixed at the source
+# (market_data_cache + ohlcv_cache now compare the last BAR date). With the
+# real defect gone, what the per-name tolerance still catches in-session is
+# drift, and drift is not a defect: when the US market is open at build time
+# there IS no better price to quote. The user reads the brief hours later, after
+# the close, by which point ANY build-time snapshot is stale. Blocking the send
+# does not buy a more accurate brief — it buys no brief.
+#
+# So in-session the gate stops asking "is this one price off?" and asks the two
+# questions that actually indicate a broken scan:
+#   1. exact-match warehouse signature — scan LTP == yesterday's close to the
+#      cent. Unambiguous staleness; no live market reproduces it. Hard fail,
+#      session or not.
+#   2. SYSTEMATIC breach — a majority of sampled liquid names off at once. Drift
+#      is idiosyncratic; a re-served cache moves the whole sample together.
+# Outside session hours nothing explains a gap but bad data, so one name over
+# tolerance still fails — that path is unchanged.
+#
+# 2026-08-12: the quorum was `(n + 1) // 2`, which is a majority only for ODD n.
+# At the default --sample 8 it returned 4 — exactly half — and 4/8 breaching
+# suppressed the brief. All four flagged prices (FINCABLES, KOLTEPATIL,
+# GODAVARIB, INDSWFTLAB) matched the 11 Aug NSE close to the paisa; they were
+# momentum breakouts that had run 12-20% on 9-45x volume the previous session
+# and kept moving on the 12th. Correct scan, real drift, blocked send. Rounding
+# the other way makes the threshold a genuine majority at every sample size.
+def _quorum(n: int) -> int:
+    """Names that must breach together before an in-session FAIL.
+
+    A strict majority: more than half of what was actually checked. Floor of 2
+    so a degenerate one-name sample can never fail on a single quote.
+    """
+    return max(2, n // 2 + 1)
+
+
+def warehouse_prev_close(market: str) -> pd.DataFrame:
+    """Previous session's ltp per symbol from market_daily.snapshots (via psql)."""
+    sql = f"""SELECT symbol, ltp FROM market_daily.snapshots
+              WHERE market='{market}' AND as_of_date =
+                (SELECT MAX(as_of_date) FROM market_daily.snapshots
+                 WHERE market='{market}' AND as_of_date < CURRENT_DATE)"""
+    try:
+        r = subprocess.run(["psql", "-d", "market_data", "--csv", "-c", sql],
+                           capture_output=True, text=True, timeout=20)
+        if r.returncode == 0 and r.stdout.strip():
+            return pd.read_csv(StringIO(r.stdout))
+    except Exception:
+        pass
+    return pd.DataFrame(columns=["symbol", "ltp"])
+
+
+def fresh_quotes(tickers: list[str]) -> dict[str, float]:
+    """Fresh last closes via a NEW yfinance session — deliberately no cache."""
+    import yfinance as yf
+    out: dict[str, float] = {}
+    try:
+        data = yf.download(tickers, period="1d", progress=False,
+                           auto_adjust=False, threads=True)
+        closes = data["Close"] if "Close" in data else data
+        if isinstance(closes, pd.Series):          # single ticker
+            out[tickers[0]] = float(closes.dropna().iloc[-1])
+        else:
+            for t in tickers:
+                if t in closes.columns:
+                    s = closes[t].dropna()
+                    if len(s):
+                        out[t] = float(s.iloc[-1])
+    except Exception as e:
+        print(f"    fresh-quote batch failed: {e}")
+    return out
+
+
+_SCAN_DATE = re.compile(r"_(\d{8})_\d{4}\.xlsx$")
+
+
+def scan_age_days(path: str) -> Optional[int]:
+    """Days between the workbook's own datestamp and today. None if unparseable."""
+    m = _SCAN_DATE.search(Path(path).name)
+    if not m:
+        return None
+    try:
+        stamp = datetime.strptime(m.group(1), "%Y%m%d").date()
+    except ValueError:
+        return None
+    return (date.today() - stamp).days
+
+
+def reconcile(market: str, sample: int, tolerance: float) -> bool:
+    """Returns True if the market PASSES."""
+    pat, sym_col, px_col, suffix = MARKETS[market]
+    files = sorted(glob.glob(str(HERE / pat)))
+    if not files:
+        print(f"  [{market}] no scan workbook — SKIP")
+        return True
+    scan_path = files[-1]
+
+    # 🔴 IS THIS EVEN TODAY'S SCAN? Check before comparing a single price.
+    #
+    # `files[-1]` is just the newest file on disk, which is NOT the same as a
+    # scan from today. When the 03:00 mailer-data job does not run, the 06:30
+    # send silently reuses YESTERDAY's workbook, and the staleness only surfaces
+    # later as price drift — an inference, several steps removed from the cause.
+    #
+    # That is exactly what happened on Sat 2026-08-01: mailer-data is scheduled
+    # Mon–Sat but `pmset` wakes weekdays only, so the Mac slept through 03:00,
+    # the send fell back to Friday's 20260731 workbook, and this module reported
+    # "4/8 stale (worst 63MOONS 9.0%)". True, but it names the symptom. The
+    # cause is one day of missing data, and saying so directly is the difference
+    # between "prices look off" and "the scan never ran".
+    age = scan_age_days(scan_path)
+    if age is not None and age > MAX_SCAN_AGE_DAYS:
+        print(f"  [{market}] ❌ STALE WORKBOOK — {Path(scan_path).name} is {age} day(s) old; "
+              f"expected today's scan ({date.today():%Y-%m-%d}). The scan step did not run. "
+              f"Price drift below is a CONSEQUENCE, not the cause.")
+        return False
+
+    df = pd.read_excel(scan_path, sheet_name="All_Stocks")
+    if sym_col not in df.columns or px_col not in df.columns:
+        print(f"  [{market}] missing {sym_col}/{px_col} in {Path(scan_path).name} — SKIP")
+        return True
+
+    liquid = (df.sort_values(LIQ_COL, ascending=False).head(sample)
+              if LIQ_COL in df.columns else df.head(sample))
+    liquid = liquid[[sym_col, px_col]].dropna()
+
+    # Check 1 — warehouse signature (scan price == yesterday's warehouse ltp).
+    # Exact equality to the cent is the one signal a live market cannot fake, so
+    # a majority hit here FAILS outright regardless of session — this is the
+    # INFY/SKHY class the gate was built for.
+    wh = warehouse_prev_close(market)
+    n_sig = 0
+    if not wh.empty:
+        m = liquid.merge(wh, left_on=liquid[sym_col].astype(str).str.replace(
+            r"\.(NS|BO|T|KS|KQ)$", "", regex=True), right_on="symbol", how="left")
+        n_sig = int((abs(m[px_col] - m["ltp"]) < 1e-6).sum())
+        if n_sig:
+            print(f"  [{market}] ⚠ {n_sig}/{len(liquid)} liquid names EXACTLY equal "
+                  f"yesterday's warehouse close (stale-cache signature)")
+    if n_sig >= _quorum(len(liquid)):
+        print(f"  [{market}] {Path(scan_path).name}: FAIL — re-served yesterday's "
+              f"closes ({n_sig}/{len(liquid)} exact matches)")
+        return False
+
+    # Check 2 — fresh live spot-check
+    tickers = [str(s) + suffix if suffix and not str(s).endswith(suffix) else str(s)
+               for s in liquid[sym_col]]
+    fresh = fresh_quotes(tickers)
+    in_session = market_open_now(market)
+    if in_session:
+        tolerance = tolerance * 2
+        print(f"  [{market}] market in session — tolerance loosened to {tolerance:.1f}% (intraday drift)")
+    n_checked = n_stale = 0
+    worst = ("", 0.0)
+    for (_, row), tkr in zip(liquid.iterrows(), tickers):
+        if tkr not in fresh or not fresh[tkr]:
+            continue
+        n_checked += 1
+        diff = abs(row[px_col] - fresh[tkr]) / fresh[tkr] * 100
+        if diff > tolerance:
+            n_stale += 1
+            print(f"    !! {tkr:14s} scan={row[px_col]:<12g} fresh={fresh[tkr]:<12g} "
+                  f"diff={diff:.2f}%")
+            if diff > worst[1]:
+                worst = (tkr, diff)
+    if n_checked == 0:
+        print(f"  [{market}] live spot-check unavailable (yfinance) — "
+              f"warehouse signature only")
+        # Same majority threshold as Check 1 — which already returned False if it
+        # was met, so reaching here means the signature test passed and there is
+        # no live data left to judge on. Spelled via _quorum() rather than a
+        # hand-inlined formula: the previous `max(2, len(liquid) // 2)` was a
+        # THIRD variant that, at small samples (n=4: 2 vs quorum 3), failed scans
+        # Check 1 had just cleared.
+        return n_sig < _quorum(len(liquid))
+
+    # In session, one name over tolerance is drift and does not block; only a
+    # SYSTEMATIC breach does. Closed, any breach still fails — see the block above.
+    need = _quorum(n_checked) if in_session else 1
+    ok = n_stale < need
+    if ok and n_stale:
+        verdict = (f"PASS — {n_stale}/{n_checked} over tolerance, below the "
+                   f"{need}-name in-session quorum (drift, worst {worst[0]} {worst[1]:.1f}%)")
+    elif ok:
+        verdict = "PASS"
+    else:
+        verdict = f"FAIL — {n_stale}/{n_checked} stale (worst {worst[0]} {worst[1]:.1f}%)"
+    print(f"  [{market}] {Path(scan_path).name}: {n_checked} checked · {verdict}")
+    return ok
+
+
+def main() -> int:
+    ap = argparse.ArgumentParser(description=__doc__)
+    ap.add_argument("--market", choices=list(MARKETS), help="one market (default all)")
+    ap.add_argument("--sample", type=int, default=8)
+    ap.add_argument("--tolerance", type=float, default=2.0, help="max %% diff vs fresh quote")
+    a = ap.parse_args()
+
+    targets = [a.market] if a.market else list(MARKETS)
+    print(f"scan price reconcile — markets: {', '.join(targets)} "
+          f"(sample {a.sample}, tol {a.tolerance}%)")
+    fails = sum(0 if reconcile(m, a.sample, a.tolerance) else 1 for m in targets)
+    print(f"reconcile: {len(targets) - fails}/{len(targets)} markets clean")
+    return fails
+
+
+if __name__ == "__main__":
+    sys.exit(main())

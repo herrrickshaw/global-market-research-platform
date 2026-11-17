@@ -1,0 +1,46 @@
+dimension,item,market,context,verdict,evidence,source,last_tested
+technical-factor,trend,IN,bull regime,✅,"IR 2.34, DSR 0.99",deflated_sharpe,2026-07-24
+technical-factor,def_revert,IN,bear regime,⚠️,"IR 0.86, DSR 0.63",deflated_sharpe,2026-07-24
+technical-factor,mom252,US,bull regime,⚠️,"IR 1.19, DSR 0.90",deflated_sharpe,2026-07-24
+technical-factor,def_revert,US,bear regime,⚠️,"IR 0.55, DSR 0.24",deflated_sharpe,2026-07-24
+technical-factor,golden_cross,JP,bull regime,⚠️,"IR 0.84, DSR 0.86",deflated_sharpe,2026-07-24
+technical-factor,revert,JP,bear regime,⚠️,"IR 0.84, DSR 0.10",deflated_sharpe,2026-07-24
+technical-factor,breakout,KR,bull regime,✅,"IR 2.04, DSR 0.99",deflated_sharpe,2026-07-24
+technical-factor,def_revert,KR,bear regime,⚠️,"IR 1.32, DSR 0.16",deflated_sharpe,2026-07-24
+technical-factor,mom252,EU,bull regime,✅,"IR 1.39, DSR 0.98",deflated_sharpe,2026-07-24
+technical-factor,revert,EU,bear regime,⚠️,"IR 1.18, DSR 0.47",deflated_sharpe,2026-07-24
+valuation-reversion,Value — cheap vs peers (low PE),IN,all,✅,"+5.3%/6M sector-rel, t2.5",valuation-reversion,2026-07-23
+valuation-reversion,Value — cheap vs peers (low PE),US,all,✅,"+1.7%/3M, t2.3",valuation-reversion,2026-07-23
+valuation-reversion,Value — cheap vs peers (low PE),KR,all,🟡,t3.3 on 2022-26 BUT drops to 1.5 on deeper 2020-26 (COVID diluted) — period-dependent,valuation-reversion,2026-07-23
+valuation-reversion,Value — cheap vs peers (low PE),JP,all,⚠️,"direction right, t≈0",valuation-reversion,2026-07-23
+valuation-reversion,Value — cheap vs peers (low PE),EU,all,⚠️,+36%/6M headline but t1.5 — small-sample (449) micro-cap artifact; CN: value ABSENT t0,valuation-reversion,2026-07-23
+valuation-reversion,Value+Quality long/short (cheap∩hiROE − rich∩loROE),IN,all,❌,−1.0%/6M — momentum runs shorts over,valuation-reversion,2026-07-23
+valuation-reversion,Value+Quality long/short (cheap∩hiROE − rich∩loROE),US,all,🟡,"+1.7%/6M, t1.0",valuation-reversion,2026-07-23
+valuation-reversion,Value+Quality long/short (cheap∩hiROE − rich∩loROE),KR,all,✅,"+4.8%/6M, t4.2 — full L/S works",valuation-reversion,2026-07-23
+valuation-reversion,Value+Quality long/short (cheap∩hiROE − rich∩loROE),JP,all,—,excluded,valuation-reversion,2026-07-23
+valuation-reversion,Value+Quality long/short (cheap∩hiROE − rich∩loROE),EU,all,—,no fundamentals,valuation-reversion,2026-07-23
+valuation-reversion,Quality (high ROE) as premium filter,IN,all,🟡,earns premium (Titan/TVS),valuation-reversion,2026-07-23
+valuation-reversion,Quality (high ROE) as premium filter,US,all,🟡,earns premium,valuation-reversion,2026-07-23
+valuation-reversion,Quality (high ROE) as premium filter,KR,all,✅,hi-ROE cheap = the discount,valuation-reversion,2026-07-23
+valuation-reversion,Quality (high ROE) as premium filter,JP,all,—,,valuation-reversion,2026-07-23
+valuation-reversion,Quality (high ROE) as premium filter,EU,all,—,,valuation-reversion,2026-07-23
+screener,Darvas / breakout (near-52w-high),IN,all,✅,"best all-weather, +0.44/+0.41 bull/bear",screener/filter,2026-07-24
+screener,Darvas / breakout (near-52w-high),US,all,🟡,bull only,screener/filter,2026-07-24
+screener,Darvas / breakout (near-52w-high),KR,all,✅,bull IR 2.0,screener/filter,2026-07-24
+screener,Darvas / breakout (near-52w-high),JP,all,🟡,,screener/filter,2026-07-24
+screener,Darvas / breakout (near-52w-high),EU,all,🟡,,screener/filter,2026-07-24
+screener,Golden cross (50>200DMA),IN,all,✅,survives both regimes,screener/filter,2026-07-24
+screener,Golden cross (50>200DMA),US,all,✅,bull+bear excess>0,screener/filter,2026-07-24
+screener,Golden cross (50>200DMA),KR,all,🟡,,screener/filter,2026-07-24
+screener,Golden cross (50>200DMA),JP,all,🟡,,screener/filter,2026-07-24
+screener,Golden cross (50>200DMA),EU,all,🟡,,screener/filter,2026-07-24
+screener,Mean-reversion (buy oversold),IN,all,⚠️,weak — India is momentum,screener/filter,2026-07-24
+screener,Mean-reversion (buy oversold),US,all,✅,bear regime,screener/filter,2026-07-24
+screener,Mean-reversion (buy oversold),KR,all,✅,"bear regime, strong",screener/filter,2026-07-24
+screener,Mean-reversion (buy oversold),JP,all,✅,bear regime,screener/filter,2026-07-24
+screener,Mean-reversion (buy oversold),EU,all,✅,bear regime,screener/filter,2026-07-24
+screener,Piotroski / fundamental quality,IN,all,🟡,behind liquidity gate,screener/filter,2026-07-24
+screener,Piotroski / fundamental quality,US,all,⚠️,F-score inverted (backtest),screener/filter,2026-07-24
+screener,Piotroski / fundamental quality,KR,all,🟡,,screener/filter,2026-07-24
+screener,Piotroski / fundamental quality,JP,all,—,,screener/filter,2026-07-24
+screener,Piotroski / fundamental quality,EU,all,—,,screener/filter,2026-07-24

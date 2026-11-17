@@ -32,6 +32,7 @@ _state: dict = {
     'last_result': None,   # list[dict] from fetch_all_quotes
     'last_elapsed_s': None,
     'total_written': None,
+    'total_snapshotted': None,   # rows appended to stock_quotes_history
 }
 _state_lock = threading.Lock()
 
@@ -59,6 +60,22 @@ def _run_prefetch():
         results = fetch_all_quotes(with_fundamentals=False)
 
         total_written = sum(r.get('written', 0) for r in results)
+
+        # Append today's merged serving rows to stock_quotes_history. Runs only
+        # here, after the batch — an ad-hoc /api/live/fetch covers a partial
+        # symbol list and would write a partial day. Snapshot failure must not
+        # fail the prefetch, so each market is guarded independently.
+        snapshotted = 0
+        for r in results:
+            market = r.get('market')
+            if not market or r.get('status') == 'cancelled':
+                continue
+            try:
+                from db.quote_updater import snapshot_market
+                snapshotted += snapshot_market(market)
+            except Exception as exc:
+                log.warning('scheduler: snapshot failed for %s: %s', market, exc)
+
         elapsed = round(time.time() - started, 1)
 
         with _state_lock:
@@ -66,9 +83,10 @@ def _run_prefetch():
             _state['last_result']   = results
             _state['last_elapsed_s'] = elapsed
             _state['total_written'] = total_written
+            _state['total_snapshotted'] = snapshotted
 
-        log.info('scheduler: prefetch done — %d quotes written in %.0fs',
-                 total_written, elapsed)
+        log.info('scheduler: prefetch done — %d quotes written, %d snapshotted in %.0fs',
+                 total_written, snapshotted, elapsed)
     except Exception as exc:
         elapsed = round(time.time() - started, 1)
         with _state_lock:

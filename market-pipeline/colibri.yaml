@@ -1,0 +1,105 @@
+# Colibri Configuration for Stock Data Extraction
+# Optimizes memory usage across multi-market data pipelines
+
+metadata:
+  name: "Stock Data Extraction (Memory-Optimized)"
+  version: "1.0"
+  description: "Stream-based extraction for NSE/BSE/US/EU/JP/KR markets"
+  target: "mac_8gb_laptop"
+
+memory:
+  # Process 50-75 stocks per batch (tunable per market)
+  batch_size_mode: "adaptive"
+  batch_sizes:
+    india: 50
+    us: 75
+    europe: 50
+    japan: 40
+    korea: 40
+
+  # Keep working set under 2GB total
+  max_working_set_mb: 2000
+
+  # Stream directly to DuckDB (no accumulation in RAM)
+  output_mode: "streaming"
+  output_format: "duckdb"  # or: "parquet_chunked"
+
+performance:
+  # Rate-limit API calls to avoid throttles
+  api_delays_ms:
+    india: 50    # 20 req/sec
+    us: 35       # 28 req/sec
+    europe: 50   # 20 req/sec
+    japan: 60    # 17 req/sec
+    korea: 60    # 17 req/sec
+
+  # Parallel batch processing (within rate limits)
+  workers: 4
+
+  # Resume from checkpoint if interrupted
+  checkpointing: true
+  checkpoint_dir: "./.extract_progress"
+
+data_sources:
+  india:
+    ticker_source: "data/nse_equity_list.csv"
+    provider: "yfinance"
+    period: "1y"
+    fallback: "yfinance"
+
+  us:
+    ticker_source: "data/us_list.csv"
+    provider: "yfinance"
+    period: "1y"
+    fallback: "yfinance"
+
+  europe:
+    ticker_source: "data/market_data.duckdb:europe_all_list"
+    provider: "yfinance"
+    period: "1y"
+    fallback: "yfinance"
+
+  japan:
+    ticker_source: "data/japan_list.csv"
+    provider: "yfinance"
+    period: "1y"
+    fallback: "yfinance"
+
+  korea:
+    ticker_source: "data/korea_list.csv"
+    provider: "yfinance"
+    period: "1y"
+    fallback: "yfinance"
+
+output:
+  database: "data/market_data.duckdb"
+  tables:
+    ohlcv: "price_history_streaming"
+    fundamentals: "fundamentals_streaming"
+    metadata: "extraction_metadata"
+
+  # Compression for archival
+  parquet_compression: "zstd"
+
+monitoring:
+  log_level: "INFO"
+  log_file: "extract_optimized.log"
+
+  # Report every N batches
+  progress_interval: 5
+
+  # Alert if batch takes > 5 minutes (API issues)
+  batch_timeout_sec: 300
+
+  # Alert if memory usage exceeds threshold
+  memory_alert_mb: 1800
+
+fallback_strategies:
+  # If yfinance throttles, retry with exponential backoff
+  rate_limit_backoff:
+    max_retries: 3
+    initial_delay_sec: 2
+    backoff_factor: 2.0
+
+  # If a ticker fails, skip and continue (don't crash)
+  skip_failed_tickers: true

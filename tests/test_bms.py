@@ -12,6 +12,11 @@ import os
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
+# The bms/ package was consolidated into its own repo (bms-battery-management),
+# so collection fails with ModuleNotFoundError here. Skip the module instead of
+# erroring the whole `pytest tests/` run; it runs again if bms/ is restored.
+pytest.importorskip("bms", reason="bms/ moved to the bms-battery-management repo")
+
 from bms.config import CellConfig, PackConfig, EKFConfig, OCV_SOC_TABLE
 from bms.cell_model import CellModel, ocv_from_soc, docv_dsoc
 from bms.soc_estimator import EKFSOCEstimator

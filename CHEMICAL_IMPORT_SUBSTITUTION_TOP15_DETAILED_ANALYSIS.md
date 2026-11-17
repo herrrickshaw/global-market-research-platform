@@ -95,7 +95,7 @@
 **Government Support:**
 - **PLI Scheme**: 5% for basic chemicals (ethylene qualifies)
 - **Customs Duty**: 7.5% (potential escalation)
-- **Strategic Importance**: Flagged in National Petrochemical Policy (2016) as critical shortage
+- **Strategic Importance**: Flagged in the 2016 National Petrochemical Policy as critical shortage
 
 **Supply Chain Analysis:**
 - **Major Exporters to India**: Saudi Aramco (40%), SABIC (25%), Sinopec (15%), ExxonMobil (8%)

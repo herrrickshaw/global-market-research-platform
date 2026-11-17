@@ -1,0 +1,2 @@
+# collected fundamentals snapshots — REGULAR git objects, NOT LFS (budget exhausted)
+*.parquet -filter -diff -merge -text

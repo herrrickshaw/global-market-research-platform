@@ -1,0 +1,881 @@
+date,event,symbol,market,detail
+2026-07-27,enroll,AJANTSOY,IN,baseline=21.5
+2026-07-27,enroll,AVANTIFEED,IN,baseline=979.5499877929688
+2026-07-27,enroll,AXITA,IN,baseline=7.409999847412109
+2026-07-27,enroll,BANARISUG,IN,baseline=3475.10009765625
+2026-07-27,enroll,BCCL,IN,baseline=39.560001373291016
+2026-07-27,enroll,BLS,IN,baseline=237.5
+2026-07-27,enroll,CESC,IN,baseline=162.32000732421875
+2026-07-27,enroll,COALINDIA,IN,baseline=427.5
+2026-07-27,enroll,DONEAR,IN,baseline=86.18000030517578
+2026-07-27,enroll,GSAUTO,IN,baseline=14.649999618530273
+2026-07-27,enroll,HERANBA,IN,baseline=175.94000244140625
+2026-07-27,enroll,HINDALCO,IN,baseline=945.25
+2026-07-27,enroll,INFY,IN,baseline=1079.199951171875
+2026-07-27,enroll,INOXWIND,IN,baseline=78.2300033569336
+2026-07-27,enroll,IRCTC,IN,baseline=494.0
+2026-07-27,enroll,ITC,IN,baseline=285.8500061035156
+2026-07-27,enroll,JKLAKSHMI,IN,baseline=574.2000122070312
+2026-07-27,enroll,KRIDHANINF,IN,baseline=2.4200000762939453
+2026-07-27,enroll,MHRIL,IN,baseline=223.8300018310547
+2026-07-27,enroll,NATIONALUM,IN,baseline=339.3500061035156
+2026-07-27,enroll,NLCINDIA,IN,baseline=298.45001220703125
+2026-07-27,enroll,NSDL,IN,baseline=817.7999877929688
+2026-07-27,enroll,ONGC,IN,baseline=238.55999755859375
+2026-07-27,enroll,PFC,IN,baseline=420.1000061035156
+2026-07-27,enroll,RHFL,IN,baseline=1.9600000381469727
+2026-07-27,enroll,RVNL,IN,baseline=223.9499969482422
+2026-07-27,enroll,SANDUMA,IN,baseline=198.14999389648438
+2026-07-27,enroll,SIMBHALS,IN,baseline=6.880000114440918
+2026-07-27,enroll,TARAPUR,IN,baseline=17.739999771118164
+2026-07-27,enroll,TATACONSUM,IN,baseline=1107.4000244140625
+2026-07-27,enroll,TATAPOWER,IN,baseline=377.3500061035156
+2026-07-27,enroll,TATASTEEL,IN,baseline=184.25
+2026-07-27,enroll,TIRUMALCHM,IN,baseline=172.08999633789062
+2026-07-27,enroll,UGROCAP,IN,baseline=95.6500015258789
+2026-07-27,enroll,UNITEDTEA,IN,baseline=472.95001220703125
+2026-07-27,enroll,VEDL,IN,baseline=264.6499938964844
+2026-07-27,enroll,WAAREEENER,IN,baseline=2741.39990234375
+2026-07-27,enroll,WIPRO,IN,baseline=178.52999877929688
+2026-07-27,enroll,ZODIAC,IN,baseline=246.75
+2026-07-27,enroll,ATUL,IN,baseline=6789.5
+2026-07-27,enroll,AARON,IN,baseline=141.9499969482422
+2026-07-27,enroll,38390,KR,baseline=9710.0
+2026-07-27,enroll,SJT,US,baseline=2.5199999809265137
+2026-07-27,enroll,PNR,US,baseline=62.880001068115234
+2026-07-27,enroll,AA,US,baseline=44.2400016784668
+2026-07-27,enroll,PRTS,US,baseline=5.28000020980835
+2026-07-27,enroll,246690.KQ,KR,baseline=1488.0
+2026-07-27,enroll,476040.KQ,KR,baseline=7680.0
+2026-07-27,enroll,043100.KQ,KR,baseline=520.0
+2026-07-27,enroll,4109.T,JP,baseline=5620.0
+2026-07-27,enroll,4222.T,JP,baseline=618.0
+2026-07-27,enroll,6619.T,JP,baseline=157.0
+2026-07-27,enroll,7564.T,JP,baseline=5590.0
+2026-07-27,enroll,6908.T,JP,baseline=2790.0
+2026-07-27,enroll,CAPR,US,baseline=19.700000762939453
+2026-07-27,enroll,8783.T,JP,baseline=68.0
+2026-07-27,enroll,GESHIP,IN,baseline=1398.5999755859375
+2026-07-27,enroll,EKI,IN,baseline=84.0999984741211
+2026-07-27,enroll,EMBASSY,IN,baseline=437.989990234375
+2026-07-27,enroll,GSPL,IN,baseline=268.3500061035156
+2026-07-27,enroll,MANGCHEFER,IN,baseline=308.75
+2026-07-27,enroll,MORARJEE,IN,baseline=10.260000228881836
+2026-07-27,enroll,VJLAXMIE,IN,baseline=39.0
+2026-07-27,enroll,KONNDOR,IN,baseline=16.25
+2026-07-27,enroll,NARPROP,IN,baseline=38.7599983215332
+2026-07-27,enroll,BDH,IN,baseline=578.7000122070312
+2026-07-27,enroll,PANCHSHEEL,IN,baseline=118.0999984741211
+2026-07-27,enroll,SUPRATRE,IN,baseline=14.579999923706055
+2026-07-27,enroll,SVARTCORP,IN,baseline=3.569999933242798
+2026-07-27,enroll,EVEXIA,IN,baseline=1.5800000429153442
+2026-07-27,enroll,AUSTENG,IN,baseline=165.4499969482422
+2026-07-27,enroll,TOTEM,IN,baseline=135.0
+2026-07-27,enroll,GALXBRG,IN,baseline=870.9000244140625
+2026-07-27,enroll,TRABI,IN,baseline=2.950000047683716
+2026-07-27,enroll,GKCONS,IN,baseline=11.84000015258789
+2026-07-27,enroll,OSWALGREEN,IN,baseline=21.170000076293945
+2026-07-27,enroll,GMDCLTD,IN,baseline=562.1500244140625
+2026-07-27,enroll,PROZONER,IN,baseline=44.11000061035156
+2026-07-27,enroll,TMPV,IN,baseline=327.6499938964844
+2026-07-27,enroll,RUDRA,IN,baseline=17.68000030517578
+2026-07-27,enroll,RPOWER,IN,baseline=23.760000228881836
+2026-07-27,enroll,TTML,IN,baseline=39.47999954223633
+2026-07-27,enroll,SSTK,US,baseline=5.579999923706055
+2026-07-27,enroll,KKRT,US,baseline=23.280000686645508
+2026-07-27,enroll,SPRY,US,baseline=5.940000057220459
+2026-07-27,enroll,TLRY,US,baseline=3.880000114440918
+2026-07-27,enroll,SNPS,US,baseline=373.4700012207031
+2026-07-27,enroll,LAC,US,baseline=2.809999942779541
+2026-07-27,enroll,INSG,US,baseline=6.659999847412109
+2026-07-27,enroll,ALB,US,baseline=114.8499984741211
+2026-07-27,enroll,T-PA,US,baseline=18.049999237060547
+2026-07-27,enroll,210980.KS,KR,baseline=5620.0
+2026-07-27,enroll,051360.KQ,KR,baseline=16090.0
+2026-07-27,enroll,102940.KQ,KR,baseline=17820.0
+2026-07-27,enroll,106190.KQ,KR,baseline=10200.0
+2026-07-27,enroll,950160.KQ,KR,baseline=21050.0
+2026-07-27,enroll,002020.KS,KR,baseline=25050.0
+2026-07-27,enroll,365340.KQ,KR,baseline=30000.0
+2026-07-27,enroll,084680.KS,KR,baseline=619.0
+2026-07-27,enroll,179900.KQ,KR,baseline=2815.0
+2026-07-27,enroll,7273.T,JP,baseline=604.0
+2026-07-27,enroll,9412.T,JP,baseline=2261.0
+2026-07-27,enroll,6928.T,JP,baseline=2609.0
+2026-07-27,enroll,ASTRAZEN,IN,baseline=8167.5
+2026-07-27,enroll,BHARATRAS,IN,baseline=1273.800048828125
+2026-07-27,enroll,IRCON,IN,baseline=126.4800033569336
+2026-07-27,enroll,URJA,IN,baseline=9.100000381469727
+2026-07-27,enroll,FIRSTCRY,IN,baseline=213.50999450683594
+2026-07-27,enroll,INDIAMART,IN,baseline=1759.699951171875
+2026-07-27,enroll,CELLO,IN,baseline=345.04998779296875
+2026-07-27,enroll,NFL,IN,baseline=71.04000091552734
+2026-07-27,enroll,GSFC,IN,baseline=160.0800018310547
+2026-07-27,enroll,SJVN,IN,baseline=68.04000091552734
+2026-07-27,enroll,HSY,US,baseline=174.3000030517578
+2026-07-27,enroll,ASO,US,baseline=46.58000183105469
+2026-07-27,enroll,PEP,US,baseline=136.63999938964844
+2026-07-27,enroll,NRP,US,baseline=98.0
+2026-07-27,enroll,RAILTEL,IN,baseline=288.54998779296875
+2026-07-27,enroll,SKFINDIA,IN,baseline=1481.4000244140625
+2026-07-27,enroll,FINPIPE,IN,baseline=163.8300018310547
+2026-07-27,enroll,LOYALTEX,IN,baseline=203.94000244140625
+2026-07-27,enroll,SCI,IN,baseline=283.79998779296875
+2026-07-27,enroll,SUPREME,IN,baseline=44.58000183105469
+2026-07-27,enroll,VBL,IN,baseline=464.5
+2026-07-27,enroll,CANBK,IN,baseline=127.26000213623047
+2026-07-27,enroll,LGBBROSLTD,IN,baseline=1553.800048828125
+2026-07-27,enroll,7280.T,JP,baseline=1172.0
+2026-07-27,enroll,6047.T,JP,baseline=355.0
+2026-07-27,enroll,FACT,US,baseline=10.649999618530273
+2026-07-27,enroll,RPM,US,baseline=107.0
+2026-07-27,enroll,SOJE,US,baseline=16.540000915527344
+2026-07-27,enroll,CHTR,US,baseline=123.30999755859375
+2026-07-27,enroll,SHOE,US,baseline=14.550000190734863
+2026-07-27,enroll,NXTT,US,baseline=0.6140000224113464
+2026-07-28,enroll,LBRT,US,baseline=16.860000610351562
+2026-07-28,enroll,AFCG,US,baseline=2.6700000762939453
+2026-07-28,enroll,148250.KQ,KR,baseline=2235.0
+2026-07-28,enroll,002220.KS,KR,baseline=3580.0
+2026-07-28,ageout(validated),CAPR,US,ret -64.5% after 1d — eviction confirmed
+2026-07-28,ageout(validated),AUSTENG,IN,ret -15.2% after 1d — eviction confirmed
+2026-07-28,promote→tier3,SSTK,US,ret +5.6% + RSI BUY zone
+2026-07-28,promote→tier3,INSG,US,ret +5.4% + RSI BUY zone
+2026-07-29,enroll,CAPR,US,baseline=6.570000171661377
+2026-07-29,enroll,AUSTENG,IN,baseline=135.89999389648438
+2026-07-29,enroll,ABFRL,IN,baseline=58.060001373291016
+2026-07-29,enroll,CHAMBLFERT,IN,baseline=451.45001220703125
+2026-07-29,enroll,JSWDULUX,IN,baseline=2973.5
+2026-07-29,enroll,493330.KQ,KR,baseline=9490.0
+2026-07-29,enroll,4516.T,JP,baseline=4018.0
+2026-07-29,enroll,4620.T,JP,baseline=967.0
+2026-07-29,enroll,3719.T,JP,baseline=160.0
+2026-07-29,enroll,BBOX.L,EU,baseline=164.60000610351562
+2026-07-29,enroll,BBVA.MC,EU,baseline=22.940000534057617
+2026-07-29,enroll,BRSC.L,EU,baseline=271.5
+2026-07-29,enroll,CLDN.L,EU,baseline=380.0
+2026-07-29,enroll,DBK.F,EU,baseline=31.020000457763672
+2026-07-29,enroll,FCH.L,EU,baseline=226.0
+2026-07-29,enroll,FME.F,EU,baseline=43.220001220703125
+2026-07-29,enroll,FSG.L,EU,baseline=488.5
+2026-07-29,enroll,GNC.L,EU,baseline=221.8000030517578
+2026-07-29,enroll,HAS.L,EU,baseline=53.79999923706055
+2026-07-29,enroll,HEN3.F,EU,baseline=74.41999816894531
+2026-07-29,enroll,JD.L,EU,baseline=85.81999969482422
+2026-07-29,enroll,LRE.L,EU,baseline=631.5
+2026-07-29,enroll,MKS.L,EU,baseline=398.29998779296875
+2026-07-29,enroll,NCC.L,EU,baseline=142.1999969482422
+2026-07-29,enroll,OTOEL.AT,EU,baseline=11.34000015258789
+2026-07-29,enroll,PANNERGY.BD,EU,baseline=2500.0
+2026-07-29,enroll,PNDORA.CO,EU,baseline=763.2000122070312
+2026-07-29,enroll,PUM.F,EU,baseline=28.700000762939453
+2026-07-29,enroll,RAND.AS,EU,baseline=31.860000610351562
+2026-07-29,enroll,RED.MC,EU,baseline=15.420000076293945
+2026-07-29,enroll,SDF.F,EU,baseline=14.109999656677246
+2026-07-29,enroll,SZG.F,EU,baseline=54.0
+2026-07-29,enroll,ZAL.F,EU,baseline=28.25
+2026-07-29,enroll,1787,JP,baseline=6120.0
+2026-07-29,enroll,1811,JP,baseline=8210.0
+2026-07-29,enroll,2112.T,JP,baseline=447.0
+2026-07-29,enroll,2175,JP,baseline=2424.0
+2026-07-29,enroll,2220.T,JP,baseline=1226.0
+2026-07-29,enroll,2533,JP,baseline=501.0
+2026-07-29,enroll,2818,JP,baseline=1752.0
+2026-07-29,enroll,2820,JP,baseline=4885.0
+2026-07-29,enroll,2882,JP,baseline=2041.0
+2026-07-29,enroll,3020,JP,baseline=4120.0
+2026-07-29,enroll,3076,JP,baseline=2709.0
+2026-07-29,enroll,3420,JP,baseline=1591.0
+2026-07-29,enroll,3475,JP,baseline=1485.0
+2026-07-29,enroll,3536,JP,baseline=130.0
+2026-07-29,enroll,3632,JP,baseline=392.0
+2026-07-29,enroll,3753,JP,baseline=191.0
+2026-07-29,enroll,3769,JP,baseline=9501.0
+2026-07-29,enroll,3776.T,JP,baseline=240.0
+2026-07-29,enroll,3791.T,JP,baseline=950.0
+2026-07-29,enroll,3946,JP,baseline=4470.0
+2026-07-29,enroll,4053,JP,baseline=454.0
+2026-07-29,enroll,4092,JP,baseline=5790.0
+2026-07-29,enroll,4197,JP,baseline=2334.0
+2026-07-29,enroll,4206,JP,baseline=3661.0
+2026-07-29,enroll,4221,JP,baseline=5150.0
+2026-07-29,enroll,4249,JP,baseline=2550.0
+2026-07-29,enroll,4441,JP,baseline=1596.0
+2026-07-29,enroll,4443,JP,baseline=1732.0
+2026-07-29,enroll,4543,JP,baseline=2167.5
+2026-07-29,enroll,4680,JP,baseline=1189.5
+2026-07-29,enroll,4728,JP,baseline=641.0
+2026-07-29,enroll,5108,JP,baseline=3761.0
+2026-07-29,enroll,5269,JP,baseline=339.0
+2026-07-29,enroll,5393.T,JP,baseline=3346.0
+2026-07-29,enroll,5909,JP,baseline=1027.0
+2026-07-29,enroll,5938,JP,baseline=1848.0
+2026-07-29,enroll,6138,JP,baseline=1216.0
+2026-07-29,enroll,6276,JP,baseline=308.0
+2026-07-29,enroll,6325,JP,baseline=403.0
+2026-07-29,enroll,6333,JP,baseline=3235.0
+2026-07-29,enroll,6616.T,JP,baseline=1920.0
+2026-07-29,enroll,6915,JP,baseline=3340.0
+2026-07-29,enroll,6995,JP,baseline=3210.0
+2026-07-29,enroll,7033,JP,baseline=1367.0
+2026-07-29,enroll,7060,JP,baseline=621.0
+2026-07-29,enroll,7102.T,JP,baseline=3695.0
+2026-07-29,enroll,7175,JP,baseline=1581.0
+2026-07-29,enroll,7212.T,JP,baseline=682.0
+2026-07-29,enroll,7231.T,JP,baseline=2922.0
+2026-07-29,enroll,7815.T,JP,baseline=365.0
+2026-07-29,enroll,7867,JP,baseline=3436.0
+2026-07-29,enroll,8075,JP,baseline=2553.0
+2026-07-29,enroll,8101,JP,baseline=2719.0
+2026-07-29,enroll,8147,JP,baseline=1413.0
+2026-07-29,enroll,8281,JP,baseline=1102.0
+2026-07-29,enroll,8338.T,JP,baseline=670.0
+2026-07-29,enroll,8387.T,JP,baseline=3290.0
+2026-07-29,enroll,8410,JP,baseline=311.5
+2026-07-29,enroll,8424,JP,baseline=4427.0
+2026-07-29,enroll,8923,JP,baseline=1777.0
+2026-07-29,enroll,9082,JP,baseline=1559.0
+2026-07-29,enroll,9202,JP,baseline=2988.0
+2026-07-29,enroll,9686,JP,baseline=1633.0
+2026-07-29,enroll,9997,JP,baseline=1065.0
+2026-07-29,enroll,002380.KS,KR,baseline=426500.0
+2026-07-29,enroll,006490.KS,KR,baseline=1031.0
+2026-07-29,enroll,007370.KQ,KR,baseline=3840.0
+2026-07-29,enroll,015760.KS,KR,baseline=35050.0
+2026-07-29,enroll,020710.KQ,KR,baseline=3480.0
+2026-07-29,enroll,066980.KQ,KR,baseline=1587.0
+2026-07-29,enroll,069730.KS,KR,baseline=5800.0
+2026-07-29,enroll,071320.KS,KR,baseline=64400.0
+2026-07-29,enroll,071670.KQ,KR,baseline=5100.0
+2026-07-29,enroll,088130.KQ,KR,baseline=5040.0
+2026-07-29,enroll,088910.KQ,KR,baseline=2170.0
+2026-07-29,enroll,089030.KQ,KR,baseline=49250.0
+2026-07-29,enroll,093370.KS,KR,baseline=11190.0
+2026-07-29,enroll,096760.KS,KR,baseline=3827.0
+2026-07-29,enroll,098460.KQ,KR,baseline=27100.0
+2026-07-29,enroll,100220.KS,KR,baseline=4705.0
+2026-07-29,enroll,101160,KR,baseline=30400.0
+2026-07-29,enroll,104040,KR,baseline=2820.0
+2026-07-29,enroll,105560,KR,baseline=176400.0
+2026-07-29,enroll,119850,KR,baseline=37450.0
+2026-07-29,enroll,120240,KR,baseline=14570.0
+2026-07-29,enroll,123750.KQ,KR,baseline=2075.0
+2026-07-29,enroll,12690,KR,baseline=1669.0
+2026-07-29,enroll,127120,KR,baseline=33500.0
+2026-07-29,enroll,130660.KS,KR,baseline=10780.0
+2026-07-29,enroll,131290,KR,baseline=255000.0
+2026-07-29,enroll,136490,KR,baseline=9650.0
+2026-07-29,enroll,136490.KS,KR,baseline=9650.0
+2026-07-29,enroll,14100,KR,baseline=1860.0
+2026-07-29,enroll,144960,KR,baseline=10310.0
+2026-07-29,enroll,145210,KR,baseline=224.0
+2026-07-29,enroll,14710,KR,baseline=9150.0
+2026-07-29,enroll,15020,KR,baseline=928.0
+2026-07-29,enroll,1540,KR,baseline=11450.0
+2026-07-29,enroll,163730.KQ,KR,baseline=8040.0
+2026-07-29,enroll,16920,KR,baseline=1009.0
+2026-07-29,enroll,175330,KR,baseline=26150.0
+2026-07-29,enroll,17650,KR,baseline=9050.0
+2026-07-29,enroll,17890,KR,baseline=13300.0
+2026-07-29,enroll,185490,KR,baseline=1513.0
+2026-07-29,enroll,192390,KR,baseline=1832.0
+2026-07-29,enroll,20120,KR,baseline=3465.0
+2026-07-29,enroll,212560,KR,baseline=11630.0
+2026-07-29,enroll,212710,KR,baseline=9680.0
+2026-07-29,enroll,214260,KR,baseline=9530.0
+2026-07-29,enroll,21650,KR,baseline=2210.0
+2026-07-29,enroll,219130,KR,baseline=75200.0
+2026-07-29,enroll,222040,KR,baseline=7780.0
+2026-07-29,enroll,227610,KR,baseline=1457.0
+2026-07-29,enroll,236200,KR,baseline=48200.0
+2026-07-29,enroll,237750,KR,baseline=3995.0
+2026-07-29,enroll,244920,KR,baseline=12220.0
+2026-07-29,enroll,263800,KR,baseline=6040.0
+2026-07-29,enroll,26890,KR,baseline=7390.0
+2026-07-29,enroll,26910,KR,baseline=5330.0
+2026-07-29,enroll,270520,KR,baseline=3040.0
+2026-07-29,enroll,270870,KR,baseline=4680.0
+2026-07-29,enroll,2820,KR,baseline=2250.0
+2026-07-29,enroll,284740.KS,KR,baseline=21100.0
+2026-07-29,enroll,290690,KR,baseline=4265.0
+2026-07-29,enroll,298000.KS,KR,baseline=61400.0
+2026-07-29,enroll,30720,KR,baseline=5740.0
+2026-07-29,enroll,310200,KR,baseline=2570.0
+2026-07-29,enroll,314930.KQ,KR,baseline=8410.0
+2026-07-29,enroll,318010,KR,baseline=3625.0
+2026-07-29,enroll,319660,KR,baseline=163300.0
+2026-07-29,enroll,31980,KR,baseline=128700.0
+2026-07-29,enroll,33130,KR,baseline=1977.0
+2026-07-29,enroll,332370,KR,baseline=5180.0
+2026-07-29,enroll,33560,KR,baseline=4540.0
+2026-07-29,enroll,348030,KR,baseline=3040.0
+2026-07-29,enroll,348350,KR,baseline=9840.0
+2026-07-29,enroll,35610,KR,baseline=4735.0
+2026-07-29,enroll,361670,KR,baseline=3210.0
+2026-07-29,enroll,362320,KR,baseline=4710.0
+2026-07-29,enroll,3680,KR,baseline=8360.0
+2026-07-29,enroll,3690,KR,baseline=13540.0
+2026-07-29,enroll,36930,KR,baseline=166400.0
+2026-07-29,enroll,380540,KR,baseline=8450.0
+2026-07-29,enroll,38880,KR,baseline=3800.0
+2026-07-29,enroll,399720,KR,baseline=43800.0
+2026-07-29,enroll,400,KR,baseline=2385.0
+2026-07-29,enroll,416180.KQ,KR,baseline=18070.0
+2026-07-29,enroll,417310.KS,KR,baseline=10730.0
+2026-07-29,enroll,42420,KR,baseline=22850.0
+2026-07-29,enroll,43590,KR,baseline=1212.0
+2026-07-29,enroll,4430,KR,baseline=12820.0
+2026-07-29,enroll,44340,KR,baseline=3730.0
+2026-07-29,enroll,446540,KR,baseline=7040.0
+2026-07-29,enroll,448730.KS,KR,baseline=5520.0
+2026-07-29,enroll,45060,KR,baseline=2215.0
+2026-07-29,enroll,453340,KR,baseline=18260.0
+2026-07-29,enroll,457600,KR,baseline=3360.0
+2026-07-29,enroll,472850.KQ,KR,baseline=3820.0
+2026-07-29,enroll,475150,KR,baseline=70900.0
+2026-07-29,enroll,481070,KR,baseline=16920.0
+2026-07-29,enroll,52330,KR,baseline=12050.0
+2026-07-29,enroll,53350,KR,baseline=3805.0
+2026-07-29,enroll,5360,KR,baseline=2095.0
+2026-07-29,enroll,5430,KR,baseline=80900.0
+2026-07-29,enroll,54410,KR,baseline=3695.0
+2026-07-29,enroll,54940,KR,baseline=760.0
+2026-07-29,enroll,55550,KR,baseline=104200.0
+2026-07-29,enroll,5670,KR,baseline=6260.0
+2026-07-29,enroll,57540,KR,baseline=941.0
+2026-07-29,enroll,58630,KR,baseline=4220.0
+2026-07-29,enroll,6090,KR,baseline=8100.0
+2026-07-29,enroll,61090,KR,baseline=45250.0
+2026-07-29,enroll,6120,KR,baseline=52300.0
+2026-07-29,enroll,6340,KR,baseline=12970.0
+2026-07-29,enroll,6370,KR,baseline=5640.0
+2026-07-29,enroll,65690,KR,baseline=1408.0
+2026-07-29,enroll,66590,KR,baseline=3070.0
+2026-07-29,enroll,66620,KR,baseline=23250.0
+2026-07-29,enroll,69460,KR,baseline=2660.0
+2026-07-29,enroll,70590,KR,baseline=1638.0
+2026-07-29,enroll,7070,KR,baseline=24800.0
+2026-07-29,enroll,71200,KR,baseline=8530.0
+2026-07-29,enroll,71950,KR,baseline=1803.0
+2026-07-29,enroll,73240,KR,baseline=6290.0
+2026-07-29,enroll,79650,KR,baseline=4420.0
+2026-07-29,enroll,79940,KR,baseline=47550.0
+2026-07-29,enroll,80010,KR,baseline=7580.0
+2026-07-29,enroll,82210,KR,baseline=2140.0
+2026-07-29,enroll,8490,KR,baseline=20300.0
+2026-07-29,enroll,85810,KR,baseline=1631.0
+2026-07-29,enroll,86060,KR,baseline=5180.0
+2026-07-29,enroll,89860,KR,baseline=39900.0
+2026-07-29,enroll,89970,KR,baseline=86000.0
+2026-07-29,enroll,90850,KR,baseline=6100.0
+2026-07-29,enroll,91440,KR,baseline=3130.0
+2026-07-29,enroll,91970,KR,baseline=3950.0
+2026-07-29,enroll,9240,KR,baseline=36600.0
+2026-07-29,enroll,9310,KR,baseline=5325.0
+2026-07-29,enroll,93380,KR,baseline=2650.0
+2026-07-29,enroll,94800,KR,baseline=6280.0
+2026-07-29,enroll,94840,KR,baseline=13000.0
+2026-07-29,enroll,94860,KR,baseline=1391.0
+2026-07-29,enroll,95610,KR,baseline=165600.0
+2026-07-29,enroll,8541,JP,baseline=2471.0
+2026-07-29,enroll,3697,JP,baseline=752.2999877929688
+2026-07-29,enroll,ACX.MC,EU,baseline=16.510000228881836
+2026-07-29,enroll,2437,JP,baseline=590.0
+2026-07-29,enroll,2354,JP,baseline=1252.0
+2026-07-29,enroll,SGRO.L,EU,baseline=869.4000244140625
+2026-07-29,enroll,9900,JP,baseline=1884.0
+2026-07-29,enroll,8388,JP,baseline=8300.0
+2026-07-29,enroll,2767,JP,baseline=1447.0
+2026-07-29,promote→tier3,INFY,IN,ret +7.1% + RSI BUY zone
+2026-07-29,promote→tier3,SANDUMA,IN,ret +5.2% + RSI BUY zone
+2026-07-29,promote→tier3,CHTR,US,ret +13.5% >= +10.0%
+2026-07-30,enroll,ASALCBR,IN,baseline=765.0999755859375
+2026-07-30,enroll,GOLDIAM,IN,baseline=352.79998779296875
+2026-07-30,enroll,KHADIM,IN,baseline=95.0999984741211
+2026-07-30,enroll,MAZDOCK,IN,baseline=2307.800048828125
+2026-07-30,enroll,TCI,IN,baseline=917.0
+2026-07-31,enroll,MSW,US,baseline=1.409999966621399
+2026-07-31,ageout(validated),NXTT,US,ret -16.1% after 4d — eviction confirmed
+2026-07-31,promote→tier3,LBRT,US,ret +6.5% + RSI BUY zone
+2026-07-31,ageout(validated),CAPR,US,ret -36.2% after 2d — eviction confirmed
+2026-08-29,enroll,CAPR,US,baseline=9.59000015258789
+2026-08-29,enroll,APM,US,baseline=7.019999980926514
+2026-08-29,enroll,GREE,US,baseline=1.7100000381469727
+2026-08-29,enroll,LMFA,US,baseline=2.6500000953674316
+2026-08-29,enroll,AGARIND,IN,baseline=465.5
+2026-08-29,enroll,ANUP,IN,baseline=1801.300048828125
+2026-08-29,enroll,APTUS,IN,baseline=256.45001220703125
+2026-08-29,enroll,ASHAPURMIN,IN,baseline=578.0499877929688
+2026-08-29,enroll,ASTERDM,IN,baseline=754.7999877929688
+2026-08-29,enroll,AVL,IN,baseline=592.2999877929688
+2026-08-29,enroll,BHARTIARTL,IN,baseline=1878.300048828125
+2026-08-29,enroll,BIOCON,IN,baseline=418.3999938964844
+2026-08-29,enroll,BRITANNIA,IN,baseline=5298.0
+2026-08-29,enroll,CIPLA,IN,baseline=1420.0
+2026-08-29,enroll,COLPAL,IN,baseline=1845.0
+2026-08-29,enroll,COROMANDEL,IN,baseline=1928.4000244140625
+2026-08-29,enroll,CUMMINSIND,IN,baseline=5190.0
+2026-08-29,enroll,DATAMATICS,IN,baseline=790.7999877929688
+2026-08-29,enroll,DEEPAKFERT,IN,baseline=1455.300048828125
+2026-08-29,enroll,FDC,IN,baseline=343.8500061035156
+2026-08-29,enroll,GMRAIRPORT,IN,baseline=98.68000030517578
+2026-08-29,enroll,GREAVESCOT,IN,baseline=191.1699981689453
+2026-08-29,enroll,GREENLAM,IN,baseline=243.25
+2026-08-29,enroll,HARIOMPIPE,IN,baseline=341.1499938964844
+2026-08-29,enroll,HARRMALAYA,IN,baseline=194.6999969482422
+2026-08-29,enroll,HINDPETRO,IN,baseline=371.0
+2026-08-29,enroll,IGARASHI,IN,baseline=420.79998779296875
+2026-08-29,enroll,IKIO,IN,baseline=186.13999938964844
+2026-08-29,enroll,INDHOTEL,IN,baseline=718.5
+2026-08-29,enroll,INDIACEM,IN,baseline=369.04998779296875
+2026-08-29,enroll,INDNIPPON,IN,baseline=1062.199951171875
+2026-08-29,enroll,INDOSTAR,IN,baseline=255.0500030517578
+2026-08-29,enroll,ITDC,IN,baseline=659.3499755859375
+2026-08-29,enroll,IXIGO,IN,baseline=162.8300018310547
+2026-08-29,enroll,JAYBARMARU,IN,baseline=122.58000183105469
+2026-08-29,enroll,JLHL,IN,baseline=307.45001220703125
+2026-08-29,enroll,LATENTVIEW,IN,baseline=275.25
+2026-08-29,enroll,LIBERTSHOE,IN,baseline=245.10000610351562
+2026-08-29,enroll,MAPMYINDIA,IN,baseline=977.0999755859375
+2026-08-29,enroll,MARICO,IN,baseline=833.5
+2026-08-29,enroll,MARUTI,IN,baseline=13440.0
+2026-08-29,enroll,MAYURUNIQ,IN,baseline=749.4000244140625
+2026-08-29,enroll,NAVKARCORP,IN,baseline=97.37000274658203
+2026-08-29,enroll,NDRAUTO,IN,baseline=733.2999877929688
+2026-08-29,enroll,ONMOBILE,IN,baseline=52.66999816894531
+2026-08-29,enroll,PROTEAN,IN,baseline=556.9000244140625
+2026-08-29,enroll,RAIN,IN,baseline=194.3800048828125
+2026-08-29,enroll,RECLTD,IN,baseline=320.8999938964844
+2026-08-29,enroll,ROTO,IN,baseline=65.0199966430664
+2026-08-29,enroll,SATIN,IN,baseline=226.00999450683594
+2026-08-29,enroll,SBILIFE,IN,baseline=1773.199951171875
+2026-08-29,enroll,SCHNEIDER,IN,baseline=1207.0
+2026-08-29,enroll,SIGNATURE,IN,baseline=783.5
+2026-08-29,enroll,SOUTHBANK,IN,baseline=45.72999954223633
+2026-08-29,enroll,SUNDROP,IN,baseline=655.4500122070312
+2026-08-29,enroll,SUNPHARMA,IN,baseline=1913.300048828125
+2026-08-29,enroll,UCOBANK,IN,baseline=25.489999771118164
+2026-08-29,enroll,VAIBHAVGBL,IN,baseline=222.1999969482422
+2026-08-29,enroll,VOLTAS,IN,baseline=1217.5
+2026-08-29,enroll,AGIO,US,baseline=33.31999969482422
+2026-08-29,enroll,CMSC,US,baseline=21.274999618530273
+2026-08-29,enroll,DORM,US,baseline=129.35000610351562
+2026-08-29,enroll,FBIO,US,baseline=2.7699999809265137
+2026-08-29,enroll,HRL,US,baseline=21.280000686645508
+2026-08-29,enroll,HVII,US,baseline=7.460000038146973
+2026-08-29,enroll,IFBD,US,baseline=0.9264000058174133
+2026-08-29,enroll,INDP,US,baseline=1.1399999856948853
+2026-08-29,enroll,IOTR,US,baseline=2.450000047683716
+2026-08-29,enroll,KSS,US,baseline=17.5
+2026-08-29,enroll,OTLK,US,baseline=0.6449000239372253
+2026-08-29,enroll,PRPL,US,baseline=4.489999771118164
+2026-08-29,enroll,RPAY,US,baseline=3.7799999713897705
+2026-08-29,enroll,RRR,US,baseline=56.970001220703125
+2026-08-29,enroll,TTWO,US,baseline=235.38999938964844
+2026-08-29,enroll,UPBD,US,baseline=19.219999313354492
+2026-08-29,enroll,WBX,US,baseline=2.9000000953674316
+2026-08-29,enroll,NXTT,US,baseline=6.019999980926514
+2026-08-29,enroll,WKC,US,baseline=36.0099983215332
+2026-08-29,enroll,SUMEETINDS,IN,baseline=12.989999771118164
+2026-08-29,promote→tier3,AJANTSOY,IN,ret +7.3% + RSI BUY zone
+2026-08-29,promote→tier3,BANARISUG,IN,ret +8.4% + RSI BUY zone
+2026-08-29,ageout(validated),BCCL,IN,ret -33.0% after 33d — eviction confirmed
+2026-08-29,promote→tier3,GSAUTO,IN,ret +9.8% + RSI BUY zone
+2026-08-29,ageout(validated),KRIDHANINF,IN,ret -15.3% after 33d — eviction confirmed
+2026-08-29,promote→tier3,NATIONALUM,IN,ret +14.7% >= +10.0%
+2026-08-29,ageout(validated),PFC,IN,ret -15.3% after 33d — eviction confirmed
+2026-08-29,promote→tier3,SIMBHALS,IN,ret +34.3% >= +10.0%
+2026-08-29,ageout(validated),TARAPUR,IN,ret -15.7% after 33d — eviction confirmed
+2026-08-29,promote→tier3,VEDL,IN,ret +6.2% + RSI BUY zone
+2026-08-29,promote→tier3,AA,US,ret +13.7% >= +10.0%
+2026-08-29,promote→tier3,PRTS,US,ret +35.8% >= +10.0%
+2026-08-29,promote→tier3,RUDRA,IN,ret +14.8% >= +10.0%
+2026-08-29,promote→tier3,TLRY,US,ret +18.3% >= +10.0%
+2026-08-29,promote→tier3,SNPS,US,ret +18.5% >= +10.0%
+2026-08-29,promote→tier3,ALB,US,ret +19.6% >= +10.0%
+2026-08-29,promote→tier3,NRP,US,ret +12.6% >= +10.0%
+2026-08-29,promote→tier3,SKFINDIA,IN,ret +5.7% + RSI BUY zone
+2026-08-29,promote→tier3,LOYALTEX,IN,ret +7.3% + RSI BUY zone
+2026-08-29,promote→tier3,LGBBROSLTD,IN,ret +8.4% + RSI BUY zone
+2026-08-29,promote→tier3,AFCG,US,ret +34.8% >= +10.0%
+2026-08-29,promote→tier3,KHADIM,IN,ret +22.2% >= +10.0%
+2026-08-29,promote→tier3,MAZDOCK,IN,ret +12.1% >= +10.0%
+2026-08-29,enroll,BCCL,IN,baseline=27.829999923706055
+2026-08-29,enroll,INFY,IN,baseline=1144.0
+2026-08-29,enroll,KRIDHANINF,IN,baseline=2.0199999809265137
+2026-08-29,enroll,PFC,IN,baseline=352.0
+2026-08-29,enroll,SANDUMA,IN,baseline=205.4499969482422
+2026-08-29,enroll,TARAPUR,IN,baseline=14.430000305175781
+2026-08-29,enroll,CHTR,US,baseline=153.6199951171875
+2026-08-29,enroll,SSTK,US,baseline=5.96999979019165
+2026-08-29,enroll,INSG,US,baseline=4.400000095367432
+2026-08-29,enroll,ADANIGREEN,IN,baseline=1311.0
+2026-08-29,enroll,AXISBANK,IN,baseline=1265.0
+2026-08-29,enroll,CIEINDIA,IN,baseline=389.95001220703125
+2026-08-29,enroll,COASTCORP,IN,baseline=40.619998931884766
+2026-08-29,enroll,GATEWAY,IN,baseline=53.61000061035156
+2026-08-29,enroll,GUJENERGY,IN,baseline=254.8000030517578
+2026-08-29,enroll,HATHWAY,IN,baseline=10.569999694824219
+2026-08-29,enroll,HDFCBANK,IN,baseline=720.2999877929688
+2026-08-29,enroll,HITECH,IN,baseline=82.05000305175781
+2026-08-29,enroll,RESPONIND,IN,baseline=153.5500030517578
+2026-08-29,enroll,SHAKTIPUMP,IN,baseline=493.54998779296875
+2026-08-29,enroll,THERMAX,IN,baseline=3944.199951171875
+2026-08-29,enroll,TRIVENI,IN,baseline=283.82000732421875
+2026-08-29,enroll,VIKRAMSOLR,IN,baseline=172.7100067138672
+2026-08-29,enroll,YESBANK,IN,baseline=22.100000381469727
+2026-08-29,enroll,ACI,US,baseline=12.229999542236328
+2026-08-29,enroll,ARL,US,baseline=15.0
+2026-08-29,enroll,ASLE,US,baseline=5.630000114440918
+2026-08-29,enroll,NAMSW,US,baseline=16.510000228881836
+2026-08-29,enroll,PEG,US,baseline=73.19000244140625
+2026-08-29,enroll,RDY,US,baseline=12.180000305175781
+2026-08-29,enroll,SNEX,US,baseline=68.63999938964844
+2026-08-29,enroll,FTCI,US,baseline=2.549999952316284
+2026-08-29,enroll,GMBREW,IN,baseline=890.4000244140625
+2026-08-29,ageout(validated),AVANTIFEED,IN,ret -15.6% after 33d — eviction confirmed
+2026-08-29,promote→tier3,HINDALCO,IN,ret +9.8% + RSI BUY zone
+2026-08-29,promote→tier3,TOTEM,IN,ret +6.8% + RSI BUY zone
+2026-08-29,promote→tier3,SCI,IN,ret +5.4% + RSI BUY zone
+2026-08-29,promote→tier3,IKIO,IN,ret +14.8% >= +10.0%
+2026-08-30,enroll,AVANTIFEED,IN,baseline=826.75
+2026-08-30,enroll,JKTYRE,IN,baseline=380.25
+2026-08-30,enroll,ANSC,US,baseline=11.460000038146973
+2026-08-30,promote→tier3,LAC,US,ret +12.8% >= +10.0%
+2026-08-30,ageout(validated),JLHL,IN,ret -98.0% after 1d — eviction confirmed
+2026-08-30,ageout(validated),RAIN,IN,ret -99.5% after 1d — eviction confirmed
+2026-08-30,promote→tier3,NXTT,US,ret +14.8% >= +10.0%
+2026-08-31,enroll,JLHL,IN,baseline=6.28000020980835
+2026-08-31,enroll,RAIN,IN,baseline=0.9850000143051147
+2026-09-01,enroll,LBRT,US,baseline=19.709999084472656
+2026-09-01,promote→tier3,AXITA,IN,ret +6.5% + RSI BUY zone
+2026-09-01,ageout(validated),SUPREME,IN,ret -15.1% after 36d — eviction confirmed
+2026-09-01,promote→tier3,JSWDULUX,IN,ret +6.4% + RSI BUY zone
+2026-09-01,promote→tier3,HVII,US,ret +5.8% + RSI BUY zone
+2026-09-01,promote→tier3,JLHL,IN,ret +4607.0% >= +10.0%
+2026-09-01,promote→tier3,RAIN,IN,ret +19732.5% >= +10.0%
+2026-09-01,enroll,SUPREME,IN,baseline=37.84000015258789
+2026-09-01,enroll,COFFEEDAY,IN,baseline=29.579999923706055
+2026-09-01,enroll,RAYMONDREL,IN,baseline=532.2000122070312
+2026-09-01,enroll,CIG-C,US,baseline=3.115000009536743
+2026-09-02,enroll,ABREL,IN,baseline=1357.0
+2026-09-02,enroll,ACCELYA,IN,baseline=1132.300048828125
+2026-09-02,enroll,ARIHANTSUP,IN,baseline=250.14999389648438
+2026-09-02,enroll,IMFA,IN,baseline=1301.0999755859375
+2026-09-02,enroll,PUNJABCHEM,IN,baseline=1109.300048828125
+2026-09-02,enroll,ZEEL,IN,baseline=93.41000366210938
+2026-09-02,enroll,EPR-PC,US,baseline=26.18000030517578
+2026-09-02,promote→tier3,SJT,US,ret +13.1% >= +10.0%
+2026-09-02,ageout(validated),ASTRAZEN,IN,ret -15.3% after 37d — eviction confirmed
+2026-09-02,ageout(validated),FIRSTCRY,IN,ret -16.8% after 37d — eviction confirmed
+2026-09-02,ageout(validated),PRPL,US,ret -16.9% after 4d — eviction confirmed
+2026-09-02,promote→tier3,BCCL,IN,ret +9.7% + RSI BUY zone
+2026-09-03,enroll,ASTRAZEN,IN,baseline=6868.0
+2026-09-03,enroll,FIRSTCRY,IN,baseline=170.82000732421875
+2026-09-03,enroll,PRPL,US,baseline=3.8299999237060547
+2026-09-03,enroll,AGM-PD,US,baseline=21.020000457763672
+2026-09-03,enroll,DFP,US,baseline=20.399999618530273
+2026-09-03,enroll,HQY,US,baseline=98.54000091552734
+2026-09-03,enroll,ITW,US,baseline=269.0899963378906
+2026-09-03,enroll,NAAS,US,baseline=3.0399999618530273
+2026-09-03,ageout(validated),EVEXIA,IN,ret -15.8% after 38d — eviction confirmed
+2026-09-03,promote→tier3,PROZONER,IN,ret +5.4% + RSI BUY zone
+2026-09-04,enroll,EVEXIA,IN,baseline=1.2799999713897705
+2026-09-04,enroll,SHAH,IN,baseline=3.490000009536743
+2026-09-04,promote→tier3,VJLAXMIE,IN,ret +6.7% + RSI BUY zone
+2026-09-05,enroll,ACVA,US,baseline=6.769999980926514
+2026-09-05,enroll,BWEN,US,baseline=4.150000095367432
+2026-09-05,enroll,MS-PQ,US,baseline=25.100000381469727
+2026-09-05,promote→tier3,DONEAR,IN,ret +7.0% + RSI BUY zone
+2026-09-05,promote→tier3,INDNIPPON,IN,ret +9.0% + RSI BUY zone
+2026-09-05,promote→tier3,COFFEEDAY,IN,ret +9.6% + RSI BUY zone
+2026-09-05,enroll,GVPIL,IN,baseline=649.5999755859375
+2026-09-05,enroll,NATCOPHARM,IN,baseline=828.6500244140625
+2026-09-05,enroll,SPCENET,IN,baseline=3.4100000858306885
+2026-09-05,enroll,JYNT,US,baseline=8.319999694824219
+2026-09-05,promote→tier3,KSS,US,ret +11.1% >= +10.0%
+2026-09-05,promote→tier3,WBX,US,ret +14.5% >= +10.0%
+2026-09-05,ageout(validated),NAMSW,US,ret -15.9% after 7d — eviction confirmed
+2026-09-07,enroll,STC,IN,baseline=67.52999877929688
+2026-09-07,enroll,NAMSW,US,baseline=13.880000114440918
+2026-09-07,ageout(validated),TCI,IN,ret -95.9% after 39d — eviction confirmed
+2026-09-07,ageout(validated),INFY,IN,ret -99.0% after 9d — eviction confirmed
+2026-09-08,enroll,INFY,IN,baseline=1087.5
+2026-09-08,enroll,TCI,IN,baseline=863.9500122070312
+2026-09-08,enroll,KIRLPNU,IN,baseline=760.1500244140625
+2026-09-08,ageout(validated),EKI,IN,ret -15.1% after 43d — eviction confirmed
+2026-09-08,promote→tier3,ASTERDM,IN,ret +5.4% + RSI BUY zone
+2026-09-08,promote→tier3,HARIOMPIPE,IN,ret +7.0% + RSI BUY zone
+2026-09-08,promote→tier3,GMBREW,IN,ret +5.7% + RSI BUY zone
+2026-09-09,enroll,EKI,IN,baseline=70.80999755859375
+2026-09-09,enroll,GANGAFORGE,IN,baseline=1.590000033378601
+2026-09-09,enroll,JSWENERGY,IN,baseline=526.5
+2026-09-09,enroll,POKARNA,IN,baseline=786.6500244140625
+2026-09-09,enroll,KMB,US,baseline=102.93000030517578
+2026-09-09,promote→tier3,INDP,US,ret +62.3% >= +10.0%
+2026-09-09,promote→tier3,RAYMONDREL,IN,ret +9.4% + RSI BUY zone
+2026-09-09,promote→tier3,EVEXIA,IN,ret +12.5% >= +10.0%
+2026-09-09,promote→tier3,SPCENET,IN,ret +5.9% + RSI BUY zone
+2026-09-10,promote→tier3,AVL,IN,ret +5.2% + RSI BUY zone
+2026-09-10,promote→tier3,RESPONIND,IN,ret +10.4% >= +10.0%
+2026-09-10,promote→tier3,LBRT,US,ret +11.9% >= +10.0%
+2026-09-10,ageout(validated),NAMSW,US,ret -15.1% after 3d — eviction confirmed
+2026-09-11,enroll,NAMSW,US,baseline=11.779999732971191
+2026-09-11,enroll,BN,US,baseline=38.04999923706055
+2026-09-11,enroll,CCK,US,baseline=111.79000091552734
+2026-09-11,enroll,ENR,US,baseline=20.040000915527344
+2026-09-11,enroll,ICUI,US,baseline=161.0
+2026-09-11,enroll,LULU,US,baseline=99.72000122070312
+2026-09-11,enroll,THRM,US,baseline=38.33000183105469
+2026-09-11,enroll,VOYA-PB,US,baseline=23.3700008392334
+2026-09-11,promote→tier3,ASO,US,ret +16.4% >= +10.0%
+2026-09-11,ageout(validated),SHOE,US,ret -15.6% after 46d — eviction confirmed
+2026-09-11,ageout(validated),SUMEETINDS,IN,ret -15.7% after 13d — eviction confirmed
+2026-09-11,ageout(validated),SSTK,US,ret -15.4% after 13d — eviction confirmed
+2026-09-12,enroll,SSTK,US,baseline=5.039999961853027
+2026-09-12,enroll,SUMEETINDS,IN,baseline=10.770000457763672
+2026-09-12,enroll,PML,US,baseline=7.050000190734863
+2026-09-12,enroll,RCL,US,baseline=260.1400146484375
+2026-09-12,enroll,SHOE,US,baseline=12.710000038146973
+2026-09-12,ageout(validated),SPRY,US,ret -19.9% after 47d — eviction confirmed
+2026-09-12,promote→tier3,YESBANK,IN,ret +6.2% + RSI BUY zone
+2026-09-12,ageout(validated),ZEEL,IN,ret -15.0% after 10d — eviction confirmed
+2026-09-14,enroll,SPRY,US,baseline=4.760000228881836
+2026-09-14,enroll,ZEEL,IN,baseline=79.36000061035156
+2026-09-14,enroll,BAJFINANCE,IN,baseline=1034.5
+2026-09-14,enroll,BLUEJET,IN,baseline=568.5499877929688
+2026-09-14,enroll,BPCL,IN,baseline=304.5
+2026-09-14,enroll,CHOLAFIN,IN,baseline=1845.9000244140625
+2026-09-14,enroll,CONCOR,IN,baseline=499.25
+2026-09-14,enroll,GRWRHITECH,IN,baseline=6921.5
+2026-09-14,enroll,ICICIBANK,IN,baseline=1379.300048828125
+2026-09-14,enroll,M&MFIN,IN,baseline=356.1499938964844
+2026-09-14,enroll,PIDILITIND,IN,baseline=1566.9000244140625
+2026-09-14,enroll,SANGHVIMOV,IN,baseline=426.5
+2026-09-14,enroll,TVSMOTOR,IN,baseline=4125.0
+2026-09-14,enroll,AFGC,US,baseline=17.745100021362305
+2026-09-14,enroll,GAEL,IN,baseline=163.0800018310547
+2026-09-14,enroll,RMNI,US,baseline=4.539999961853027
+2026-09-14,enroll,STYLAMIND,IN,baseline=3329.89990234375
+2026-09-14,ageout(validated),INFY,IN,ret -99.0% after 6d — eviction confirmed
+2026-09-14,ageout(validated),TCI,IN,ret -95.5% after 6d — eviction confirmed
+2026-09-15,enroll,INFY,IN,baseline=11.069999694824219
+2026-09-15,enroll,TCI,IN,baseline=39.099998474121094
+2026-09-15,ageout(validated),IOTR,US,ret -17.6% after 17d — eviction confirmed
+2026-09-15,ageout(validated),PRPL,US,ret -17.5% after 12d — eviction confirmed
+2026-09-15,promote→tier3,ACVA,US,ret +53.8% >= +10.0%
+2026-09-16,enroll,IOTR,US,baseline=1.6100000143051147
+2026-09-16,enroll,PRPL,US,baseline=2.8499999046325684
+2026-09-16,enroll,PPL,IN,baseline=285.6000061035156
+2026-09-16,enroll,PMA,US,baseline=1.2599999904632568
+2026-09-16,enroll,RTB,US,baseline=7.260000228881836
+2026-09-16,enroll,CRNX,US,baseline=84.94999694824219
+2026-09-16,enroll,TPC,US,baseline=85.1500015258789
+2026-09-16,promote→tier3,GALXBRG,IN,ret +7.8% + RSI BUY zone
+2026-09-16,ageout(validated),ABFRL,IN,ret -15.6% after 49d — eviction confirmed
+2026-09-16,ageout(validated),TARAPUR,IN,ret -15.0% after 18d — eviction confirmed
+2026-09-16,ageout(validated),FTCI,US,ret -17.2% after 18d — eviction confirmed
+2026-09-16,promote→tier3,INFY,IN,ret +9629.0% >= +10.0%
+2026-09-16,promote→tier3,TCI,IN,ret +2062.2% >= +10.0%
+2026-09-17,enroll,TARAPUR,IN,baseline=12.529999732971191
+2026-09-17,enroll,ABFRL,IN,baseline=49.7400016784668
+2026-09-17,enroll,FTCI,US,baseline=2.130000114440918
+2026-09-17,enroll,PICCADIL,IN,baseline=593.0499877929688
+2026-09-17,enroll,FERG,US,baseline=215.11000061035156
+2026-09-17,promote→tier3,KONNDOR,IN,ret +6.3% + RSI BUY zone
+2026-09-17,ageout(validated),ASALCBR,IN,ret -15.1% after 49d — eviction confirmed
+2026-09-17,ageout(validated),TRIVENI,IN,ret -15.6% after 19d — eviction confirmed
+2026-09-17,ageout(validated),SUPREME,IN,ret -15.2% after 16d — eviction confirmed
+2026-09-17,promote→tier3,RTB,US,ret +22.4% >= +10.0%
+2026-09-18,enroll,SUPREME,IN,baseline=32.209999084472656
+2026-09-18,enroll,ASALCBR,IN,baseline=656.9500122070312
+2026-09-18,enroll,TRIVENI,IN,baseline=232.4499969482422
+2026-09-18,enroll,MGL,IN,baseline=1071.199951171875
+2026-09-18,enroll,AJANTPHARM,IN,baseline=3500.5
+2026-09-18,enroll,ANANTRAJ,IN,baseline=596.9000244140625
+2026-09-18,enroll,HONASA,IN,baseline=460.1000061035156
+2026-09-18,enroll,IIFL,IN,baseline=596.5499877929688
+2026-09-18,enroll,INDIGOPNTS,IN,baseline=1098.9000244140625
+2026-09-18,enroll,INDOTECH,IN,baseline=3411.39990234375
+2026-09-18,enroll,MPSLTD,IN,baseline=2571.5
+2026-09-18,enroll,NAUKRI,IN,baseline=1265.0
+2026-09-18,enroll,SIEMENS,IN,baseline=3763.5
+2026-09-18,enroll,SPORTKING,IN,baseline=200.52999877929688
+2026-09-18,enroll,TITAN,IN,baseline=4841.0
+2026-09-18,enroll,UDS,IN,baseline=188.25
+2026-09-18,enroll,UNIONBANK,IN,baseline=178.08999633789062
+2026-09-18,enroll,VADILALIND,IN,baseline=7101.0
+2026-09-18,enroll,ALC,US,baseline=65.18000030517578
+2026-09-18,enroll,APCOTEXIND,IN,baseline=599.4000244140625
+2026-09-18,enroll,PANAMAPET,IN,baseline=459.75
+2026-09-18,promote→tier3,ARL,US,ret +11.1% >= +10.0%
+2026-09-18,promote→tier3,IOTR,US,ret +8.1% + RSI BUY zone
+2026-09-18,ageout(validated),PRPL,US,ret -16.7% after 2d — eviction confirmed
+2026-09-19,enroll,PRPL,US,baseline=3.190000057220459
+2026-09-19,enroll,MNPR,US,baseline=96.47000122070312
+2026-09-19,ageout(validated),AARON,IN,ret -15.5% after 54d — eviction confirmed
+2026-09-19,ageout(validated),CHTR,US,ret -16.6% after 21d — eviction confirmed
+2026-09-21,enroll,AARON,IN,baseline=119.91999816894531
+2026-09-21,enroll,BEARDSELL,IN,baseline=23.8700008392334
+2026-09-21,enroll,CEATLTD,IN,baseline=3468.89990234375
+2026-09-21,enroll,ESCORTS,IN,baseline=2798.199951171875
+2026-09-21,enroll,HAVELLS,IN,baseline=1132.4000244140625
+2026-09-21,enroll,SMJF,US,baseline=1.0499999523162842
+2026-09-21,enroll,CHTR,US,baseline=128.1699981689453
+2026-09-22,promote→tier3,GESHIP,IN,ret +6.2% + RSI BUY zone
+2026-09-22,ageout(validated),BDH,IN,ret -15.3% after 57d — eviction confirmed
+2026-09-22,promote→tier3,FDC,IN,ret +5.4% + RSI BUY zone
+2026-09-22,promote→tier3,PROTEAN,IN,ret +5.7% + RSI BUY zone
+2026-09-22,promote→tier3,SUNDROP,IN,ret +8.0% + RSI BUY zone
+2026-09-22,promote→tier3,GVPIL,IN,ret +6.0% + RSI BUY zone
+2026-09-24,enroll,BDH,IN,baseline=504.04998779296875
+2026-09-24,enroll,ELECTHERM,IN,baseline=904.6500244140625
+2026-09-24,enroll,HRI,US,baseline=144.07000732421875
+2026-09-24,enroll,IONS,US,baseline=43.93000030517578
+2026-09-24,enroll,IPHA,US,baseline=1.7599999904632568
+2026-09-24,enroll,NMIH,US,baseline=42.189998626708984
+2026-09-24,enroll,SBCF,US,baseline=32.83000183105469
+2026-09-24,enroll,PAY,US,baseline=32.29999923706055
+2026-09-24,enroll,JXG,US,baseline=7.5
+2026-09-24,enroll,GLOP-PC,US,baseline=25.42009925842285
+2026-09-24,enroll,RZC,US,baseline=25.450000762939453
+2026-09-24,enroll,TULP,US,baseline=3.299999952316284
+2026-09-24,enroll,BMO,US,baseline=174.35000610351562
+2026-09-24,enroll,AOS,US,baseline=58.15999984741211
+2026-09-24,promote→tier3,AUSTENG,IN,ret +20.8% >= +10.0%
+2026-09-24,promote→tier3,GREAVESCOT,IN,ret +7.8% + RSI BUY zone
+2026-09-24,promote→tier3,ITDC,IN,ret +6.6% + RSI BUY zone
+2026-09-24,ageout(validated),FBIO,US,ret -15.5% after 26d — eviction confirmed
+2026-09-24,ageout(validated),UPBD,US,ret -16.8% after 26d — eviction confirmed
+2026-09-24,promote→tier3,NAAS,US,ret +12.5% >= +10.0%
+2026-09-24,promote→tier3,EKI,IN,ret +16.6% >= +10.0%
+2026-09-24,promote→tier3,ENR,US,ret +11.5% >= +10.0%
+2026-09-24,promote→tier3,FTCI,US,ret +23.0% >= +10.0%
+2026-09-24,promote→tier3,ANANTRAJ,IN,ret +5.8% + RSI BUY zone
+2026-09-24,promote→tier3,HONASA,IN,ret +5.4% + RSI BUY zone
+2026-09-24,promote→tier3,IIFL,IN,ret +6.2% + RSI BUY zone
+2026-09-24,promote→tier3,VADILALIND,IN,ret +5.5% + RSI BUY zone
+2026-09-24,promote→tier3,SMJF,US,ret +18.1% >= +10.0%
+2026-09-25,enroll,FBIO,US,baseline=2.2799999713897705
+2026-09-25,enroll,UPBD,US,baseline=15.869999885559082
+2026-09-25,enroll,ARE&M,IN,baseline=795.4000244140625
+2026-09-25,enroll,DELHIVERY,IN,baseline=426.29998779296875
+2026-09-25,enroll,GANESHHOU,IN,baseline=736.8499755859375
+2026-09-25,enroll,KECL,IN,baseline=122.75
+2026-09-25,enroll,MADRASFERT,IN,baseline=60.720001220703125
+2026-09-25,enroll,PREMIERENE,IN,baseline=898.0
+2026-09-25,enroll,SBIN,IN,baseline=978.5
+2026-09-25,enroll,FWONA,US,baseline=86.7300033569336
+2026-09-25,enroll,GHCL,IN,baseline=421.29998779296875
+2026-09-25,enroll,TEMBO,IN,baseline=59.2599983215332
+2026-09-25,enroll,ESEA,US,baseline=71.02999877929688
+2026-09-25,enroll,GEN,US,baseline=23.06999969482422
+2026-09-25,enroll,USA,US,baseline=5.829999923706055
+2026-09-25,enroll,KYNB,US,baseline=7.0
+2026-09-25,ageout(validated),RHFL,IN,ret -15.3% after 60d — eviction confirmed
+2026-09-25,ageout(validated),PNR,US,ret -15.7% after 60d — eviction confirmed
+2026-09-25,ageout(validated),IRCON,IN,ret -15.7% after 60d — eviction confirmed
+2026-09-25,promote→tier3,SOUTHBANK,IN,ret +9.1% + RSI BUY zone
+2026-09-25,ageout(validated),SSTK,US,ret -17.9% after 13d — eviction confirmed
+2026-09-25,ageout(validated),PRPL,US,ret -20.4% after 6d — eviction confirmed
+2026-09-26,enroll,RHFL,IN,baseline=1.659999966621399
+2026-09-26,enroll,PNR,US,baseline=53.65999984741211
+2026-09-26,enroll,IRCON,IN,baseline=105.94999694824219
+2026-09-26,enroll,SSTK,US,baseline=4.179999828338623
+2026-09-26,enroll,PRPL,US,baseline=2.4700000286102295
+2026-09-26,enroll,EICHERMOT,IN,baseline=7360.0
+2026-09-26,enroll,ENDURANCE,IN,baseline=2645.89990234375
+2026-09-26,enroll,INDIAGLYCO,IN,baseline=309.8999938964844
+2026-09-26,enroll,TARIL,IN,baseline=277.6499938964844
+2026-09-26,enroll,FWONK,US,baseline=94.61000061035156
+2026-09-26,enroll,PAG,US,baseline=209.6199951171875
+2026-09-26,enroll,SHC,US,baseline=18.34000015258789
+2026-09-26,enroll,ZBIO,US,baseline=26.950000762939453
+2026-09-26,enroll,IONQ,US,baseline=45.47999954223633
+2026-09-26,promote→tier3,HERANBA,IN,ret +6.6% + RSI BUY zone
+2026-09-26,promote→tier3,GKCONS,IN,ret +6.4% + RSI BUY zone
+2026-09-26,promote→tier3,IFBD,US,ret +44.6% >= +10.0%
+2026-09-26,promote→tier3,SUMEETINDS,IN,ret +13.1% >= +10.0%
+2026-09-26,promote→tier3,SANGHVIMOV,IN,ret +6.9% + RSI BUY zone
+2026-09-26,promote→tier3,SPORTKING,IN,ret +6.5% + RSI BUY zone
+2026-09-26,promote→tier3,UDS,IN,ret +10.4% >= +10.0%
+2026-09-28,enroll,ACP,US,baseline=4.480000019073486
+2026-09-28,ageout(validated),PPL,IN,ret -88.8% after 12d — eviction confirmed
+2026-09-29,enroll,PPL,IN,baseline=255.35000610351562
+2026-09-29,ageout(validated),CESC,IN,ret -16.1% after 64d — eviction confirmed
+2026-09-29,ageout(validated),UGROCAP,IN,ret -16.1% after 64d — eviction confirmed
+2026-09-29,ageout(validated),RPOWER,IN,ret -16.0% after 64d — eviction confirmed
+2026-09-29,ageout(validated),BHARATRAS,IN,ret -17.9% after 64d — eviction confirmed
+2026-09-29,ageout(validated),INDIACEM,IN,ret -15.3% after 31d — eviction confirmed
+2026-09-29,ageout(validated),INDOSTAR,IN,ret -17.3% after 31d — eviction confirmed
+2026-09-29,ageout(validated),INSG,US,ret -17.9% after 31d — eviction confirmed
+2026-09-29,promote→tier3,FIRSTCRY,IN,ret +8.1% + RSI BUY zone
+2026-10-01,enroll,AJANTSOY,IN,baseline=22.5
+2026-10-01,enroll,BANARISUG,IN,baseline=3300.199951171875
+2026-10-01,enroll,CESC,IN,baseline=133.85000610351562
+2026-10-01,enroll,GSAUTO,IN,baseline=18.190000534057617
+2026-10-01,enroll,HINDALCO,IN,baseline=941.7999877929688
+2026-10-01,enroll,SIMBHALS,IN,baseline=6.489999771118164
+2026-10-01,enroll,UGROCAP,IN,baseline=83.68000030517578
+2026-10-01,enroll,AA,US,baseline=41.970001220703125
+2026-10-01,enroll,PRTS,US,baseline=8.020000457763672
+2026-10-01,enroll,TOTEM,IN,baseline=152.4499969482422
+2026-10-01,enroll,RUDRA,IN,baseline=18.770000457763672
+2026-10-01,enroll,RPOWER,IN,baseline=19.690000534057617
+2026-10-01,enroll,SNPS,US,baseline=434.94000244140625
+2026-10-01,enroll,BHARATRAS,IN,baseline=1003.9000244140625
+2026-10-01,enroll,NRP,US,baseline=108.7300033569336
+2026-10-01,enroll,SKFINDIA,IN,baseline=1509.9000244140625
+2026-10-01,enroll,LOYALTEX,IN,baseline=209.6699981689453
+2026-10-01,enroll,SCI,IN,baseline=270.5
+2026-10-01,enroll,INSG,US,baseline=3.6600000858306885
+2026-10-01,enroll,TLRY,US,baseline=3.75
+2026-10-01,enroll,AFCG,US,baseline=3.5999999046325684
+2026-10-01,enroll,ALB,US,baseline=107.62000274658203
+2026-10-01,enroll,KHADIM,IN,baseline=114.0
+2026-10-01,enroll,MAZDOCK,IN,baseline=2113.0
+2026-10-01,enroll,LGBBROSLTD,IN,baseline=1730.0999755859375
+2026-10-01,enroll,IKIO,IN,baseline=196.85000610351562
+2026-10-01,enroll,INDIACEM,IN,baseline=301.8500061035156
+2026-10-01,enroll,INDOSTAR,IN,baseline=213.5399932861328
+2026-10-01,enroll,NATIONALUM,IN,baseline=340.95001220703125
+2026-10-01,enroll,VEDL,IN,baseline=259.0
+2026-10-01,enroll,360ONE,IN,baseline=1030.0
+2026-10-01,enroll,DEEPAKNTR,IN,baseline=1529.800048828125
+2026-10-01,enroll,PRAJIND,IN,baseline=305.8500061035156
+2026-10-01,enroll,MLPB,US,baseline=29.1466007232666
+2026-10-01,enroll,AMJB,US,baseline=34.4900016784668
+2026-10-01,enroll,GFR,US,baseline=5.650000095367432
+2026-10-01,ageout(validated),AGARIND,IN,ret -15.8% after 33d — eviction confirmed
+2026-10-01,ageout(validated),ABREL,IN,ret -16.7% after 29d — eviction confirmed
+2026-10-01,promote→tier3,PANAMAPET,IN,ret +5.3% + RSI BUY zone
+2026-10-01,ageout(validated),MNPR,US,ret -17.4% after 12d — eviction confirmed
+2026-10-01,ageout(validated),TULP,US,ret -24.2% after 7d — eviction confirmed
+2026-10-01,promote→tier3,IRCON,IN,ret +10.5% >= +10.0%
+2026-10-02,enroll,LAC,US,baseline=2.630000114440918
+2026-10-02,enroll,AGARIND,IN,baseline=386.0
+2026-10-02,enroll,ABREL,IN,baseline=1100.5
+2026-10-02,enroll,MNPR,US,baseline=77.97000122070312
+2026-10-02,enroll,TULP,US,baseline=2.700000047683716
+2026-10-02,enroll,BANKINDIA,IN,baseline=129.47999572753906
+2026-10-02,enroll,IDBI,IN,baseline=86.56999969482422
+2026-10-02,enroll,RELIANCE,IN,baseline=1167.699951171875
+2026-10-02,enroll,BAX,US,baseline=23.639999389648438
+2026-10-02,enroll,GSHD,US,baseline=45.36000061035156
+2026-10-02,enroll,GTEN,US,baseline=10.489999771118164
+2026-10-02,enroll,CABA,US,baseline=1.8899999856948853
+2026-10-02,enroll,ETB,US,baseline=15.34000015258789
+2026-10-02,enroll,ADAMN,US,baseline=24.549999237060547
+2026-10-02,enroll,NXTT,US,baseline=5.679999828338623
+2026-10-02,ageout(validated),JKLAKSHMI,IN,ret -17.0% after 67d — eviction confirmed
+2026-10-02,ageout(validated),NLCINDIA,IN,ret -15.2% after 67d — eviction confirmed
+2026-10-02,ageout(validated),TIRUMALCHM,IN,ret -15.0% after 67d — eviction confirmed
+2026-10-02,ageout(validated),NARPROP,IN,ret -15.2% after 67d — eviction confirmed
+2026-10-02,ageout(validated),TRABI,IN,ret -18.6% after 67d — eviction confirmed
+2026-10-02,ageout(validated),ASHAPURMIN,IN,ret -15.2% after 34d — eviction confirmed
+2026-10-02,promote→tier3,JAYBARMARU,IN,ret +6.7% + RSI BUY zone
+2026-10-02,ageout(validated),MARUTI,IN,ret -15.3% after 34d — eviction confirmed
+2026-10-02,promote→tier3,SCHNEIDER,IN,ret +5.7% + RSI BUY zone
+2026-10-02,ageout(validated),ELECTHERM,IN,ret -17.8% after 8d — eviction confirmed
+2026-10-02,promote→tier3,SNPS,US,ret +12.8% >= +10.0%
+2026-10-02,promote→tier3,INSG,US,ret +19.4% >= +10.0%

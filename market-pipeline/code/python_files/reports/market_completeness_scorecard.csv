@@ -1,0 +1,8 @@
+Market,Total_Universe,OHLCV_Count,OHLCV_%,Fundamentals_Count,Fundamentals_%,Complete_Count,Complete_%,OHLCV_Latest,OHLCV_Days_Old,OHLCV_Status,Fund_Latest_FY,Fund_Days_Old,Fund_Status,Key_Gap,Priority_Action,Est_Days_To_Fix,Estimated_Impact
+India,6731,6731,100.0,1487,22.1,1487,22.1,2026-07-22,6,CRITICAL,2026-03-31,10,CRITICAL,5244_tickers_no_fundamentals,Accelerate_screener.in_collection,2,+3000_tickers
+US,9829,9829,100.0,4597,46.8,4597,46.8,2026-07-27,1,HEALTHY,2029-12-31,9,CRITICAL,EDGAR/price_reconciliation_unknown,Run_cross_match_audit,3,+2200_tickers
+Europe,1618,1618,100.0,1159,71.6,1159,71.6,2026-07-22,6,CRITICAL,2026-05-31,4,HIGH,459_tickers_no_fundamentals + pre-2021_missing,Add_registry_collectors,21,+10y_history_for_966_core_stocks
+Japan,3083,3083,100.0,1295,42.0,1295,42.0,2026-07-23,5,CRITICAL,2026-03-31,10,CRITICAL,1788_tickers_no_fundamentals,Activate_J-Quants_API,5,+1788_tickers
+Korea,2597,2597,100.0,1564,60.2,1564,60.2,2026-07-23,5,CRITICAL,2026-03-31,4,HIGH,1033_tickers_no_fundamentals,Maintain_current_DART_schedule,0,Sustain_60%_coverage
+China,5188,5188,100.0,426,8.2,426,8.2,2026-07-22,6,CRITICAL,2025-12-31,3,HEALTHY,4762_tickers_no_fundamentals + akshare_stale,Restart_akshare_collector,1,Prevent_data_drift
+Global_Total,28826,28826,100.0,10528,36.6,9128,31.7,Mixed,1-6,Mixed,Varies,3-10,Mixed,18692_tickers_incomplete,See_priority_matrix,1-21,Unlock_18k+_tickers

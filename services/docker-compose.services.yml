@@ -1,0 +1,119 @@
+# services/docker-compose.services.yml — the four seams.
+#
+# SEPARATE FILE ON PURPOSE. The repo root already has a docker-compose.yml for
+# "Stock Analysis System v1.0.0" — eleven services all running one stockscan
+# image with different commands. It references nothing in the current tree and
+# is wired to no cron or launchd job, so it is an orphan from an earlier
+# iteration; but "looks dead" is not "is dead", and deleting someone's compose
+# file to make room is not this change's call. Run with:
+#
+#   docker compose -f services/docker-compose.services.yml up scoring
+#
+# WHAT THIS IS AND IS NOT. Four services with an explicit handoff — not
+# microservices. There is no per-service database, no gateway, no discovery, no
+# mesh. Martin Fowler's own article recommends exactly this: evolve the seams
+# that hurt, keep the rest, and pay the distribution cost only where it buys
+# something. The seam that hurt here was a mutex between a slow collector and a
+# deadline-bound sender; that is what this splits.
+#
+# COLLECTOR, SCORING AND DELIVERY ARE JOBS, NOT DAEMONS. They run to completion
+# and exit. `restart: "no"` is deliberate — a collector that crashes at 03:00
+# must not respawn into a loop that holds the Dropbox rate limit all morning,
+# which is close to what three concurrent rclone syncs already did (E-032).
+#
+# DATASTORES STAY ON THE HOST. Cassandra and Postgres are reached over
+# host.docker.internal rather than containerised. Moving a single-node RF=1
+# Cassandra into compose would risk the serving layer for no gain, and the whole
+# point of this shape is that each step is reversible on its own.
+
+name: market-seams
+
+x-common: &common
+  build:
+    context: ..
+    dockerfile: services/Dockerfile
+  image: market-seams:0.1.0
+  environment: &env
+    TZ: Asia/Kolkata
+    # The bus. Every stage reads and writes the same pipeline.events table; it
+    # is the only thing they share besides the datastores.
+    PIPELINE_DSN: "host=host.docker.internal dbname=market_data user=umashankar"
+    CASSANDRA_HOST: host.docker.internal
+    PGHOST: host.docker.internal
+    PYTHONUNBUFFERED: "1"
+  extra_hosts:
+    - "host.docker.internal:host-gateway"
+  restart: "no"
+
+services:
+
+  # ── collector ───────────────────────────────────────────────────────────────
+  # OHLCV + RSI for every instrument -> Cassandra stock_quotes, then publishes
+  # what it wrote. The long pole: ~12 min per market, 24 min for JP+KR measured
+  # 2026-08-15. Nothing downstream waits on it.
+  collector:
+    <<: *common
+    container_name: seam-collector
+    command: ["python3", "-m", "services.run_stage", "collector"]
+    volumes:
+      - ../backend:/app/backend:ro
+      - ../services:/app/services:ro
+      - seam-state:/app/state
+
+  # ── scoring ─────────────────────────────────────────────────────────────────
+  # Reads the newest collector artifact, runs Darvas + Piotroski, publishes the
+  # scan. Pure function over a DataFrame: 5.8s for 16,192 names, so it is cheap
+  # to re-run and safe to retry.
+  scoring:
+    <<: *common
+    container_name: seam-scoring
+    command: ["python3", "-m", "services.run_stage", "scoring"]
+    volumes:
+      - ../backend:/app/backend:ro
+      - ../services:/app/services:ro
+      - seam-state:/app/state
+
+  # ── delivery ────────────────────────────────────────────────────────────────
+  # Gates + mailer. 🔴 This is the service the whole change exists for: it has a
+  # hard 06:30 deadline and MUST NOT be blockable by a slow collector. It asks
+  # the bus for the newest passing scoring artifact, decides for itself whether
+  # that is fresh enough, and sends either a normal brief or a clearly-labelled
+  # degraded one. What it must never do again is exit 0 having sent nothing.
+  delivery:
+    <<: *common
+    container_name: seam-delivery
+    command: ["python3", "-m", "services.run_stage", "delivery"]
+    environment:
+      <<: *env
+      MAX_SCORES_AGE_DAYS: "1"
+    volumes:
+      - ../market-pipeline/code/python_files:/app/pipeline
+      - ../services:/app/services:ro
+      - seam-state:/app/state
+
+  # ── serving ─────────────────────────────────────────────────────────────────
+  # The only long-running one. Reads Cassandra directly; deliberately NOT behind
+  # the bus, because a UI asking "what is the current state" wants the serving
+  # table, not the last batch artifact.
+  serving:
+    <<: *common
+    container_name: seam-serving
+    command: ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
+    working_dir: /app/backend
+    ports:
+      - "8000:8000"
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python3", "-c",
+             "import urllib.request;urllib.request.urlopen('http://localhost:8000/docs',timeout=5)"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
+    volumes:
+      - ../backend:/app/backend:ro
+      - ../services:/app/services:ro
+
+volumes:
+  seam-state:
+    driver: local

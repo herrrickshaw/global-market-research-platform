@@ -1,0 +1,225 @@
+#!/usr/bin/env python3
+"""Citation checker — the local, Jenni-style guard for this repo's research docs.
+
+Scans .py/.md files for author-year citations ("Piotroski (2000)", "Fama & French
+(1993)", "Bhute et al. (2024)") and checks each against the canonical bibliography
+references.bib. The 2026-08-01 literature audit found every recurring failure mode
+this tool now catches:
+
+  UNKNOWN   — author-year cited but no matching entry in references.bib
+              (how "AlQahtani et al. 2025" floated uncited for weeks)
+  YEAR?     — surname matches an entry but the year doesn't
+              (how "Balvers & Wu (2005)" survived; published 2006)
+  QUOTE?    — a quotation mark directly abuts a citation; verify it's a real
+              quote, not a paraphrase in quotes (the Piotroski wording trap)
+
+Usage:
+  python3 cite_check.py FILE [FILE...]        # check specific files
+  python3 cite_check.py --all                 # every tracked .py/.md in cwd repo
+  python3 cite_check.py --staged              # staged files only (pre-commit)
+Exit code 1 if any UNKNOWN finding (YEAR?/QUOTE? are warnings only).
+"""
+
+from __future__ import annotations
+
+import os
+import re
+import subprocess
+import sys
+import unicodedata
+from pathlib import Path
+
+
+def fold(s: str) -> str:
+    """Lowercase + strip accents, so cited 'Pástor' matches bib 'Pastor'."""
+    nfd = unicodedata.normalize("NFD", s)
+    return "".join(c for c in nfd if not unicodedata.combining(c)).lower()
+
+# Canonical bib lives next to this script; CITE_CHECK_BIB overrides (used by the
+# central ~/.local/share/cite_check install that the pre-commit hooks call).
+BIB = Path(os.environ.get("CITE_CHECK_BIB",
+                          Path(__file__).with_name("references.bib")))
+
+# "Name (2000)" / "Name & Name (2003)" / "Name, Name & Name (2016)" / "Name et al. (2024)"
+NAME = r"[A-Z][A-Za-zÀ-ſ'\-]+"
+CITE = re.compile(
+    rf"({NAME}(?:\s*(?:,|&|and|–|-)\s*{NAME}){{0,4}}"
+    rf"(?:\s+et\s+al\.?)?)\s*\(\s*(\d{{4}})[a-z]?\s*[,)]"
+)
+# Words that look like "Surname (Year)" but aren't citations.
+STOP = {
+    "In", "The", "A", "An", "On", "By", "Since", "From", "For", "See", "Both",
+    "January", "February", "March", "April", "May", "June", "July", "August",
+    "September", "October", "November", "December", "Q1", "Q2", "Q3", "Q4",
+    "FY", "CAGR", "IPO", "GDP", "NSE", "BSE", "US", "EU", "UK",
+    # acronym tails of shorthand cites ("Asness-Frazzini-Pedersen QMJ (2019)",
+    # "Gu-Kelly-Xiu ML (2020)") — the full-name form is checked elsewhere
+    "QMJ", "ML", "IIMA", "AFP", "PEAD", "CAPM", "EMH", "HFT", "OBV", "CMF",
+    "DSR", "PBO", "SSRN", "TEDE", "JIER", "IJACSA", "FF",
+    # generic tails of named methods ("Magic Formula (2005)", "Domain-Driven Design (2003)")
+    "Formula", "Design", "Name",
+    # 🔴 2026-08-20: 39 of 54 findings under stock-screener/ were prose — a 72%
+    # false-positive rate, which is why none of them were ever fixed. A checker
+    # that noisy trains the operator to skip past it, and then it catches
+    # nothing. These are the labels this corpus puts before a year: table row
+    # headings ("Best Timing (2020)", "Lump Sum (2015)"), tree nodes
+    # ("Systemic (2008)"), period markers ("Pre-crisis (2020)") and result
+    # columns ("Returns (2026)").
+    "Timing", "Value", "Portfolio", "Sum", "Returns", "Period", "Markets",
+    "Market", "Profile", "Resolution", "Reconstitution", "Situation",
+    "Systemic", "Bubble", "Shock", "Pre-crisis", "Crisis", "Recovery",
+    "Peak", "Trough", "Baseline", "Target", "Actual", "Total", "Average",
+    # Named methods whose tail is not an author ("Piotroski F-Score (2000)" —
+    # the real cite is Piotroski, checked separately wherever it appears alone).
+    "F-Score", "G-Score", "Z-Score", "Ratio", "Index", "Model", "Score",
+    # Company/instrument names that appear as `Name (year)` in results tables.
+    # Trade-off accepted knowingly: an author genuinely surnamed Shell would now
+    # be missed. That is a far smaller cost than a gate nobody reads.
+    "Shell", "Samsung", "Toyota", "Nestle",
+    # battery-domain prose ("Cell (2024)", "Battery (2024)")
+    "Cell", "Battery", "Pack", "Module",
+}
+
+# A surname is essentially never written in block capitals, but tickers and
+# table headings routinely are — MSFT, ICICI, MUFG, MARKET, SITUATION. This is
+# the general form of the stoplist above and needs no per-token maintenance.
+def _is_shouting(name: str) -> bool:
+    core = name.replace(".", "").replace("-", "").replace(" ", "")
+    return len(core) >= 3 and core.isupper()
+
+
+def load_bib() -> tuple[set[tuple[str, str]], set[str]]:
+    """Return ({(surname_lower, year)}, {surname_lower}) from references.bib."""
+    pairs: set[tuple[str, str]] = set()
+    names: set[str] = set()
+    entry_author, entry_year = None, None
+    for line in BIB.read_text(encoding="utf-8").splitlines():
+        if line.startswith("@"):
+            entry_author, entry_year = None, None
+        m = re.match(r"\s*author\s*=\s*\{(.+)\},?\s*$", line)
+        if m:
+            entry_author = m.group(1)
+        m = re.match(r"\s*year\s*=\s*\{(\d{4})\}", line)
+        if m:
+            entry_year = m.group(1)
+        if entry_author and entry_year:
+            for chunk in re.split(r"\s+and\s+", entry_author):
+                surname = chunk.split(",")[0].strip()
+                surname = re.sub(r"\\.", "", surname)   # drop TeX accents (\', \v, ...)
+                surname = re.sub(r"[{}]", "", surname)  # then braces
+                surname = fold(surname)
+                if not surname:
+                    continue
+                # register the full surname AND its final token, so
+                # "De Bondt" matches "Bondt", "López de Prado" matches "Prado"
+                for key in {surname, surname.split()[-1]}:
+                    pairs.add((key, entry_year))
+                    names.add(key)
+            entry_author = None  # one author line per entry
+    return pairs, names
+
+
+def lead_candidates(name: str) -> set[str]:
+    """Possible lead-author surnames for a cited name string.
+
+    Hyphens are ambiguous: 'Novy-Marx' is one surname, 'Corwin-Schultz' is two —
+    so generate leads under both readings and accept if either matches the bib.
+    """
+    name = re.sub(r"\bet\s+al\.?", "", name)
+    name = re.sub(r"[''']s\b", "", name)  # possessive: "Amihud's" -> "Amihud"
+    leads = set()
+    for splitter in (r"\s*(?:,|&|and|–)\s*", r"\s*(?:,|&|and|–|-)\s*"):
+        parts = [fold(p.strip()) for p in re.split(splitter, name) if p.strip()]
+        if parts:
+            leads.add(parts[0])
+    return leads
+
+
+def check_file(path: Path, pairs, names) -> list[tuple[str, int, str, str]]:
+    findings = []
+    try:
+        text = path.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return findings
+    for lineno, line in enumerate(text.splitlines(), 1):
+        for m in CITE.finditer(line):
+            raw, year = m.group(1), m.group(2)
+            leads = lead_candidates(raw)
+            if not leads or raw in STOP or _is_shouting(raw) or all(
+                    lead.split()[0].capitalize() in STOP for lead in leads):
+                continue
+            if not (1900 <= int(year) <= 2035):
+                continue
+            if any((lead, year) in pairs for lead in leads):
+                # known citation — still flag adjacent quotes for a human look
+                # 🔴 A PYTHON DOCSTRING OPENER IS NOT A QUOTATION. `"""` at the
+                # head of a line abutting a citation is how every module here
+                # documents its source — `"""Corwin-Schultz (2012) two-day
+                # high-low spread estimator` — and flagging it asks the reader
+                # to "verify verbatim" against a quotation that does not exist.
+                # Stripped before the test rather than special-cased after, so
+                # a genuine quote INSIDE a docstring still flags.
+                # The 2-char window starts INSIDE a `"""`, so stripping it from
+                # the window cannot work — it only ever sees one of the three
+                # quotes. Test the actual text preceding the citation instead.
+                before = line[:m.start()].rstrip()
+                if before.endswith('"""') or before.endswith("'''"):
+                    continue
+                window = line[max(0, m.start() - 2): m.end() + 2]
+                if '"' in window or "“" in window or "”" in window:
+                    findings.append(("QUOTE?", lineno, f"{raw} ({year})",
+                                     "quote mark abuts citation — verify verbatim"))
+            elif leads & names:
+                lead = next(iter(leads & names))
+                known = sorted({y for (s, y) in pairs if s == lead})
+                findings.append(("YEAR?", lineno, f"{raw} ({year})",
+                                 f"'{lead}' in bib but for year(s) {', '.join(known)}"))
+            else:
+                findings.append(("UNKNOWN", lineno, f"{raw} ({year})",
+                                 "no entry in references.bib — add one or fix the cite"))
+    return findings
+
+
+def main() -> int:
+    args = sys.argv[1:]
+    if not args:
+        print(__doc__)
+        return 0
+    if args == ["--all"] or args == ["--staged"]:
+        cmd = (["git", "diff", "--cached", "--name-only"] if args == ["--staged"]
+               else ["git", "ls-files"])
+        out = subprocess.run(cmd, capture_output=True, text=True, check=False).stdout
+        files = [Path(f) for f in out.splitlines()
+                 if f.endswith((".py", ".md")) and Path(f).exists()]
+    else:
+        files = [Path(a) for a in args]
+
+    if not BIB.exists():
+        print(f"cite_check: missing {BIB}", file=sys.stderr)
+        return 2
+    pairs, names = load_bib()
+
+    n_unknown = 0
+    for f in files:
+        # Skip files whose whole purpose is to QUOTE citation errors. This
+        # script's docstring cites example failures; LITERATURE_AUDIT.md is the
+        # record of the 2026-08 audit and reproduces each wrong quotation
+        # verbatim so the correction is legible. Both would otherwise flag
+        # forever on text that is deliberately, correctly there — and a warning
+        # that can never be cleared is one that gets filtered out mentally,
+        # taking the real ones with it.
+        if f.name in ("cite_check.py", "LITERATURE_AUDIT.md"):
+            continue
+        for kind, lineno, cite, msg in check_file(f, pairs, names):
+            if kind == "UNKNOWN":
+                n_unknown += 1
+            print(f"{kind:8} {f}:{lineno}  {cite}  — {msg}")
+    if n_unknown:
+        print(f"\n{n_unknown} UNKNOWN citation(s). Add entries to references.bib "
+              f"or correct the author/year.", file=sys.stderr)
+        return 1
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

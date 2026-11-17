@@ -65,7 +65,7 @@
 - **Total Energies** (France) — 1.2 MMTPA
 - **Braskem** (Brazil) — 0.8 MMTPA
 
-**FY30 Target**: BPCL Kochi (2026) + BPCL AP (FY27–28) = -75–80% import elimination by FY30
+**FY30 Target**: BPCL Kochi, 2026 + BPCL AP (FY27–28) = -75–80% import elimination by FY30
 
 ---
 
@@ -301,7 +301,7 @@
 
 ### Indian Market Leaders (by revenue, chemicals sector)
 
-| Company | Headquarters | Key Products | Est. Revenue (2026) | Capacity |
+| Company | Headquarters | Key Products | Est. Revenue, 2026 | Capacity |
 |---------|--------------|---|---|---|
 | **Reliance Industries** | Mumbai | Petrochemicals, polymers, TPA, PP, PE, PU | $85bn+ | ~4.0 MMTPA (chemicals) |
 | **Indian Oil Corp** | Delhi | Refinery, ethylene, petrochemicals | $65bn+ | ~1.5 MMTPA |

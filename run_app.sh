@@ -65,7 +65,10 @@ else:
     print("  (warning: could not refresh US list)")
 PYEOF
 
-# Japan – JPX data_j.xls (TSE equities)
+# Japan – JPX data_j.xlsx (TSE equities)
+# 2026-09-03: JPX re-published this as .xlsx; the .xls 404s. xlrd 2.0 dropped
+# xlsx support, so this reads it with pandas/openpyxl instead. Columns stay
+# positional (1=code, 2=name, 3=market category), header row consumed by pandas.
 python3 - << 'PYEOF'
 import requests, csv, os, io
 
@@ -73,17 +76,15 @@ ROOT = os.environ.get('ROOT', '.')
 data_dir = os.path.join(ROOT, 'data')
 
 try:
-    import xlrd
-    r = requests.get('https://www.jpx.co.jp/markets/statistics-equities/misc/tvdivq0000001vg2-att/data_j.xls', timeout=60)
+    import pandas as pd
+    r = requests.get('https://www.jpx.co.jp/markets/statistics-equities/misc/tvdivq0000001vg2-att/data_j.xlsx', timeout=60)
     if r.ok:
-        wb = xlrd.open_workbook(file_contents=r.content)
-        ws = wb.sheet_by_index(0)
+        df = pd.read_excel(io.BytesIO(r.content), dtype=str)
         rows = []
         ETF_CATS = {'ETF・ETN', 'REIT・インフラファンド'}
-        for i in range(1, ws.nrows):
-            code_raw = ws.cell_value(i, 1)
-            name = str(ws.cell_value(i, 2)).strip()
-            market_cat = str(ws.cell_value(i, 3)).strip()
+        for code_raw, name, market_cat in zip(df.iloc[:, 1], df.iloc[:, 2], df.iloc[:, 3]):
+            name = str(name).strip()
+            market_cat = str(market_cat).strip()
             if not code_raw or not name or market_cat in ETF_CATS:
                 continue
             try:

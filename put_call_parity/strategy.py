@@ -27,6 +27,7 @@ from .config import (
     SCAN_INTERVAL_SECONDS,
     LOG_FILE,
 )
+from .oilprice_benchmark import check_crude_futures_price
 from .parity_engine import ParityEngine, ParitySignal
 from .trade_manager import PositionBook, TradeManager
 
@@ -50,20 +51,14 @@ log = logging.getLogger(__name__)
 def _nearest_expiries(broker: BrokerBase, instrument_key: str) -> List[str]:
     """Return sorted list of valid expiry strings (YYYY-MM-DD) for the instrument."""
     cfg = INSTRUMENTS[instrument_key]
-    instruments = broker.kite.instruments(cfg.segment) if hasattr(broker, "kite") else []
-    seen = set()
+    # 🔴 THE THIRD AND WORST `broker.kite` REACH-THROUGH, removed. This function
+    # feeds the entire scan loop — an empty list means no chain is ever fetched
+    # and no signal can exist — so on Upstox or Angel the strategy did not
+    # mis-price anything, it simply ran to completion having examined nothing
+    # and reported "no opportunities". Adapters now normalise expiry to ISO, so
+    # the strftime/str branch this used to need is gone.
     expiries = []
-    for inst in instruments:
-        if inst.get("name") != cfg.option_symbol:
-            continue
-        exp = inst["expiry"]
-        if hasattr(exp, "strftime"):
-            exp_str = exp.strftime("%Y-%m-%d")
-        else:
-            exp_str = str(exp)
-        if exp_str in seen:
-            continue
-        seen.add(exp_str)
+    for exp_str in broker.get_expiries(cfg.option_symbol, cfg.segment, "options"):
         dte = (datetime.strptime(exp_str, "%Y-%m-%d").date() - date.today()).days
         if MIN_DTE <= dte <= MAX_DTE:
             expiries.append(exp_str)
@@ -77,12 +72,14 @@ def _get_futures_quote(broker: BrokerBase, instrument_key: str, expiry: str) -> 
     # Construct tradingsymbol for futures  (e.g. BANKNIFTY24JAN52000 pattern differs by broker)
     # Use instrument lookup from broker as the canonical source
     try:
-        instruments = broker.kite.instruments(cfg.segment) if hasattr(broker, "kite") else []
+        # 🔴 WAS `broker.kite.instruments(...) if hasattr(broker, "kite") else []`.
+        # That reach-through meant every broker without a `.kite` attribute got an
+        # empty list, so fut_list was empty, so this returned None — and parity
+        # needs F in (C-P) = (F-K)e^(-rT), so Upstox and Angel could never produce
+        # a signal at all. It read as "no opportunities", not "broker unwired".
         fut_list = [
-            i for i in instruments
-            if i.get("name") == cfg.futures_symbol
-            and i.get("instrument_type") in ("FUT",)
-            and (i["expiry"].strftime("%Y-%m-%d") if hasattr(i["expiry"], "strftime") else str(i["expiry"])) == expiry
+            i for i in broker.get_futures_contracts(cfg.futures_symbol, cfg.segment)
+            if i.get("expiry") == expiry
         ]
         if not fut_list:
             return None
@@ -91,9 +88,15 @@ def _get_futures_quote(broker: BrokerBase, instrument_key: str, expiry: str) -> 
         data = q.get(sym, {})
         bid = (data.get("depth") or {}).get("buy", [{}])[0].get("price", 0)
         ask = (data.get("depth") or {}).get("sell", [{}])[0].get("price", 0)
-        if bid and ask:
-            return (bid + ask) / 2
-        return data.get("last_price")
+        price = (bid + ask) / 2 if bid and ask else data.get("last_price")
+
+        if price and instrument_key == "CRUDEOIL":
+            ok, reason = check_crude_futures_price(price)
+            if not ok:
+                log.warning("Rejecting CRUDEOIL futures quote: %s", reason)
+                return None
+
+        return price
     except Exception as exc:
         log.warning("Failed to fetch futures quote for %s %s: %s", instrument_key, expiry, exc)
         return None
@@ -102,12 +105,12 @@ def _get_futures_quote(broker: BrokerBase, instrument_key: str, expiry: str) -> 
 def _get_futures_symbol(broker: BrokerBase, instrument_key: str, expiry: str) -> str:
     cfg = INSTRUMENTS[instrument_key]
     try:
-        instruments = broker.kite.instruments(cfg.segment) if hasattr(broker, "kite") else []
+        # Same reach-through removed here — see _get_futures_quote above. The
+        # expiry comparison is now a plain string match because every adapter
+        # normalises expiry to YYYY-MM-DD before returning.
         fut_list = [
-            i for i in instruments
-            if i.get("name") == cfg.futures_symbol
-            and i.get("instrument_type") == "FUT"
-            and (i["expiry"].strftime("%Y-%m-%d") if hasattr(i["expiry"], "strftime") else str(i["expiry"])) == expiry
+            i for i in broker.get_futures_contracts(cfg.futures_symbol, cfg.segment)
+            if i.get("expiry") == expiry
         ]
         if fut_list:
             return fut_list[0]["tradingsymbol"]

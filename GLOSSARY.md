@@ -214,7 +214,6 @@ metrics, ML methods, market structure, and architecture concepts.
 | Fister et al. (2019) | Strategy-vs-buy-hold evaluation; risk-adjusted edge |
 | Olorunnimbe & Viktor (2022) | Backtesting + economic metrics over RMSE |
 | Toichatturat (2024) | Factor models + ensemble, Sharpe scoring |
-| Sharma et al. (2025) | DL survey; classification framing; retraining |
 | Miao (Stanford CS230) | LSTM hyperparameter study |
 
 ---

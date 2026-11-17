@@ -59,7 +59,14 @@ async def parse_portfolio(
 
     parser = ALLOWED_EXTENSIONS[ext]
     try:
-        result = parser(raw, market=market)
+        # Offloaded for the same reason as get_quotes below: this is the
+        # heaviest call in the handler (a full .xlsx/.pdf parse, seconds for a
+        # large statement) and inside an `async def` it holds the event loop for
+        # the whole parse, stalling every other in-flight request. The two
+        # cheaper calls in this file were already offloaded; the parse was not.
+        result = await run_in_threadpool(parser, raw, market=market)
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=422, detail=f'Could not parse file: {e}')
 
