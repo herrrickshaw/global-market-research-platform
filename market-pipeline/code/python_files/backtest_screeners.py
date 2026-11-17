@@ -115,6 +115,7 @@ import warnings
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timedelta
 from pathlib import Path
+from typing import List, Optional
 
 import numpy as np
 import pandas as pd
