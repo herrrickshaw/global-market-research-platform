@@ -1,0 +1,8 @@
+dimension,salaried migrant,business-owner migrant
+Income basis,Wage — has a ceiling,Profit — no wage ceiling
+Tax rate,Set at source by a published schedule,"Partly ELECTIVE: entity choice, salary/distribution split, timing"
+Payroll tax (US),7.65% employee share,15.3% both halves — unless structured around
+Pre-tax retention,None — taxed on receipt,"Profit can stay in the company, deferring personal tax"
+Remittance ceiling,Wage − tax − living costs (what this repo models),Profit + trade proceeds + capital. Unbounded by any salary
+Timing,"Monthly, tracks the payslip","Lumpy — follows deals, distributions and capital events"
+Enters India as,"NRE, freely repatriable","NRE, freely repatriable — IDENTICAL"
