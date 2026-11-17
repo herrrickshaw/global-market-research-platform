@@ -17,6 +17,7 @@ import json
 from dataclasses import dataclass
 from typing import List, Dict, Tuple
 from enum import Enum
+from pathlib import Path
 
 # ─────────────────────────────────────────────────────────────────────────────
 # SCREENING CRITERIA ENUMS
@@ -1049,7 +1050,6 @@ def main():
     }
 
     import json
-    from pathlib import Path
     with open(results_file, 'w') as f:
         json.dump(results_data, f, indent=2)
 
