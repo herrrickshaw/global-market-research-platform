@@ -1,0 +1,152 @@
+# Copy to config.yaml and edit. config.yaml is gitignored.
+
+# LinkedIn exports, OLDEST FIRST. The newest wins on every field, so a job
+# change since the older export is picked up automatically.
+connections_files:
+  - data/Connections.csv              # 2026-02-22
+  - data/Connections_2026-07-07.csv   # 2026-07-07
+
+out_dir: out
+top_n: 200
+
+# --- ATS scoring ------------------------------------------------------
+# Scores your CV against each posting's actual job-description text the way an
+# applicant tracking system does: keyword coverage, requirements weighted above
+# boilerplate, knockouts on years and degree. The useful output is the GAP
+# list -- the terms the JD asks for that your CV never says.
+#
+# Needs BOTH a resume AND postings that carry description text. Apollo returns
+# no JD text at all; Workday, Greenhouse, Workable, SmartRecruiters, JSearch
+# and Google Jobs all do. Postings with no description show a blank ATS score,
+# never a zero.
+resume_path: ""            # a .pdf/.docx/.txt/.md; overrides resume_dir
+resume_dir: data/cv        # otherwise the newest supported file in here
+min_ats: 0                 # 0 = report only. Set e.g. 40 to filter.
+sort_by_ats: false         # rank by ATS score instead of the blended score
+
+# Probe public ATS boards (Greenhouse, Lever, Ashby, SmartRecruiters, Workable,
+# Personio) for the N strongest-network companies. All unauthenticated.
+ats_probe_top_n: 40
+
+# Replay postings saved from an Apollo MCP session -- no key, no credits.
+apollo_dump: ""
+apollo_countries: []
+# Days back to keep. This filters a SNAPSHOT that was already paid for, so
+# narrowing it discards rows rather than saving credits -- the opposite of the
+# trade-off the same number makes on a live feed. Senior commercial roles stay
+# open for months: at 30 days a real run here dropped seven postings including
+# a Head of LNG Trading scoring 0.75, purely because it was posted 35 days ago.
+# 45 is the better default for a dump; use 30 only for live sources.
+apollo_days: 45
+
+# Workday cannot be probed by slug: its host carries a data-centre number
+# (wd1/wd3/wd5) that is not derivable from a company name. So list it per
+# company -- a careers or posting URL is enough, everything is parsed out of it.
+workday_tenants: {}
+#  Shell: https://shell.wd3.myworkdayjobs.com/en-US/shellcareers
+#  Wood Mackenzie: {tenant: woodmac, site: woodmaccareers, wd: wd3}
+
+# Leave on: `scan` reads myworkdayjobs URLs out of the Apollo dump and derives
+# the tenants itself, so employers already collected become free to read in
+# full with no configuration at all.
+workday_autodiscover: true
+
+sources:
+  arbeitnow: true      # free, no auth, strong Germany/EU coverage
+  remotive: true       # free, no auth, remote roles
+  adzuna:
+    enabled: false     # register at https://developer.adzuna.com/
+    app_id: ""
+    app_key: ""
+    countries: [de, gb, in]
+    queries: ["business development", "investment", "strategy", "partnerships"]
+
+  # --- Licensed portal aggregators -------------------------------------
+  # These are how you read LinkedIn and Indeed postings legitimately. Neither
+  # offers a jobs API to an individual developer and both forbid scraping;
+  # these vendors license an aggregated index instead, so nothing here touches
+  # the account you are job-hunting with.
+  #
+  # One RapidAPI key unlocks all four rapidapi hosts. Cost is a query x
+  # location fan-out, so trim `queries` and `locations` before widening
+  # `time_frame`.
+  rapidapi:
+    api_key: ""            # https://rapidapi.com/ -> or RAPIDAPI_KEY
+    jsearch: false         # LinkedIn + Indeed + Glassdoor + ZipRecruiter
+    linkedin: false        # linkedin-job-search-api / linkedin-jobs-api2
+    active_ats: false      # active-jobs-db: read off company ATSes
+    indeed: false          # company-scoped, driven by the network ranking
+    indeed_top_n: 10
+    indeed_locality: in
+    time_frame: 7d         # 1h | 24h | 7d | 30d -- selects the endpoint path
+    days: 30               # window for the query-based sources
+    queries: ["business development manager", "strategy consultant",
+              "market intelligence", "energy analyst"]
+    locations: ["India", "United Kingdom"]
+
+  # Same JSearch index, direct front door instead of via RapidAPI. When this
+  # key is set it is preferred over the RapidAPI one.
+  openwebninja:
+    api_key: ""            # or OPENWEBNINJA_KEY
+
+  # Google's job index -- the only source here that carries iimjobs, Naukri,
+  # Foundit and Hirist, which is where India's senior market actually runs.
+  serpapi:
+    enabled: false         # https://serpapi.com/manage-api-key -> or SERPAPI_KEY
+    api_key: ""
+
+  # --- Free-key aggregators --------------------------------------------
+  # Adzuna is strong in the UK and Germany but thin in India; these two are
+  # the other way round, which is why both are here. Neither replaces iimjobs
+  # or Naukri, but together they widen the free tier well past Adzuna alone.
+  # Renders JS-only careers pages so the schema.org parser can read them.
+  # It is a fetch backend for `careers_pages` below, not a source of its own.
+  # It will NOT fetch LinkedIn, Naukri, iimjobs, Hirist, Instahyre, Foundit,
+  # Glassdoor or Indeed: those hosts are refused in code (zyte.DENIED_HOSTS)
+  # and no config setting can turn that off.
+  zyte:
+    api_key: ""            # https://www.zyte.com/ -> or ZYTE_API_KEY
+
+  jooble:
+    api_key: ""            # https://jooble.org/api/about -> or JOOBLE_KEY
+  careerjet:
+    affid: ""              # https://www.careerjet.com/partners -> or CAREERJET_AFFID
+    locale: en_IN          # en_GB, de_DE, en_IN ... scopes the whole search
+
+# SAP SuccessFactors career sites: one host per employer, configured rather
+# than probed -- the host is the employer's own choice and is not derivable
+# from the company name.
+#
+# These exist because the Apollo feeds could not see them. EY's `ey.com` org
+# returned 3,198 postings with ZERO in India, Deloitte's 4,709 with zero; both
+# firms hire heavily in India, through the separate sites below. A parent
+# feed reporting no roles in a country is not evidence of no roles.
+#
+# A host that is not actually SuccessFactors logs a warning and is skipped --
+# the other sites still run. KPMG's is a guess, so expect that warning until
+# it is confirmed against a live posting URL.
+successfactors_sites:
+  EY India: careers.ey.com
+  Deloitte India: southasiacareers.deloitte.com
+  KPMG India: globalcareers.kpmg.com          # unverified
+  Siemens Energy: jobs.siemens-energy.com
+  TotalEnergies: jobs.totalenergies.com
+
+# Opt-in per company. Brittle by nature - only add pages you care about.
+# Employers with no readable ATS live here. These three render their listings
+# in JavaScript, so they need the Zyte backend above to return anything.
+careers_pages: {}
+#  Siemens Energy: https://jobs.siemens-energy.com/en_US/jobs/SearchJobs
+#  S&P Global: https://careers.spglobal.com/jobs
+#  TotalEnergies: https://jobs.totalenergies.com/en_US/careers/SearchJobs
+#  Invest India: https://www.investindia.gov.in/careers
+
+# Everything below is optional; omit to use the defaults in jobsearch/profile.py
+# profile:
+#   min_score: 0.25
+#   remote_ok: true
+#   locations: [berlin, germany, london, singapore, india, remote]
+#   title_keywords:
+#     business development: 1.0
+#     investment promotion: 1.0
+#   exclude_keywords: [intern, working student, software engineer]

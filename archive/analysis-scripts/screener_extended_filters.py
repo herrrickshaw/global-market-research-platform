@@ -1017,6 +1017,9 @@ SAMPLE SCREENING RESULTS (Top 10 Stocks by Composite Screens)
 # ─────────────────────────────────────────────────────────────────────────────
 
 def main():
+    import json
+    from pathlib import Path
+
     print("🔍 Extended Stock Screener - Screener.in Inspired Filters\n")
 
     engine = ScreenerEngine(SAMPLE_STOCKS)
@@ -1048,8 +1051,6 @@ def main():
         "sample_stocks": list(SAMPLE_STOCKS.keys()),
     }
 
-    import json
-    from pathlib import Path
     with open(results_file, 'w') as f:
         json.dump(results_data, f, indent=2)
 

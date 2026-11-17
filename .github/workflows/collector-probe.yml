@@ -16,11 +16,6 @@ name: Collector Probe
 
 on:
   workflow_dispatch:
-  schedule:
-    # 02:30 UTC = 08:00 IST — after the India EOD lands, before the local 03:00
-    # data phase would matter. Weekdays only; the markets are shut at weekends.
-    - cron: '30 2 * * 1-5'
-
 jobs:
   probe:
     runs-on: ubuntu-latest
