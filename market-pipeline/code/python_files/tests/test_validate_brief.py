@@ -143,14 +143,22 @@ def _install_sources(monkeypatch, table: dict[str, dict[str, dict]]):
     monkeypatch.setattr(price_sources, "record", lambda rows: None)
 
 
+# The replayed incident's build day. The workbook stamp is what anchors `asof`,
+# and the stubbed witness closes below are all dated 2026-10-26, so the stamp
+# must be the morning after them — NOT today: three weeks on, a today-stamped
+# workbook made the frozen-feed check (witnesses > 5 days behind the scan) fire
+# inside tests that have nothing to do with it.
+INCIDENT_DAY = D(2026, 10, 27)
+
+
 @pytest.fixture
-def workbook(monkeypatch, scan_workbook, today):
+def workbook(monkeypatch, scan_workbook):
     rows = [{"Symbol": s, "LTP": p, "Median_Turnover": t} for s, p, t in [
         ("HDFCBANK", 688.05, 900), ("ICICIBANK", 1403.0, 800), ("RELIANCE", 1201.8, 700),
         ("INFY", 1166.0, 600), ("BHARTIARTL", 1917.5, 500), ("BSE", 3359.0, 400),
         ("AUSTENG", 12.0, 300),
     ]]
-    p = scan_workbook("indian_full_scan", "indian_full_scan", rows, today)
+    p = scan_workbook("indian_full_scan", "indian_full_scan", rows, INCIDENT_DAY)
     monkeypatch.setattr(vb, "_latest_scan", lambda: str(p))
     return p
 
