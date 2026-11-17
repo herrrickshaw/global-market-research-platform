@@ -16,6 +16,7 @@
 
 from __future__ import annotations
 
+import os
 import warnings
 from typing import List, Optional
 
@@ -24,7 +25,8 @@ import requests
 
 warnings.filterwarnings("ignore")
 _UA = {"User-Agent": "Mozilla/5.0 (market-research)"}
-_SEC_UA = {"User-Agent": "market-research umashankartd1991@gmail.com"}  # SEC requires contact
+# SEC requires a contact in the User-Agent; it comes from SEC_CONTACT_EMAIL.
+_SEC_UA = {"User-Agent": ("market-research " + os.environ.get("SEC_CONTACT_EMAIL", "")).strip()}
 
 
 def us_sec() -> List[str]:

@@ -102,3 +102,30 @@ def require(*keys: str) -> Dict[str, str]:
 
 def present(*keys: str) -> bool:
     return all(get(k) for k in keys)
+
+
+_SEC_WARNED = False
+
+
+def sec_user_agent(app: str = "market-research") -> Dict[str, str]:
+    """The User-Agent header SEC EDGAR requires: a descriptive app name plus a
+    contact address, or every www.sec.gov / data.sec.gov call is 403'd.
+
+    The address comes from SEC_CONTACT_EMAIL (environment, then the canonical
+    credential store) — it used to be hardcoded in seven modules and a dead
+    copy of five of them, which put a personal address in a repo and tripped
+    every privacy guard that reads the files. Without it the header still goes
+    out, so the caller's own raise_for_status() reports SEC's refusal in SEC's
+    words; this module warns once, to stderr, naming the key to set.
+    """
+    global _SEC_WARNED
+    contact = get("SEC_CONTACT_EMAIL").strip()
+    if not contact:
+        if not _SEC_WARNED:
+            import sys
+            print(f"  ⚠ SEC_CONTACT_EMAIL is not set — SEC EDGAR requires a contact address "
+                  f"in the User-Agent and will refuse the request. Add it to {_CANONICAL}.",
+                  file=sys.stderr)
+            _SEC_WARNED = True
+        return {"User-Agent": app}
+    return {"User-Agent": f"{app} {contact}"}

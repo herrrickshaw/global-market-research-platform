@@ -16,6 +16,7 @@
 
 from __future__ import annotations
 
+import os
 import warnings
 from functools import lru_cache
 from typing import Dict, List, Optional
@@ -23,7 +24,8 @@ from typing import Dict, List, Optional
 import requests
 
 warnings.filterwarnings("ignore")
-_UA = {"User-Agent": "market-research umashankartd1991@gmail.com"}  # SEC requires contact
+# SEC requires a contact in the User-Agent; it comes from SEC_CONTACT_EMAIL.
+_UA = {"User-Agent": ("market-research " + os.environ.get("SEC_CONTACT_EMAIL", "")).strip()}
 
 
 @lru_cache(maxsize=1)

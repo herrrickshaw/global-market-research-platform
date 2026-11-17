@@ -76,8 +76,11 @@ except Exception:
     OHLC_DIR = Path("/Users/umashankar/market-pipeline/market_cache/ohlc")
 UNIVERSE_PARQUET = BHAV_CACHE / "ohlcv_US.parquet"     # fallback only
 
-# SEC asks for a descriptive UA with contact; anonymous UAs get 403'd.
-UA = {"User-Agent": "umashankar market-pipeline umashankartd1991@gmail.com"}
+# SEC asks for a descriptive UA with contact; anonymous UAs get 403'd. The
+# contact is SEC_CONTACT_EMAIL from the credential store (env_loader).
+import env_loader as _env
+
+UA = _env.sec_user_agent("market-pipeline")
 RATE = 0.25           # seconds between requests — well under SEC's 10 req/s cap
 CHECKPOINT_EVERY = 50
 FRESH_DAYS = 30

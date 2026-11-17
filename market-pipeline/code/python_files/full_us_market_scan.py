@@ -322,7 +322,8 @@ def _fetch_nasdaq_file(filename: str) -> str:
 def fetch_all_us_symbols_from_sec() -> tuple:
     """Fetch NASDAQ + NYSE symbols from SEC EDGAR company_tickers_exchange.json."""
     url = "https://www.sec.gov/files/company_tickers_exchange.json"
-    headers = {"User-Agent": "StockScanner umashankartd1991@gmail.com"}
+    from env_loader import sec_user_agent
+    headers = sec_user_agent("StockScanner")
     try:
         resp = requests.get(url, timeout=30, headers=headers)
         resp.raise_for_status()

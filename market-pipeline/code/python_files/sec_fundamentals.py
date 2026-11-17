@@ -22,8 +22,10 @@ from typing import Dict, List, Optional
 
 import requests
 
+import env_loader
+
 warnings.filterwarnings("ignore")
-_UA = {"User-Agent": "market-research umashankartd1991@gmail.com"}  # SEC requires contact
+_UA = env_loader.sec_user_agent()   # SEC requires a contact; SEC_CONTACT_EMAIL
 
 
 @lru_cache(maxsize=1)

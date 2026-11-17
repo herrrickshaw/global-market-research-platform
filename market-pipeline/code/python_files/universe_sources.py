@@ -22,9 +22,11 @@ from typing import List, Optional
 import pandas as pd
 import requests
 
+import env_loader
+
 warnings.filterwarnings("ignore")
 _UA = {"User-Agent": "Mozilla/5.0 (market-research)"}
-_SEC_UA = {"User-Agent": "market-research umashankartd1991@gmail.com"}  # SEC requires contact
+_SEC_UA = env_loader.sec_user_agent()   # SEC requires a contact; SEC_CONTACT_EMAIL
 
 
 def us_sec() -> List[str]:

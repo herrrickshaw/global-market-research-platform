@@ -1054,8 +1054,9 @@ def get_us_symbols(top: int = 0) -> "List[tuple]":
     if not symbols:
         print("  ⚠️  NASDAQ FTP unavailable — using SEC EDGAR fallback")
         try:
+            import os
             url  = "https://www.sec.gov/files/company_tickers_exchange.json"
-            hdrs = {"User-Agent": "StockScanner umashankartd1991@gmail.com"}
+            hdrs = {"User-Agent": ("StockScanner " + os.environ.get("SEC_CONTACT_EMAIL", "")).strip()}
             resp = _req.get(url, timeout=30, headers=hdrs)
             resp.raise_for_status()
             data = resp.json()

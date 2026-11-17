@@ -100,9 +100,11 @@ OUT = OUT_DIR / "US.parquet"
 SECTOR_CACHE = Path(_HERE) / "cache_seed" / "sector_map_cache.json"
 
 # SEC requires a descriptive, contactable User-Agent on every data.sec.gov /
-# www.sec.gov call or it will 403 the request. Same contact used by
-# sec_history_collector.py in the global-stock-screener repo.
-_UA = {"User-Agent": "market-research umashankartd1991@gmail.com"}
+# www.sec.gov call or it will 403 the request. The contact is SEC_CONTACT_EMAIL
+# from the credential store (env_loader), the same one every SEC caller uses.
+import env_loader as _env
+
+_UA = _env.sec_user_agent()
 _RATE = 0.15  # ~6.5 req/s, under SEC's 10 req/s fair-access ceiling
 
 

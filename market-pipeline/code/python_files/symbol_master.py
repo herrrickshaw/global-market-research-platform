@@ -527,8 +527,10 @@ def _us_names() -> list:
     rows = []
     try:
         import requests
+
+        from env_loader import sec_user_agent
         url  = "https://www.sec.gov/files/company_tickers_exchange.json"
-        hdrs = {"User-Agent": "StockScanner umashankartd1991@gmail.com"}
+        hdrs = sec_user_agent("StockScanner")
         data = requests.get(url, timeout=30, headers=hdrs).json()
         for row in data.get("data", []):
             name = str(row[1]).strip() if len(row) > 1 else ""

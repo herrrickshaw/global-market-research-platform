@@ -400,9 +400,10 @@ def _europe_names() -> list:
 def _us_names() -> list:
     rows = []
     try:
+        import os
         import requests
         url  = "https://www.sec.gov/files/company_tickers_exchange.json"
-        hdrs = {"User-Agent": "StockScanner umashankartd1991@gmail.com"}
+        hdrs = {"User-Agent": ("StockScanner " + os.environ.get("SEC_CONTACT_EMAIL", "")).strip()}
         data = requests.get(url, timeout=30, headers=hdrs).json()
         for row in data.get("data", []):
             name = str(row[1]).strip() if len(row) > 1 else ""
