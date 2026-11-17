@@ -247,3 +247,27 @@ Broker credentials go in `put_call_parity/config.py` (not committed).
 - **R for scoring**: The Pegu/Sarvas pipeline deliberately uses R (not Python) for statistical scoring and visualization.
 - **Europe list cache**: `europe_all_list` (in `data/market_data.duckdb`) is rebuilt at startup only if missing or >30 days old (Wikipedia scraping takes ~60s), tracked via a `build_meta` table instead of file mtime.
 - **Tracked tabular data goes in DuckDB, not loose CSVs**: any new small/medium reference CSV added to `data/` should be loaded with `scripts/csv_to_db.py` into `data/market_data.duckdb` (one table per file, schema preserved) rather than committed as a standalone `.csv`. Run `python3 scripts/csv_to_db.py` after adding a file, `--verify` to check row/column parity against the source before deleting it, and `--to-postgres DSN` to mirror tables into a Postgres database for external tools. Exception: CSVs that `run_app.sh` regenerates every startup from an external source (`us_list.csv`, `japan_list.csv`, `korea_list.csv`, `nse_equity_list.csv`, etc.) stay as gitignored loose files — they're a same-day cache, not durable data, so a DB table would just be stale hours later.
+
+## Best-practices playbook
+
+A published reference distills 128 incident-sourced rules — data freshness, secrets, scheduling, backtesting rigor, content-publishing workflow, and more — from this memory system and cross-repo conventions into one searchable, filterable page: https://claude.ai/code/artifact/e29ceaeb-099e-4de7-ab43-dcd97a2d8f57 ("Ways of Working"). Good for fast orientation at the start of a session. It's a point-in-time snapshot though, not a live view — for anything that needs to be current, use `qmd search` against the memory files it was built from (see the `reference_best_practices_playbook` memory).
+
+<!-- source-fetch-toolkit:v1 (managed by ~/bin/add_source_fetch_section.py — edit there, not here) -->
+## Source fetching for data collection & literature surveys
+
+When a task needs a primary document (statute, regulator data, government release, paper, filing),
+fetch the document itself — never cite a search snippet as if it had been read.
+
+- **On the owner's Mac:** `fetch_source.py "<url | doi:… | celex:… | arxiv:…>" --out ./sources`
+  (in `~/bin`; full guide `~/bin/SOURCE_FETCH_TOOLKIT.md`). Scheduled/unattended runs use only
+  `bash /Users/umashankar/bin/fetch_source.sh "<target>"` (allowlisted) and then Read the `.txt` it reports.
+- **Elsewhere (cloud sessions, CI):** follow the same ladder by hand — direct GET with a browser User-Agent →
+  headless browser only if the page needs JavaScript → official alternates (DOI → OpenAlex
+  `api.openalex.org/works/doi:<doi>` locations → repository copy; EUR-Lex → EU Publications Office
+  `publications.europa.eu/resource/celex/<CELEX>`; arXiv pdf/abs) → Wayback Machine `id_` snapshot.
+- **Hard rule:** a CAPTCHA, robot check, Cloudflare/Akamai/WAF challenge or login wall means stop on that
+  host. Do not bypass it (no TLS impersonation, stealth browsers, identity rotation or challenge solving);
+  look for the same document via another route, or report it as unavailable.
+- **Record** for every figure: URL read, title/date, page/table, fetch route; mark abstract-only or
+  snippet-only sources. Fetch politely (~1 request/second per host, no bulk crawling).
+<!-- /source-fetch-toolkit -->

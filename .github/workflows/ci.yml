@@ -91,7 +91,7 @@ jobs:
       - name: Install test dependencies
         run: |
           pip install --upgrade pip
-          pip install pytest numpy pandas scipy openpyxl psycopg2-binary
+          pip install pytest numpy pandas scipy openpyxl psycopg2-binary requests
 
       - name: Run BMS suite
         run: python -m pytest tests/ -v

@@ -115,11 +115,30 @@ claude-provenance/claude-ai-export/
 # consolidated credential store — never commit
 .config/market-secrets/
 .jquants.env
+
+# 🔴 PRIVATE KEY MATERIAL. Found 2026-08-17: *.pem was ignored but *.key was
+# not, and `git add .config/` would have staged two mTLS client private keys
+# (.config/openshell/gateways/{openshell,nemoclaw}/mtls/tls.key) into a PUBLIC
+# repo. Nothing had leaked — 0 tracked .key/.pem at the time — but the gap was
+# one careless `git add` wide. All 8 *.key files in this tree are secrets:
+# session keys, a CA key, TLS server/client keys. None is ever a build input.
+*.key
+
+# gh stores its GitHub OAuth token here when no keyring is available. It holds
+# none today (this machine uses the macOS keychain, so the file carries only
+# git_protocol/user), but a single `gh auth login` on a host without a keyring
+# writes oauth_token into it — and it was otherwise a tracked-by-default path.
+.config/gh/hosts.yml
 market-pipeline/code/python_files/digest_*.png
 market-pipeline/code/python_files/watchlist_full.html
 market-pipeline/code/python_files/data/benchmark_holdings/
 market-pipeline/code/python_files/data/nse_equity_list.csv
 market-pipeline/code/python_files/data/nse_symbolchange.csv
+# Derived from daily_mailer_*.log, which are themselves gitignored (line 98).
+# Rebuilt idempotently with `mailer_roster.py --rebuild`, so committing it would
+# ship a snapshot no fresh clone could reproduce.
+market-pipeline/code/python_files/data/mailer_roster.duckdb
+
 
 # ── run detritus (added 2026-07-29) ──────────────────────────────────────────
 # These were already TRACKED when this block was added, so ignoring them alone
@@ -137,3 +156,15 @@ market-pipeline/code/python_files/cache_seed/factorial_screener_signals_us.parqu
 market-pipeline/code/python_files/cache_seed/factorial_screener_signals_CN_technical.parquet
 market-pipeline/code/python_files/cache_seed/factorial_screener_signals_us.parquet
 market-pipeline/code/python_files/cache_seed/factorial_screener_signals_CN_technical.parquet
+
+# Runtime ledgers and state. source_accuracy.db records raw provider error
+# strings, and Alpha Vantage quotes your API key back inside its rate-limit
+# message (seen 2026-08-18) — this origin is PUBLIC, so the whole dir stays out.
+market-pipeline/code/python_files/state/
+
+# Credential files that live at $HOME but were never ignored (audit 2026-09-23).
+# .git-credentials holds a live GitHub PAT in plaintext; rclone.conf holds the
+# Dropbox + Google Drive OAuth tokens. Both were untracked but NOT ignored, so a
+# single `git add -A` would have committed working credentials to this origin.
+.git-credentials
+.config/rclone/

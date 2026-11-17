@@ -1,0 +1,143 @@
+# Completeness audit — data, claims, and gates
+
+Generated 2026-11-16 by `completeness_graph.py` (LangGraph, 4 nodes, deterministic — no LLM).
+
+**39 sources inventoried, 0 missing/erroring, 4 source(s) past their expected refresh cadence · 8 scheduled scripts checked, 0 quoting numbers their own cited report no longer contains · 8 analyses checked for the contamination gate, 0 ungated · 39 conclusions have a declared universe, 9 rest on a top-N liquid SAMPLE rather than the full market · 7 Cassandra market(s) audited, 1 present but hollow (rows and prices, no fundamentals)**
+
+## 1. Data completeness
+
+| source | rows | symbols | span | stale (d) | cadence | crit |
+|---|--:|--:|---|--:|---|:--:|
+| `bhavcopy.bhavcopy_ohlcv` | 1,796,690 | 8,024 | 2025-10-09 -> 2026-11-12 | 4 | daily | ✅ |
+| `bhavcopy.bse_raw` | 1,674,542 | — | — | — | daily |  |
+| `bhavcopy.cleaned_ohlcv` | 1,258,887 | 8,022 | 2025-10-10 -> 2026-11-12 | 4 | daily | ✅ |
+| `bhavcopy.nse_deep_ohlcv` | 4,423,382 | 3,476 | 2016-01-01 -> 2026-07-13 | 126 | static |  |
+| `bhavcopy.nse_raw` | 805,813 | — | — | — | daily |  |
+| `etl.load_batches` | 49 | — | 2026-07-27 -> 2026-07-27 | 112 | per-run |  |
+| `etl.source_registry` | 16 | — | — | — | static config |  |
+| `etl.stage_fundamentals` | 0 | 0 | — | — | per-run |  |
+| `fundamentals.india_pe_daily` | 1,979,108 | 1,776 | 2019-01-17 -> 2026-07-29 | 🔴 110 | daily | ✅ |
+| `fundamentals.india_quarterly` | 55,002 | 2,576 | 2018-05-21 -> 2026-07-30 | 109 | quarterly | ✅ |
+| `fundamentals.intl_pit_quarterly` | 49,715 | 3,798 | 2004-07-27 -> 2026-11-13 | 3 | JP/KR/CN daily off-hours trickle; AU/CA/DE/HK/SA/TW/BR/CH/SE/SG/UK/ZA weekly (Tier 3 cadence) | ✅ |
+| `fundamentals.next_earnings` | 2,789 | 2,789 | 2005-04-28 -> 2027-11-12 | -361 | off-hours trickle |  |
+| `fundamentals.ratios` | 7,903 | 7,884 | — | — | weekly |  |
+| `funds.nav` | 22,345,052 | 22,677 | 2016-07-28 -> 2026-07-29 | 🔴 110 | daily |  |
+| `funds.schemes` | 22,677 | 22,677 | — | — | daily |  |
+| `indices.custom_daily` | 64,109 | 31 | — | — | weekly |  |
+| `indices.factsheet_holding` | 1,336 | 137 | — | — | daily |  |
+| `indices.factsheet_meta` | 253 | 253 | — | — | daily |  |
+| `indices.factsheet_sector` | 1,192 | 107 | — | — | daily |  |
+| `indices.ingest_log` | 4 | — | — | — | per-run |  |
+| `indices.nse_daily` | 240,622 | 174 | 2016-07-28 -> 2026-07-30 | 🔴 109 | daily |  |
+| `indices.nse_tri` | 22,266 | 17 | 2016-08-01 -> 2026-07-27 | 🔴 112 | daily |  |
+| `market_daily.ingest_log` | 1,051 | — | — | — | per-run |  |
+| `market_daily.snapshots` | 1,367,013 | 33,544 | — | — | daily | ✅ |
+| `market_daily.step_timings` | 179 | — | — | — | per-run |  |
+| `market_daily.symbol_names` | 21,734 | 21,734 | — | — | daily |  |
+| `market_daily.ticker_freshness` | 37,899 | 37,471 | — | — | daily | ✅ |
+| `market_daily.ticker_reference` | 38,193 | 37,764 | 2026-07-31 -> 2026-11-14 | 2 | every 15 min (local join only, see run_quarter_hourly_refresh.sh) | ✅ |
+| `public.fact_insider_transaction` | 204,977 | — | 2017-01-03 -> 2025-12-31 | 320 | built once (v8) |  |
+| `public.fact_screener_signal` | 4,980,728 | — | 2009-08-21 -> 2026-10-13 | 34 | built once (v8), not scheduled | ✅ |
+| `public.fact_short_interest` | 97,555 | — | 2017-12-29 -> 2026-06-30 | 139 | built once (v8) |  |
+| `public.fundamentals` | 1 | — | — | — | dead |  |
+| `public.global_fundamentals` | 245,116 | 25,430 | — | — | external |  |
+| `public.load_batches` | 24 | — | 2026-07-07 -> 2026-07-19 | 120 | per-run |  |
+| `public.markets` | 8 | — | — | — | static dimension | ✅ |
+| `public.ohlcv_history` | 32,896,842 | — | 2011-01-04 -> 2026-07-17 | 122 | external |  |
+| `public.stocks` | 35,243 | 34,357 | 2026-07-07 -> 2026-07-18 | 121 | append | ✅ |
+| `india split factors` | 688 | 468 | — | — | — | ✅ |
+| `india unverifiable` | 29 | 29 | — | — | — | ✅ |
+
+## 2. Claim consistency — does the quoted number still exist upstream?
+
+| script | cites | quoted | verdict |
+|---|---|---|---|
+| `reentry_engine.py` | tier_anomaly_backtest.md | — | consistent |
+| `prediction_filter.py` | mailer_prediction_audit.md | — | consistent |
+| `smallcap_screener.py` | — | — | no numeric claim cited |
+| `playbook_screener.py` | market_playbook.md | — | consistent |
+| `watchlist_tiers.py` | — | — | no numeric claim cited |
+| `custom_indices.py` | smallcap_validation_hold126.md | +3.07%, t 8.75 | consistent |
+| `cluster_indices.py` | cluster_indices.md | t  13.27, t  17.62 | consistent |
+| `price_gate.py` | — | — | no numeric claim cited |
+
+## 3. Contamination gate coverage
+
+| analysis | drops contaminated symbols | verdict |
+|---|:--:|---|
+| `pead_liquidity_study.py` | yes | gated |
+| `pead_portfolio.py` | yes | gated |
+| `cluster_indices.py` | yes | gated |
+| `smallcap_screener.py` | yes | gated |
+| `custom_indices.py` | yes | gated |
+| `peer_warranted.py` | — | n/a — no raw price panel loaded |
+| `etf_builder.py` | NO | guarded by refusal — rejects the unadjusted panel rather than filtering it |
+| `reentry_book.py` | — | n/a — no raw price panel loaded |
+
+## 4. Breadth and power — full universe, or a top-N sample?
+
+| conclusion | declared universe | sample kind | n | formations |
+|---|---|---|--:|--:|
+| `pead_liquidity_study.md` | — | — | 42369 | — |
+| `pead_fund_vs_spec.md` | — | — | 9658 | — |
+| `PIOTROSKI_LIQUIDITY_PAPER.md` | definition (measured: $300k with junk, $896k without). The | declared | 2703 | 9 |
+| `bond_equity_linkage.md` | top 20 | 🔶 SAMPLE (top-N liquid) | 1093 | — |
+| `tier_anomaly_backtest.md` | top 200 | 🔶 SAMPLE (top-N liquid) | 1065 | — |
+| `pe_anomaly_backtest.md` | 1458 NSE names, monthly 2017-01-31 → 2026-06-30. Annual PI | declared | 659 | 109 |
+| `reentry_book.md` | — | — | 508 | — |
+| `smallcap_validation_hold63.md` | — | — | 108 | 108 |
+| `smallcap_validation_hold126.md` | — | — | 105 | 105 |
+| `mailer_effectiveness.md` | — | — | 80 | — |
+| `yen_carry_linkage.md` | — | — | 63 | — |
+| `completeness_analysis_2026-07-28.md` | ** 6,731 (NSE + BSE) | declared | 60 | — |
+| `sector_rotation.md` | — | — | 37 | 91 |
+| `bond_equity_literature.md` | — | — | 27 | — |
+| `ownership_behaviour.md` | — | — | 5 | — |
+| `CHEMICAL_DATA_REQUEST_HISTORICAL_2026-08-01.md` | analysis (2,719 chemicals) with historical trend analysis | declared | — | — |
+| `DATA_AUDIT.md` | shrinkage. | declared | — | — |
+| `PIT_EVENT_STUDIES.md` | 78,799; the rest fall outside the 2016+ adjusted panel | declared | — | — |
+| `STRATEGY_REPORT_TEMPLATE.md` | gate**: position ≤ 10% of the name's trailing-120d median  | declared | — | — |
+| `bundle_validation.md` | top 38 | 🔶 SAMPLE (top-N liquid) | — | — |
+| `cluster_indices.md` | top 300 by trailing turnover with an NSE Industry label (~ | 🔶 SAMPLE (top-N liquid) | — | 35 |
+| `completeness_graph.md` | of 6 stocks and a span ending 2029, both impossible, while | 🔶 SAMPLE (top-N liquid) | — | — |
+| `data_sufficiency.md` | fundamentals (raise coverage), (2) collect deep history vi | declared | — | — |
+| `etf_builder.md` | top 200 | 🔶 SAMPLE (top-N liquid) | — | — |
+| `fundamentals_vs_speculation.md` | findings (all 6 markets, 95% sector coverage) | declared | — | — |
+| `long_short_tp.md` | top 12 | 🔶 SAMPLE (top-N liquid) | — | — |
+| `ownership_behaviour_india.md` | NSE equities identified via ticker_exchange_reference. Col | declared | — | — |
+| `ownership_behaviour_india_full.md` | it is **-0.04 and +0.02** — indistinguishable from zero. E | declared | — | — |
+| `peer_warranted.md` | — | — | — | 8 |
+| `price_bands.md` | by price band | declared | — | — |
+| `project_retrospective.md` | fundamentals-vs-speculation incomplete (US-only preview) | 🔶 SAMPLE (top-N liquid) | — | — |
+| `reentry_markers.md` | top 200 | 🔶 SAMPLE (top-N liquid) | — | — |
+| `strategy_regime_survival.md` | = HIGH+MEDIUM turnover tier only. `spread` = BUY−SELL fwd- | declared | — | — |
+| `valuation_reversion_cn.md` | — | — | — | 109 |
+| `valuation_reversion_eu.md` | — | — | — | 35 |
+| `valuation_reversion_jp.md` | — | — | — | 116 |
+| `valuation_reversion_kr.md` | — | — | — | 35 |
+| `valuation_reversion_kr_deep.md` | — | — | — | 68 |
+| `valuation_reversion_us.md` | — | — | — | 109 |
+
+> 🔶 marks a conclusion measured on the most liquid slice of the market. That is not a defect — liquidity gating is deliberate and keeps the result tradeable — but it narrows what the number is ABOUT, and the narrowing disappears by the time the figure is quoted downstream.
+
+## 5. Cassandra — rows present vs fields POPULATED vs MEASURED
+
+| market | rows | price fields | fundamentals | measured | verdict |
+|---|--:|--:|--:|--:|---|
+| us | 9,534 | 6,435 | 9,438 (99.0%) | 3,959 (41.5%) | fundamentals present |
+| china | 5,207 | 5,196 | 5,188 (99.6%) | 19 (0.4%) | 🔴 ALMOST ALL IMPUTED — populated, not measured |
+| japan | 3,873 | 3,643 | 3,664 (94.6%) | 3,544 (91.5%) | fundamentals present |
+| india | 3,484 | 2,367 | 3,484 (100.0%) | 1,427 (41.0%) | fundamentals present |
+| korea | 2,885 | 2,757 | 2,766 (95.9%) | 2,667 (92.4%) | fundamentals present |
+| hong_kong | 2,765 | 2,765 | 0 (0.0%) | n/a | 🔴 HOLLOW — counts as coverage, is not coverage |
+| europe | 2,434 | 990 | 2,062 (84.7%) | 1,077 (44.2%) | fundamentals present |
+
+> `fundamentals` is COUNTED as the BEST-populated column in each group, so it is an upper bound — the true per-field coverage is lower. `measured` is rows whose `fundamentals_source` is NOT `median_imputed` — found 2026-07-30 while investigating a repeated-decimal (pe,pb,roe) triple across unrelated symbols (a contamination shape the whole-number score check above does not catch). Every market sampled at 99-100% imputed; a median-imputed ROE ranks identically to a measured one in anything that sorts on the column, so `fundamentals present` alone was reporting placeholder coverage as if it were per-symbol data. A row that exists with null fundamentals is still worse than a missing table — the missing table raises an error where it is used, the null column silently narrows every downstream sample and still reports full coverage to a `COUNT(*)`.
+
+## Notes
+
+- 🔴 fundamentals.next_earnings: max next_earnings_date is 2027-11-12 — IN THE FUTURE, table contains impossible dates
+- 🔴 cassandra[china]: fund_pct reports 100% populated, but only 0.4% of that is measured — the rest is fundamentals_source='median_imputed' reporting as if it were real per-symbol data
+- 🔴 cassandra[hong_kong]: 2,765 rows, prices populated (2,765) but fundamentals effectively EMPTY (0 = 0.0%) — counts as coverage in a row count, is not coverage in an analysis
+
+> Completeness is not correctness. This audit proves a source is present, fresh, internally consistent with what quotes it, and gated — not that the numbers in it are right. `reports/data_sufficiency.md` is the cautionary case: it reports a US liquid universe of 6 stocks and a span ending 2029, both impossible, while looking like a clean pass.

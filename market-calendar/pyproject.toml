@@ -1,0 +1,25 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "market-calendar-core"
+version = "0.1.0"
+description = "Trading-day calendars for India and 19 other markets, extracted from five duplicated copies"
+readme = "README.md"
+requires-python = ">=3.9"
+dependencies = []
+
+[project.optional-dependencies]
+# computed.py is the only module that needs pandas; india_live/markets are stdlib-only.
+computed = ["pandas>=1.5"]
+# india_live falls back to a hardcoded holiday list when nsepython is absent,
+# so this is genuinely optional — without it you get the fallback, not an error.
+live = ["nsepython>=2.0"]
+test = ["pytest>=7", "pandas>=1.5"]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

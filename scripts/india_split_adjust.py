@@ -47,7 +47,19 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-WH = Path("/Users/umashankar/repos/global-market-data/warehouse/ohlcv/IN")
+import os
+
+# The repo-local warehouse was cleaned and migrated to Dropbox on 2026-08-14, so
+# this path no longer exists and load_raw() died on pandas' bare "No objects to
+# concatenate" — swallowed by the mailer, taking the small-cap screen with it
+# (E-014's fourth victim, found 2026-08-15). Default is the local cache holding
+# the FULL India history; the Dropbox copy is online-only placeholders, so
+# pointing at ~/Dropbox would re-download on every read. Populate with:
+#   rclone copy dropbox:market-data-archive/current/gmd_warehouse/ohlcv/IN \
+#     ~/.cache/market-warehouse/ohlcv/IN
+WH = Path(os.environ.get(
+    "MARKET_WH_IN",
+    os.path.expanduser("~/.cache/market-warehouse/ohlcv/IN")))
 OUT = Path("/Users/umashankar/market-pipeline/data/india_split_factors.parquet")
 MIN_TURNOVER = 1e7          # Rs 1 crore/day median — the tradeable universe
 WORKERS = 4                 # lowered from 8: rate limiting was the failure source
@@ -56,6 +68,13 @@ DETECT_DROP = 0.18          # only for SIZING the problem, never for adjusting
 
 def load_raw() -> pd.DataFrame:
     files = sorted(WH.glob("year=*.parquet"))
+    if not files:
+        raise FileNotFoundError(
+            f"no year=*.parquet under {WH}. pandas' bare 'No objects to "
+            f"concatenate' is what this replaces — it gave no hint the warehouse "
+            f"was missing, and the mailer swallowed it. Populate the cache from "
+            f"dropbox:market-data-archive/current/gmd_warehouse/ohlcv/IN or set "
+            f"MARKET_WH_IN.")
     df = pd.concat([pd.read_parquet(f, columns=["Date", "Symbol", "Close", "Volume"])
                     for f in files], ignore_index=True)
     df["Date"] = pd.to_datetime(df["Date"])

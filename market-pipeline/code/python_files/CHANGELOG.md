@@ -1,0 +1,4546 @@
+# CHANGELOG
+
+Decisions and material changes to the pipeline, newest first.
+
+## 2026-10-27 — daily_mailer.sh: the incident essays live here now, not in the script
+
+`daily_mailer.sh` was 655 lines, 355 of them comments, four of them essays of
+20–49 lines recording the incident behind a design choice. Those are decisions,
+and decisions belong in this file; the script keeps a one- or two-line pointer
+at each site. Nothing below changes behaviour. Same day: the send gate was
+merged into `price_gate.py`, `scan_files.py` / `brief_state.py` replaced
+duplicated parsers, `market_open_now` gave way to `market_sessions.is_open`,
+the retired witnesses were deleted, and the duplicate watchlist repair and
+Europe scan were dropped — each in its own commit on
+`mailer/evidence-based-zone-rules`.
+
+### Why daily_mailer.sh exists, and why two phases (header, was lines 1–49)
+
+`daily_pipeline.sh` had grown to 38 steps and ~9 hours, of which the mailer
+was one step. It also ran five market scans, five correlation scans, monthly
+backtests, warehouse ingest, an rclone cloud backup, an IUDX flood-sensor
+collector and an annual IMD rainfall refresh. On 2026-07-29 the brief was
+ready at 22:55 and the job did not finish until 08:08 the next morning: every
+one of those 9h13m was spent on work the email did not need, the backup alone
+taking 4h19m. The coupling was also misleading: a failure in any of the 38
+steps landed in the same FAILURES array and the same alert, so "the daily
+brief failed" has meant a rainfall refresh erroring out, and the reverse — the
+brief blocked by a stale scan of a market it no longer covers. So the mailer
+does exactly what the email needs; research and ops moved to
+`daily_research.sh` / `daily_ops.sh` on their own schedules.
+
+Scope is India and US only (`watchlist_markets.COVERED`). Europe, Japan and
+Korea are parked because their fundamentals cannot support a per-name claim
+(quality scores in ratio-named columns — `watchlist_markets.PARKED`), so
+scanning them for a brief that will not mention them is pure latency. Their
+scans run in `daily_research.sh`, which is where a market gets rehabilitated.
+
+**Why the old 00:30 slot was wrong.** US markets close at 16:00 ET = 01:30 IST
+under EDT, 02:30 IST under EST. Scheduled at 00:30 IST, the pipeline scanned
+the US mid-session every weekday by construction — which is why the reconcile
+kept flagging US drift and its tolerance had to be loosened to 4%. The fix was
+a later start, not a wider tolerance: PHASE 1 (`--data`) at 03:00 IST, after
+the US close in both DST regimes; PHASE 2 (`--send`) at 06:30 IST, both
+markets shut, so a gate difference means staleness rather than drift. Phase 1
+has three and a half hours of slack before phase 2 needs its output.
+
+### The pipeline is not slow, it is suspended (caffeinate, was lines 53–87)
+
+Measured 2026-08-15: the data phase spanned 03:05→07:27 (262 min) and pmset
+logged 37 "Entering Sleep state" events inside that window; the 11-minute runs
+on 08-13 and 08-14 logged zero. Step boundaries land exactly on sleep
+timestamps. The actual work is tiny — the step [3/13] rebuild everyone blamed
+(re-pivot 268 dates, re-clean 7,941 symbols, rewrite cleaned_long, rebuild the
+94 MB LMDB) profiles at ~29 s (clean 17.1 s, LMDB 5.8 s, regroup 2.2 s,
+parquet 0.2 s). It reported 61 minutes because the machine slept through most
+of it. The sleep also silently defeated the `cap()` watchdog, which then
+counted time in `sleep 5` increments that do not advance while suspended.
+
+`caffeinate -s -i -m -w $$`: `-w` ties the assertion to the shell's lifetime
+(no re-exec, no trap); `-i` blocks idle sleep, the "Sleep Service Back to
+Sleep / PrevIdle" the log shows; `-m` keeps the disk up; `-s` was once omitted
+as AC-only, which is true, but it is the only flag that blocks the sleep that
+actually costs time — 2026-08-27 measured the send phase at 121.7 min wall for
+~5 min of compute, 11 Maintenance Sleep events on battery, 116.9 min asleep.
+**On battery none of this helps**: nothing caffeinate offers blocks
+Maintenance Sleep. Running the 03:00/06:30 slots on AC is the only real fix.
+
+### Why every step has a wall-clock ceiling (`cap()`, was lines 186–205)
+
+On 2026-08-07 step [5/13] opened an HTTPS socket that never delivered a byte
+and blocked for 4h50m at 0% CPU. No step had a time limit, so the run stopped
+advancing while holding the lock; the 06:30 send found the lock held by a live
+pid, printed "already running" and exited 0 — launchd recorded success for
+both jobs and no brief went out. A hang is strictly worse than a crash here:
+every error is already visible through `|| FAILURES+=(...)`, only a hang is
+silent. The socket was fixed (sentiment_pipeline.py bounds its RSS fetch), but
+that is one call in one step; `cap` is the structural guard. It returns the
+command's own status or 124 on timeout (GNU timeout's convention), so every
+existing failure handler fires unchanged plus an explicit TIMEOUT entry.
+
+### Why research is chained from the send, not scheduled (was lines 582–607)
+
+`daily_research.sh` used to run on its own clock guess (08:30), independent of
+whether `--send` had finished. If the send overran, research started on top of
+it and exited on the lock (research silently skipped for the day); if the send
+finished early, research sat idle. Launched from the end of the send instead:
+nothing downstream waits on research, and the mailer must not block for the
+~2 h research run, so it is backgrounded and disowned. The EXIT trap still
+holds the lock for the script's last instructions; research's own mkdir finds
+it briefly occupied and falls into its wait loop, worst case one 60 s poll.
+Only a real send phase chains (`RUN_SEND=1`, `IS_DRAFT=0`, checked across all
+args): `--data` and `--draft` are partial or test invocations.
+
+On 2026-07-30 the chain fired but the child was killed before writing a byte:
+launchd tears down a job's whole process group when the parent exits unless
+the plist sets `AbandonProcessGroup` (`disown` only stops bash sending SIGHUP).
+The plists now set it, and the launch's own output goes to
+`daily_research_chain_<stamp>.log` rather than /dev/null, so a future launch
+failure leaves evidence instead of a single "started" line.
+
+## 2026-09-21 — trailing_returns: patterns tightened, split suspects excluded
+
+The 2026-09-21 daily scan flagged a pattern on 7,451 of 7,910 filter_watchlist
+names (94%). There were two reasons. The ACCEL margin was 5pp on *annualized*
+rates, and a 1% week annualizes to ~68%, so almost any non-flat week counted as
+acceleration. REVERSAL also accepted any negative 6mo return plus a 3% week.
+Separately, the US/EU/JP/KR panels hold raw closes, so unadjusted reverse
+splits showed up as REVERSAL_UP (HUBC +1,251% in a week, JAGX +763%).
+
+**Done:** REVERSAL now needs a 6mo move of at least ±15% and a 1wk move of at
+least ±5%. ACCEL needs a raw 1wk move of at least ±3% and an annualized gap of
+at least 50pp. Any one-day close ratio ≥1.9x or ≤0.55x in the trailing year
+sets `split_suspect` and suppresses the pattern. Same-day results:
+filter_watchlist fell from 7,451 flagged to 3,052 flagged (plus 235 suspects),
+with REVERSAL_UP down from 757 to 249. watchlist fell from 316 to 138
+(8 suspects), with REVERSAL_UP down from 6 to 2.
+
+**Rejected:** detecting splits only from the returns already reported
+(|window return| > 90%). That also drops real −85% microcap declines, and it
+misses a split that falls outside the reported windows but inside a window
+another consumer reads. Also rejected: adjusting the raw panels here, because
+the panel owner does that job (see signal_tracker.PANELS). **Known gap:** the
+bound catches genuine −45% one-day crashes and misses 3:2 splits (0.67x).
+
+## 2026-09-18 — Japan scan: rate sensitivity is now a column, not an intuition
+
+The JP sheet could not answer "what does a BOJ hike do to this name?". Every
+column is absolute-price or fundamental, so the question got answered from
+sector labels — and the sector label is wrong often enough to matter: FPG
+(7148) is classified Securities & Commodity Futures and looks like a rate play,
+but measures **-0.07 (t=-0.6)**, while Mos Food Services (8153), a wholesale-
+coded restaurant chain, is a significant **-0.23 (t=-4.5)**.
+
+**Done:** `rate_factor_betas()` in `full_japan_market_scan.py` builds a factor
+from data Stage 2 already downloads — equal-weight liquid banks (JPX 7050)
+minus liquid real estate (8050), orthogonalised to the equal-weight liquid
+market — and regresses every scanned name on [market, factor]. `Rate_Beta` and
+`Rate_Beta_t` are written to All_Stocks, Darvas_Signals and Fundamentals, and
+are refreshed (not inherited) on rows reused from the fundamentals cache, since
+they are price-derived. No extra network calls: Stage 3b is one pass over the
+frame in memory. Validated 2026-09-18 on 2,914 names: 2,312 populated (the rest
+lack 120 days of history), banks median +0.74 vs universe -0.04, and the eight
+highest betas in the universe are all sector 7050.
+
+**Why orthogonalised:** the raw banks-minus-real-estate spread is substantially
+market by construction, so an unadjusted beta would have re-measured what
+`Above_EMA50` already reports. Illiquid names are excluded from the two baskets
+but still receive a beta — a T5 bank quoting a stale print would otherwise
+inject its staleness into the factor every other name is scored against.
+
+**Rejected:** a JGB-yield or policy-rate series as the factor. It would be the
+textbook construction, but it is an external daily fetch this scan does not have
+(and the FX-fetch failure of 2026-07-15, which silently disabled the liquidity
+gate for Japan and Europe, is the standing argument against adding one more
+network dependency to this script). The banks-minus-real-estate spread is
+observable in the panel we already hold.
+
+**Read it with the t-stat.** 740 of 2,312 names clear |t| >= 2; the rest is
+noise, and a Rate_Beta column invites exactly the mistake of trading the point
+estimate. Window is the scan's own `period="1y"`, so betas move as the window
+rolls: Sakura KCS (4761) measured -0.23 (t=-2.7) over 358d on the warehouse
+panel and -0.07 (t=-0.9) over the 221d the scan sees.
+
+## 2026-09-14 — ohlcv_history: one row per (stock_id, date), per-batch versioning dropped
+
+`warehouse_versioning.sql` extended the key to `UNIQUE (stock_id, date, batch_id)`
+so reloads would accumulate as queryable versions. In practice nothing queried
+versions, and every re-run inserted a complete second copy: Korea was loaded
+twice (batch 4 `legacy_backfill` + batch 5 `ohlcv_korea`, 5,256,823 rows each),
+and 5,324,473 keys (14% of 38.2M rows) had 2–3 rows. 44,151 keys disagreed on
+close — mostly India (incl. ~1,200 at exactly 2×/5×/10×, split vs unadjusted),
+US <2%. The two readers (`bridge_pg_fundamentals_to_cassandra.py`,
+`complete_india_us_fundamentals.py`) take "latest close" straight from the base
+table, not `ohlcv_history_current`, so they picked a copy arbitrarily; any
+count/return aggregate on Korea would have doubled.
+
+**Done:** kept one row per key — `success` batch over `failed`, then newest
+batch_id — deleted 5,338,185 rows, added `uq_ohlcv_history_stock_date UNIQUE
+(stock_id, date)`. 32,896,842 rows remain, 0 duplicate keys. Every removed row is
+in `public.ohlcv_history_dedup_backup_20260914` (restorable). Both writers now
+`ON CONFLICT (stock_id, date) DO UPDATE … batch_id = EXCLUDED.batch_id` —
+reloads overwrite in place, batch_id records the last writer.
+
+**Rejected:** keeping versioning and pointing readers at `ohlcv_history_current`
+— the table was already superseded for analysis by the parquet warehouse
+(`warehouse_insights.py`), history-of-a-price-bar has no consumer, and the design
+cost 14% of 12 GB on a disk at CRITICAL. The now-redundant `uq_ohlcv_history_batch` was dropped the same day
+(table 12 GB → 9.9 GB); `ohlcv_history_current` still works (trivially). VACUUM ran, VACUUM FULL did not (needs ~12 GB free).
+
+## 2026-09-11 — The third witness was never a witness: 79 checks, 0% answered
+
+The 09-11 brief was suppressed. Every price passed — worst gap 1.34% against a
+2.0% tolerance — and the trip was a *date*: yfinance served BHARTIARTL's 09-09
+close (1814.70) while Alpha Vantage independently confirmed our ₹1839.0 at the
+correct 09-10 session. Our data was right. A witness was stale, the jury split
+1-1, and `validate_brief`'s majority rule counts a tie as a MISMATCH.
+
+That is the exact failure mode Twelve Data was registered on 2026-08-29 to end,
+and it did not end it, because **Twelve Data has never once answered**.
+`validate_brief.py --source-report 30` reads `twelvedata 79 checks · answered
+0.0%`. `_twelvedata()` is complete and correct; `_key("TWELVEDATA_KEY")` returns
+`None` because no such key exists — not in the environment, not in
+`~/.config/market-secrets/credentials.env` (44 keys, none of them this one), not
+anywhere on the machine. The source has been asked 79 times and returned
+`{"error": "no TWELVEDATA_KEY"}` 79 times.
+
+**The registration was inert, exactly as designed — and that was the problem.**
+`_twelvedata`'s docstring is explicit that an absent key makes the source drop
+out of the quorum rather than vote "no", so registering it early is "never
+harmful". True for correctness, false for operations: a silent witness is
+indistinguishable from a working one in every line the run prints. The header is
+built from `price_sources.SOURCES` unconditionally, so for eleven days it
+advertised *"validating … against yfinance, alphavantage, twelvedata"* while two
+sources voted. The quorum silently sat at 2, where one stale feed suppresses a
+correct send — which is where it was on 09-11.
+
+**Silent sources are now named, with their reason and the effective quorum.**
+`validate()` derives a `mute` map from the ledger it already builds (source →
+the error it actually returned) and returns it; the production print path renders
+`⚠ twelvedata answered nothing (no TWELVEDATA_KEY) — NOT voting; effective
+quorum 2 of 3`.
+
+Deliberately **diagnostic only**: a mute source still does not vote and still
+cannot fail a send. An absent key is a missing witness, not evidence against the
+prices, and making it fail would convert a degraded quorum into a daily outage.
+Rejected for the same reason: failing the gate when the quorum drops below three.
+The `.get("mute")` default is load-bearing — the no-workbook early return has no
+such key, and per the banner on that branch a `KeyError` there would exit
+non-zero and suppress every send forever.
+
+**Still open, and it needs a human:** the key itself. A free Twelve Data account
+(800 req/day, 8/min; the gate spends ~6 per run) has to be created by hand, then
+`TWELVEDATA_KEY=…` appended to the canonical credential store. Until then the
+quorum stays at two and any single stale feed can suppress a correct brief —
+the warning above just means it will say so out loud.
+
+## 2026-09-08 — A stale test asserted a column nobody reads, and lied about the damage
+
+`test_screener_in.py` failed on 09-06, 09-07 and 09-08, in **two** pipelines
+(`daily_mailer.sh` step [6/13] and `ingest.sh` step [6/7], ~2h45m apart), sending
+two alert emails a day. The CCC data was complete and correct throughout: 29
+rows, 29/29 numeric `Cash_Cycle`, 100% inside ±400 days, and the 09-07 brief
+rendered 10 real CCC rows (IGIL −632.9d, SANGHVIMOV −467.9d, MSTCLTD −448.9d).
+
+Two independent staleness bugs, and the second one is the expensive one.
+
+**`REQUIRED_COLUMNS` demanded `Name`.** The producer only ever kept it
+conditionally — `screener_in.ccc_screen()` filters `keep` by `if c in
+df.columns` — and the consumer, `ccc_map()`, is
+`dict(zip(df["Symbol"], df["Cash_Cycle"]))`. It never reads `Name`. Producer and
+test disagreed from the day the column list was written; screener.in dropping
+`Name` on 09-06 just exposed it. The list is now exactly what the consumer
+reads.
+
+**The failure message claimed the brief was broken.** It read *"build_mailer.py
+will show n/a for CCC until fixed"*, and the file header said the CCC section
+"renders n/a" on a bad scrape. Both were written before **2026-08-21**, when
+`_ccc_rows()` stopped calling screener.in at all and moved to computing CCC from
+filings (`cash_conversion_cycle.py`) with the scrape demoted to gap-fill. So the
+test was reporting an outage in a code path that no longer exists — and it was
+convincing enough to be believed and repeated in an audit before anyone opened
+the brief. Both strings now say what a FAIL actually costs: reduced gap-fill
+coverage, not an empty section.
+
+**Rejected:** re-deriving `Name` from the instrument list to satisfy the
+assertion. That adds a real dependency to keep a test happy about a field
+nothing consumes. **Also rejected:** downgrading the missing-column check to a
+WARN — that would blunt it for `Symbol` and `Cash_Cycle`, where a rename really
+would empty the gap-fill silently. The check keeps failing loudly; it just
+guards the right columns now.
+
+**Left open:** the `Name` column in the brief's CCC table is blank, since
+screener.in no longer supplies it and nothing backfills it. Cosmetic — worth
+deciding whether to source it or drop the column.
+
+## 2026-09-05 — Two silent data failures that cost three briefs and three days of Japan
+
+The 09-04 and 09-05 briefs were both suppressed by the send gate, and Japan had
+produced nothing since 09-03. Two unrelated causes, both invisible in the logs.
+
+**The cache served stale frames as if they were current.** `get_ohlc_bulk`'s
+incremental path ended in `elif not existing.empty: result[t] = existing` — when
+a yfinance batch returned 200 with some tickers simply absent, the caller got
+last run's frame with nothing marking it stale. Measured on 09-05: **2,220 of
+7,842 US names (28%) were frozen on 09-02 bars**, ABBV/CAG/TRP among them, and
+`check_panel_session` reported only 57% of names on the correct session. The US
+scan published those closes as that morning's LTP. SPCX is simply the one the
+8-name reconcile sample happened to draw — it read 140.71 for three consecutive
+days, byte-identical row and all, while the market moved to 147.95.
+
+`_bulk_yf_download` already retries a batch that fails *wholesale*; the gap was
+a batch that succeeds partially. Absent tickers are now re-requested (2 passes,
+5s backoff — longer than `BATCH_SLEEP` because the cause is a rate limit that
+needs a moment, not a dropped response). A plain re-request recovered 20 of 20
+sampled stragglers, and in production took the panel share **57% → 93%**.
+Anything still unresolved after the retries is served — dropping it would be
+worse — but stamped `.attrs["stale"]` and counted out loud.
+
+**Rejected:** treating an absent ticker as delisted and dropping it. The 09-05
+data shows the failure is overwhelmingly transient; that rule would have deleted
+ABBV from the universe on a bad network day.
+
+**A lagging ticker could still be quoted as today's price.**
+`check_panel_session` judges the panel by its **modal** end date, deliberately,
+so one stray bar cannot vouch for the whole panel — the flip side is that it is
+blind to one ticker lagging a healthy panel, which is exactly the SPCX shape.
+`full_us_market_scan.py` now drops rows whose last bar predates `panel_asof` and
+stamps every surviving row with `Bar_Date`. First run: 502 dropped, almost all
+dead warrants/units/rights (`-UN`, `-WT`, `-PF`, `W`, `RI`), and every one of
+5,646 remaining rows on 2026-09-04.
+
+**Rejected:** flagging rather than dropping. A row whose LTP is not today's
+price is not merely suspect to a human reader — `scan_price_reconcile.py` samples
+the workbook's most liquid names and treats their LTP as today's, so a flag it
+does not read changes nothing. Dropping is what the liquidity gate already does
+one line below, for the same reason.
+
+**JPX moved `data_j.xls` to `.xlsx`.** The old URL 404s; the path stem is
+unchanged. That killed the TSE universe from 09-03, and with it the Japan scan,
+the Japan ingest (4 days stale), and `[R4]`'s Japan correlation scan, which
+resolved 0 symbols and wrote a 15-byte matrix. Fixed in
+`full_japan_market_scan.py`, `symbol_master.py` and `run_app.sh`. The latter two
+also had to leave `xlrd`, which dropped xlsx support in 2.0 — pandas/openpyxl
+reads both, and the columns are positionally unchanged (1=code, 2=name,
+3=market category), so the parse is otherwise identical.
+
+`symbol_master._japan_names` swallowed every exception with a bare `pass`, which
+is *why* a 404 went unnoticed for three days — Japan just quietly stopped
+appearing in the master. It now warns on a non-200, on an exception, and on
+returning zero equities.
+
+**Known and not fixed here:** all three call sites drop the 172 JPX codes
+containing a letter (`130A`, `135A`, …) via an `isdigit()` filter. These are
+real TSE tickers under JPX's newer alphanumeric scheme. That is a pre-existing
+universe gap, unrelated to the outage, and widening the universe inside an
+outage fix would have hidden the regression it was meant to prove fixed.
+
+## 2026-09-04 — Price-band segmentation, plus the 9 bugs a /code-review found in it
+
+`price_bands.py` (new): one shared ladder — band edges, labels, bucketing,
+the %ADV capacity rule, and the "not a valuation signal" caveat — consumed by
+both `build_mailer.py` (a new "By price band" section under each market's
+picks table) and `price_band_analysis.py` (a deeper standalone cross-section
+report). The two read different sources and compute different things, so
+their loaders stayed separate; only what has to agree between them — what
+"₹500–1000" means — was centralized.
+
+A `/code-review high` pass against that commit ran 8 finder angles, verified
+10 candidates independently, and 9 survived. All 9 are fixed, in two
+follow-up commits:
+
+- **The band table's "Max pos" column was silently in $, never ₹** — sat next
+  to a ₹-labeled band row with nothing marking the currency mismatch.
+  Reproduced the misread risk, fixed by making the header say `($)`
+  explicitly rather than converting currency (`Turnover_USD` is deliberately
+  USD across every market in this mailer already, same as the adjacent
+  picks table's own Turnover column — converting would have been the wrong
+  fix for a labeling gap).
+- **`_price_band_rows` crashed on any pre-ladder combined-report JSON** —
+  `p.get("N_Fund")` on a missing column returns a bare scalar, and
+  `pd.to_numeric(None, errors="coerce")` comes back with no `.fillna()`.
+  Reproduced directly (`AttributeError: 'numpy.float64' object has no
+  attribute 'fillna'`), no `try/except` anywhere caught it, so an old JSON
+  would have taken down the whole brief. `_market_picks_rows` already had a
+  `Tier`-based fallback for exactly this; `_price_band_rows`'s own premise
+  (the N_Fund fraction) can't be reconstructed from `Tier`, so it now
+  degrades to an empty section instead.
+- **`edge_population()` silently ignored `--adv-pct`**, always using the 5%
+  default while its sibling `candidates()` honored the CLI flag — one report
+  run could show two different %ADV assumptions in adjacent tables. Verified
+  `--adv-pct 10` now doubles every basket-capacity figure and the header.
+- **`os.makedirs(os.path.dirname(args.out))` crashed on a bare `--out`
+  filename** — `dirname` of a bare filename is `""`, and `os.makedirs("")`
+  always raises regardless of `exist_ok`. Only makedirs when there's an
+  actual directory component.
+- **`fmt_money`'s `ccy` parameter meant a symbol STRING, colliding in name
+  with `label()`/`labels_for()`/`assign()`'s `ccy`, which means a
+  market→symbol MAP** — passing the dict wouldn't raise, it would silently
+  embed the dict's `repr()` into rendered HTML. Renamed to `symbol`.
+- **`bands_for()` silently substituted the US dollar ladder for any market
+  without an entry** — dormant today (only IN/US are called), but
+  `build_mailer.py`'s own comments describe EU/JP/KR row-builders as kept
+  ready for reuse; wiring one to price-bands would have bucketed euro/yen
+  prices on the wrong scale with no warning. Now raises `KeyError` naming
+  the gap. `DEFAULT_MARKET` removed as dead code once nothing read it.
+- **`_market_picks_rows` and `_price_band_rows` each independently rebuilt
+  the same DataFrame and called `liq.annotate()`** — a non-vectorized
+  per-row tier-classification loop, run twice per market on every scheduled
+  build for no reason. Extracted `_annotated_picks()` as the single build
+  step; both row-builders now take the already-annotated frame and copy
+  before mutating so neither leaks columns into the other.
+- **`price_bands.py`'s docstring claimed the module owns "the caveat"** as
+  one of the things that must not drift between consumers, but `CAVEAT` was
+  never imported by either one — `build_mailer.py` wrote its own
+  independently-worded version. `_BAND_NOTE` now embeds `pb.CAVEAT` verbatim.
+- **Three separate `for band in LABELS: df[df["Band"]==band]` loops**
+  (one in each of `build_mailer.py` and two in `price_band_analysis.py`)
+  re-scanned the full frame per band instead of a single `groupby` — the
+  pattern `candidates()` in the same file already used correctly. Applied to
+  the two simpler aggregation functions in `price_band_analysis.py`; left
+  the mailer's HTML-row-building loop alone (its own reviewer verdict called
+  the performance difference negligible at ~900-1400 rows, and it had
+  already been reproduction-tested twice for the real crash bug that day —
+  not worth the added churn for a microsecond-level win).
+
+One candidate the review raised — a `truthy()` string-match concern for
+float-upcast screen columns — was checked against the actual source
+generators (`full_indian_market_scan.py` et al.) and refuted: those four
+columns are always written as `"YES"/"NO"`/`"PASS"/"FAIL"` string literals,
+never numeric flags, so the failure mode can't occur for this data.
+
+Every fix was verified against the live pipeline before/after: none of the
+nine changed a single reported number, only how a bad input is handled or
+how clearly the output is labeled. Commits: `847def59` (feature),
+`ca63ceca` (crash + currency label), `d05c761e` (remaining 7). Tagged
+`price-bands-2026-09-04`.
+
+## 2026-08-25 — India reverted: the raw panel is an INPUT, and the fix was a reader
+
+Same-day correction to the entry below. That change adjusted splits in the raw
+`ohlcv/` panels of all five markets. For India that was wrong, and the trace
+that found it is worth keeping.
+
+India is the only market with a real corporate-actions feed, so
+`price_adjuster.py` adjusts the WHOLE panel: it reads raw `ohlcv/IN`, applies
+`adjustment_factors.parquet`, and writes `ohlcv_adj/IN` (`ingest.sh` [7b/7]).
+**The raw panel is that script's INPUT.** Adjusting it in place meant the next
+ingest would apply every factor a second time — measured: **244 of 282 India
+events collided with the same event** in the factor table, same symbol, same
+ex_date, my applied ratio exactly equal to its `factor`. Nothing was corrupted
+(`ohlcv_adj/IN` had been built at 00:19, before the repair), and `ingest.sh` is
+not in crontab, so this was caught in the window.
+
+- **DECISION: fix the CONSUMER, never the raw panel.** `signal_tracker.PANELS`
+  pointed India at `ohlcv/IN`, so every split and bonus printed as a crash —
+  which is what produced the original symptom. `warehouse_paths.ohlcv_adj_in()`
+  already carried that exact warning. India now reads `ohlcv_adj/IN`; the raw
+  panel is restored byte-for-byte from the pre-write backups (verified: 0
+  differing bars, the 549 raw discontinuities back, which is CORRECT — raw is
+  meant to be raw).
+- **The corporate-actions feed beats yfinance on India, decisively.** The two
+  worst weekly moves in the India watchlist were KIRLPNU -52.45% and
+  TDPOWERSYS -49.63%. Both are 1:2 face-value splits (ex 08-18 and 08-24) that
+  the NSE/BSE feed carries and yfinance does not — the yfinance-based repair
+  missed both, while the adjusted panel handles them. India names past ±50% in
+  a week went 1 -> 0, past ±25% went 7 -> 5. The feed also carries 414 bonus
+  events, a class yfinance routinely omits.
+- **US/JP/KR/EU keep the raw-panel repair.** No adjusted panel exists for them —
+  `price_adjuster_global.py` ships `corrected_symbols.parquet`, a patch overlay
+  covering 8 symbols. **KNOWN OVERLAP, not yet resolved:** 5 symbols (HCWB, MQ,
+  SVC, 7946.T, 408900.KQ) appear in both that patch and the repair, so a
+  consumer overlaying the patch on the repaired raw panel double-corrects them.
+  The repair's 183 symbols are far more complete than the patch's 8; the clean
+  resolution is to move that detection into `price_adjuster_global.py` so it
+  writes a patch instead of touching partitions.
+- **Schema note:** `ohlcv_adj/IN` carries an extra `adj_factor` column. Every
+  `_panel()` call site passes an explicit `columns=`, so this is inert — but a
+  future caller that omits it will see the extra column.
+
+## 2026-08-25 — append-only ingest was reporting split ratios as returns
+
+`trailing_returns.py` flagged CISS at **+4,293.94% over one week**. CISS did a
+1-for-40 reverse split on 08-19; the panel held a 0.0685 close on 08-18 beside a
+3.09 close on 08-19. The real move was +12.8%. Append-only ingest is precisely
+what breaks here: fresh bars arrive vendor-adjusted, stored bars stay on the old
+basis, and the panel ends up holding one symbol on two price bases joined at the
+split date. A sweep found 466 such splits across 455 symbols in all five panels.
+
+Splits predating each panel's last full refetch were already correct, which is
+what kept this invisible — CISS's own January 1-for-20 and April 1-for-7 both
+show ~1.0x continuity. Only the incremental-append path was ever wrong, so the
+panel looked healthy everywhere except its most recent weeks.
+
+- **DECISION: never infer the ratio from the price jump.** CISS's seam is 45.1x
+  — a 1-for-40 *plus* that day's real +12.8%. Rounding to "1-for-45" would bake
+  the real move permanently into history. The ratio comes from yfinance or the
+  bar is left alone.
+- **DECISION: ratio from the vendor, date from the panel.** The two routinely
+  disagree by days — LIMN split 08-21 but the panel rebases 08-24 (missing
+  bars); BRCC rebases 08-21 against a recorded 08-24. Matching them exactly
+  found neither. **REJECTED** the exact `(prev_bar, flagged_bar]` window for
+  this reason. The window is now generous, and what makes that safe is not the
+  window but `SPLIT_RATIO_TOL`: the vendor's ratio must predict the jump the
+  panel actually shows, or the match is rejected. 285 candidates were rejected
+  this way, including a 360ONE entry where yfinance's 2-for-1 predicted 0.5x
+  against a panel showing 0.2x.
+- **Detection is a free screen, not a network sweep.** Asking yfinance about all
+  9,433 US symbols nightly is not affordable; a split always leaves a
+  discontinuity at the seam, so the data screens itself and only the handful
+  that trip it (0-5 a night) cost a call. **REJECTED** the alternative of
+  fetching split calendars for the whole universe.
+- **DECISION: surface unexplained jumps, never smooth them.** 7,701 US
+  discontinuities did not confirm as splits and were left untouched. Spot
+  checks (ZSTK, SDOT, PSIG) each show a 100-1000x volume spike and no split on
+  record — genuine trading. Silently smoothing a real 4x would be a worse bug
+  than the one being fixed. CFNB's 0.0x print followed by a 47x "recovery" is
+  likewise left alone as a bad print, for a human to judge.
+- **Repair is a separate entry point (`--repair-splits`), not part of the
+  nightly run.** It rewrites every year partition and re-reads split history for
+  every flagged symbol — right once, wasteful nightly. **REJECTED** folding it
+  into `_write_years`, which would have meant adding every year to
+  `changed_years` and reading the whole panel into one frame — the 1.63GB peak
+  the DuckDB stats path exists to remove. `_apply_splits` streams one partition
+  at a time instead.
+- **Verified surgically.** A split adjustment multiplies a contiguous prefix by
+  a constant, so it must change exactly ONE day-over-day ratio per event. Across
+  37.6M bars, changed ratios equalled splits applied in every market
+  (US 150/150, IN 282/282, KR 28/28, JP 5/5, EU 1/1), with no rows or symbols
+  lost. Two suspected regressions were checked and neither held: NXTT's -97.58%
+  6-month return is genuine (a 1-for-100 reverse split means a real collapse),
+  and the YHC/EDBL spikes predate the repair at identical 86.1x and 43.4x ratios
+  either side of it.
+- **Known gap:** the repair path logs rejections per symbol but not
+  confirmations, so the 466 applied splits are not individually recoverable from
+  its log — they had to be reconstructed by diffing a pre-write snapshot.
+
+## 2026-08-19 — ensure_fresh wired into the send phase, and the report gap it found
+
+`ensure_fresh.py` existed but nothing called it: the "a brief requested at any
+hour collects up to that hour" guarantee held only when someone ran it by hand.
+Wiring it revealed a second inconsistency of exactly the kind it was built for.
+
+- **DECISION: the planner must rebuild the REPORTS, not just the scans.** The
+  brief reads two things — `<market>_scan/*.xlsx` for prices and
+  `combined_report_results/combined_<MKT>_*.json` for mood, street talk and the
+  fundamentals picks. Refreshing a scan alone ships a brief whose price sections
+  and narrative sections describe different days. Measured live: after the
+  08:46 US scan refresh reached 18 Aug, `combined_US_20260819_0459.json` still
+  carried **17 Aug prices under a 19 Aug filename**, and would have gone out.
+  `report.IN`/`report.US` are now catalog datasets depending on their scans, so
+  the dependency walk rebuilds them.
+- **DECISION: date a report by its own picks' prices, not its `generated`
+  stamp.** Same rule as scans, same reason — that stamp was correct and the
+  content was two days old.
+- **Placed BEFORE the self-heal, never replacing it.** ensure_fresh is surgical
+  (refresh only what is behind); the self-heal is the blunt fallback (run the
+  whole data phase). Whatever ensure_fresh cannot fix falls through to it, so
+  the change cannot make the send *less* likely to happen.
+- **Fail-safe by construction, verified across five cases:** runs in the send
+  phase; skips under `--data`; skips under `--data --send` because the data
+  phase already covers it; a non-zero exit is logged and execution continues; a
+  hang is killed by `cap` and falls through. `CAP_ENSURE_FRESH=2400` sits
+  outside ensure_fresh's own `--max-minutes 35` so the internal, self-reporting
+  bound is the one that normally fires.
+- **Orphans no longer fail the run.** Your 08:37 production run reported
+  `cache.ohlcv.US_legacy` as "STILL behind" and exited 1 after five successful
+  refreshes — but nothing can refresh a panel with no writer. A clean run
+  looking failed is how an exit code stops being read; orphans are now listed
+  separately and do not affect the exit status.
+
+## 2026-08-19 — the US fundamentals gap was four bugs, not a coverage limit
+
+40.5% of the scanned US universe (2,359 of 5,829) had no fundamentals. That read
+like a coverage ceiling — small caps, ETFs, the usual tail. It was not. The
+missing list led with **Visa, Exxon, UnitedHealth, Walmart, TSMC and Shell**, and
+every one of them files with the SEC.
+
+- **DECISION: merge tags PER FISCAL YEAR, not first-tag-wins.** `parse_companyfacts`
+  stopped at the first mapped tag holding *any* data. Visa reports revenue under
+  `Revenues` for FY2018-2020 and `RevenueFromContractWithCustomerExcludingAssessedTax`
+  for FY2023-2025 — the ASC 606 transition, which nearly every US filer went
+  through. The loop matched the dead tag, broke, and never looked at the live
+  one; the store keeps 5 fiscal years, so Visa's revenue was NaN in all of them.
+  Per-year merging keeps the exact-tag discipline (first tag in priority order
+  still wins *that year*, unmapped still yields NaN) while spanning a change in
+  how the filing is written rather than in what the company earned. Fixed Visa's
+  revenue and UnitedHealth's equity in one change.
+- **DECISION: read `ifrs-full`, not just `us-gaap`.** `_annual_series` already
+  accepted 20-F and 40-F forms, but only the us-gaap namespace was ever searched,
+  so every IFRS filer parsed to zero rows and vanished: TSM, SHEL, BP, AZN, NVO,
+  SPOT, NU, CP, CCJ and ~200 more ADRs. Verified live against TSM (334 ifrs tags)
+  and SHEL (333). Whichever namespace yields more fields wins **outright** rather
+  than the two being merged — a filer's statements reconcile within one framework,
+  and taking Revenue from IFRS while taking Assets from a stray us-gaap tag
+  produces a row that reconciles to nothing.
+  - New `framework` and `currency` columns, recorded rather than inferred: **NVO
+    files in DKK and SPOT in EUR**. Without the unit on the row, a ratio layer
+    divides a USD price by a DKK earnings figure and returns a confident number.
+- **DECISION: a present-but-empty companyfacts doc is a RESOLUTION FAILURE, not
+  an absence.** `company_tickers.json` maps XOM to CIK 2115436 — an entity also
+  named "Exxon Mobil Corporation", 78 KB, zero parseable rows. Exxon's actual
+  history (3.1 MB, revenue $332bn, equity $259bn) is under the legacy CIK 34088.
+  When a company re-registers, SEC's ticker map follows the new registrant and
+  the filings stay behind. Empty docs are now retried against SEC's name→CIK
+  index (`cik-lookup-data.txt`, 1,046,195 names, cached 30d).
+  - Gated on the doc carrying `us-gaap` or `ifrs-full`. A re-registered filer
+    keeps its accounting namespace; an ETF or trust has `dei` alone and never
+    will. Without that discriminator the fallback fired on every fund in a
+    7,699-name universe, spending four extra requests each to confirm a real
+    absence — measured at 0.6 tickers/s against the 4/s the rate limit allows.
+- **DECISION: EPS is defined on weighted-average diluted shares.** Share counts
+  came only from the dei cover-page tag, attached to whichever fiscal year end
+  was NEAREST with no bound on how near. Visa has two such entries in total, none
+  after 2024, so FY2025 matched a years-old ~469M against a real ~1.9bn and the
+  store reported **EPS 42.74 where Visa's is ~10** — pricing a mega-cap at a
+  quarter of its multiple. Alphabet publishes no such tag at all and came out
+  None. `WeightedAverageNumberOfDilutedSharesOutstanding` is a us-gaap annual
+  duration filed with the income statement, same period, same filing, and is
+  populated where the cover-page tag is not. Preferred per fiscal year; the
+  cover-page count survives only as a fallback bounded to 400 days. Measured
+  after: XOM 6.70 (actual 6.70), UNH 13.23 (~13), AAPL 7.46 (~7.6), GOOGL 10.81
+  (was None), **V now None** — honest, and strictly better than confidently wrong.
+- **Universe drawn from a dead file.** The collector enumerated tickers from
+  `ohlcv_US.parquet`, the orphan panel no scheduled job refreshes (14 Aug while
+  the scan's own store held 17 Aug), so every newly-listed ticker was invisible
+  to it indefinitely. Now the live per-ticker OHLC tree the scan writes: 7,699
+  symbols vs 7,241, and the dead parquet only as a fallback that says so.
+- **`financial_ratios.py` priced US ratios off the same dead panel** — every US
+  PE and PB was a four-day-old close over current fundamentals. Repointed to the
+  live tree (7,689 symbols, 7,357 at the 18 Aug session).
+- **`data_quality.py` audited the wrong store.** Its own "US shares/equity 53-59%
+  null" note measured `fundamentals_history/US.parquet` — 4,597 tickers, no
+  mega-caps, max fy_end 2029 from debt-maturity rows minted as fiscal years —
+  while `financial_ratios.py` was already reading the live EDGAR store. Repointed,
+  with an explicit column rename rather than hoping the two schemas coincide.
+  Measured after: 5,862 tickers, equity 97.1% non-null, eps 80.1%.
+- **Registered `fundamentals.US` in `data_catalog`**, graded on COLLECTION AGE
+  rather than trading session — a 10-K arrives once a year, and grading it
+  against yesterday's close renders the row permanently red, which is how a real
+  signal gets trained out of the operator.
+
+Note the US **price** gap that prompted this closed itself at 08:46 via the
+`quarter-hourly-refresh` job, which re-ran the US scan; all three US price stores
+reached the 18 Aug session. The orphan `ohlcv_US.parquet` stays stale by design —
+retire it or give it a writer.
+
+## 2026-08-19 — freshness is a property of the session, not of the write time
+
+The 03:00 data phase ran on battery. `caffeinate -i -m` does not hold off
+*maintenance* sleep on battery, so the Mac slept 7 times mid-run (0 on 08-17 and
+08-18, when it was plugged in); the phase took 112 min against a 21.9-min
+baseline, 3,872 US tickers failed their incremental refresh on a yfinance SQLite
+cache error, and **77.1% of the US scan's prices were the 17 Aug close**. The
+reconcile gate caught it and suppressed the send — correctly, and as the last
+line of defence, by which point the collection window had closed.
+
+Everything upstream of that gate reported success, and each did so honestly by
+its own metric: the workbook was named `..._20260819_0459.xlsx`, its mtime was
+that morning, `market_ingest.py --status` read `us … 2026-08-19, 0d, ok [fresh]`,
+and the self-heal test — "does today's workbook exist?" — passed. Rows had
+arrived on time. They described the wrong session.
+
+- **DECISION: grade data by the SESSION it contains, not the time it was
+  written.** New `market_sessions.py` holds each venue's close *and* a
+  publication lag, so `expected_session(mkt, at)` is the newest session that has
+  both closed and been published. Before the lag elapses the answer is the prior
+  session — asking for a bar the source has not finished publishing is how you
+  get a partial bar, which is the same failure in a different costume.
+  *Rejected:* deriving the expected date from the data itself. The clock must not
+  be derivable from what it judges, or a stale store defines its own correctness.
+- **DECISION: probe the MEDIAN unit, not the max.** A max-like reading is what
+  let 66% staleness report as fresh — a handful of symbols refreshed and the
+  maximum moved. The median only moves when the bulk of the store moves, which
+  is the property actually being asserted. `n_at_expected` is reported alongside
+  so a partial refresh reads as partial.
+- **DECISION: recover a scan's session from its PRICES.** `data_state.py` matches
+  workbook LTPs back against dated bars in the price store. Filename and mtime
+  both agreed with each other on 08-19 and both were wrong; a price cannot lie
+  about which bar it equals. *Rejected:* trusting the `_YYYYMMDD_` filename tag.
+- **DECISION: collection becomes a precondition, not a schedule.** `ensure_fresh.py`
+  plans the minimum dependency-ordered set of refreshes that closes the gap
+  between what the stores hold and what has published as of *now*, so a brief
+  requested at any hour collects up to that hour. The 03:00 job becomes an
+  optimisation rather than a single point of failure. Bounded by `--max-minutes`,
+  and anything not attempted is *reported* as not attempted — silent truncation
+  would recreate the failure it exists to prevent.
+- **DECISION: the self-heal test is now session identity, not file existence.**
+  `data_state.py --require-current scan.IN scan.US` fails on a one-session gap
+  (stricter than `--strict`, which ignores CHECK): one session behind is fine for
+  a research panel and unacceptable for prices a brief quotes this morning.
+  Verified against 08-19's real state — exit 1, root cause `cache.ohlc.US`.
+  Note the shell form is `VAR="$(cmd)"; rc=$?`, never `cmd | tail`, whose status
+  is the pipeline's last command and would always look like a pass.
+- **DECISION: the reader is told which session, not when we looked.** `_as_of_html()`
+  reported the scan file's mtime — "🇺🇸 US · last close at scan time · scanned
+  19 Aug 04:59" — above 17 Aug prices. Both halves true, together misleading. It
+  now names the session, venue, close time in the venue's own zone, source, and
+  distance behind, and leads with the staleness rather than burying it.
+- **New `price_quality.py`** (distinct from `data_quality.py`, which validates the
+  *fundamentals* warehouse): flatline, coverage, range, dupes, nulls, gaps, schema
+  over the price stores. FLATLINE is the carry-forward detector — the NVDA 225.01
+  case, where the snapshots table held correct dates, correct row counts and a
+  frozen price.
+  - Two metrics were **corrected before being trusted**. Coverage counted every
+    symbol a panel had ever held, so a decade of delisted scrips made India read
+    42% behind on a day it was current; it now measures only symbols that traded
+    in the *prior* session. The duplicate key ignored India's `_exch` column,
+    reporting 552,797 "duplicates" that were all legitimate NSE/BSE dual
+    listings. Both cut the audit from 11 failures to 5. A check that fires on
+    healthy data is one the operator learns to skip past.
+
+Found while building, all previously invisible: three US price stores at three
+different vintages with nothing comparing them (`ohlcv_US.parquet` is an orphan
+no job refreshes); `warehouse.ohlcv.EU` two sessions behind; `ohlcv_JAPAN.parquet`
+holding a bar for a session still trading; `market_daily.snapshots` stamping rows
+for unclosed sessions; and ~1% structurally invalid rows in the EU warehouse panel
+(2,064 non-positive closes, 2,015 bars with high < low, 33,687 closes outside
+their own range), concentrated in a few illiquid Nordic/London names since 2016.
+
+**Still open: the battery gap itself.** `caffeinate -i -m` is not sufficient on
+battery and this recurs every night the Mac is unplugged. Needs an on-battery
+pre-flight gate or an assertion that actually holds.
+
+## 2026-08-18 — the send gate had two witnesses giving one testimony
+
+The brief's price gate cross-checked the India scan against `yfinance` and
+`screener.in`. Measured over the ledger's 115 checks to date, both are the NSE
+close arriving by different pipes:
+
+    yfinance      63 checks   89% returned our number EXACTLY
+    screener      52 checks   48% returned our number EXACTLY
+    alphavantage   6 checks    0% (added this day)
+
+The proof is in the float artifacts. yfinance answered `1969.300048828125`
+against our `1969.3` — precisely `float32(1969.3)`, our own value round-tripped
+through someone's 32-bit float, not a price observed a second time. screener's
+non-zero half is its documented 4-significant-figure rounding (`1415.3 → 1415`),
+also not a second opinion. So the gate would have agreed with itself whatever NSE
+published, while `response_rate` and `agree_rate` both read 100% — the two
+metrics that look like a track record are exactly the ones an echo aces.
+
+- **DECISION: judge a source by `echo_rate`, not by agreement.** New column in
+  `report()`, printed first and flagged `⚠ ECHO` at ≥80%. Agreement was never
+  evidence of independence and should stop being read as though it were.
+- **DECISION: retire screener.in, register Alpha Vantage (`.BSE`).** Requested
+  independently, but the measurement justifies it: `.NSE` returns an empty series
+  on Alpha Vantage and only `.BSE` resolves, so the replacement reaches the market
+  through a *different exchange*. Measured basis against our NSE close over the
+  gate's own six names: worst 0.263% against a 2.0% tolerance. `_screener()` is
+  kept working and unregistered, same treatment `_stooq` gets.
+- **REJECTED: adding more aggregators to widen the quorum.** An Indian equity's
+  close is defined by the exchange's matching engine — an administrative fact NSE
+  publishes, not a measurement anyone can take twice. Every aggregator
+  redistributes that fact, so a third NSE-quoting source adds a column to the
+  ledger and no information. Tested and rejected the same day: EODHD (free plan,
+  no India, 404), stooq (still HTML not CSV — the 08-12 finding holds), nsepython
+  (`equity_history` needs browser cookies), MoneyControl (endpoint dead), Hugging
+  Face (3 India datasets of 100 scanned, all static bulk dumps — a snapshot hub
+  structurally cannot serve yesterday's close), `jugaad-data` (maintained, but
+  reads NSE bhavcopy, i.e. the scan's own source — circular), `yahooquery` (Yahoo
+  again), `bsedata` (live-quote only, fails the date-anchored rule), `investpy`
+  (dead since 2022). Twelve Data covers India and is the one worth an account —
+  **and only if pointed at a non-NSE exchange.**
+- **Known limit, deliberately accepted:** two witnesses means a tie counts as a
+  mismatch, so one odd vote suppresses the send. That was equally true of the old
+  pair. Alpha Vantage's free tier is 25 requests/day and one run costs ~6, so any
+  second consumer of that key silently starves the gate; a quota refusal arrives
+  as HTTP 200 with a prose note, which is now mapped to an error so the source
+  drops out of the quorum instead of reading as "no data".
+
+## 2026-08-18 — the India fundamental screeners returned the same picks for weeks
+
+`FRESH_DAYS = 30` in `fundamentals_offhours.py` against `build_mailer.py`'s 10-day
+STALE banner: two numbers disagreeing about what fresh means. 6,437 of the store's
+6,595 rows were collected in one bulk run on 2026-07-22, so under a 30-day window
+every one of them counted fresh until 08-21 — nightly runs refetched ~10 names
+while 1,325 sat frozen, and Piotroski / Coffee Can / Magic Formula / Bull Cartel
+screened 27-day-old financials daily. Measured: `fresh 1333 | to collect 56`, of
+which 54 had never been collected at all. Two real refreshes per run.
+
+- **DECISION: `FRESH_DAYS` 30 → 7, below the banner's threshold**, turning one
+  bulk-then-freeze sawtooth into a rolling ~190 names/day.
+- **DECISION: order the queue stalest-first**, tie-broken by the existing hash
+  order — `sorted` is stable and the bulk cohort is one large tie, so the
+  alphabet-spread guarantee survives (25 distinct first letters in the first 400).
+- **REJECTED: leading with never-collected names.** Tried first, and wrong: a name
+  with no rows is overwhelmingly one yfinance cannot serve, an empty fetch writes
+  no row, so all 54 would have parked permanently at the head of every run — and
+  the loop treats 60 consecutive empties as throttling and aborts. Let that cohort
+  pass 60 and every run would stop at name 60 having collected nothing, reporting
+  a throttle that never happened. They sort last.
+
+## 2026-08-08 — data_index reported six datasets STALE forever; they were never stale
+
+`data_index.py` flagged `scan.india/us/europe/japan/korea` and `report.combined`
+as STALE every single day, while printing `newest is 0.0d old` in the same line.
+All six had that morning's file. The brief built from them and went out fine.
+
+Cause: one rule applied to two different dataset shapes. `_coverage()` requires
+80% of a directory's files to be within `max_age_days` — correct for a MIRROR,
+where the set is one logical snapshot spread over many files, and where the
+newest member lies (2026-07-20: a US OHLC refresh advanced 2,658 of 7,641
+tickers, `max(mtime)` said fresh, the gate passed over a 57%-stale cache). But
+the scan directories are ARCHIVES: each run writes a *new* timestamped workbook
+and leaves yesterday's alone. Retaining 17 daily workbooks scores ~12% within
+1.5d on a day the writer is working perfectly. Coverage cannot be satisfied by
+an append-only directory, so those six were pinned to STALE permanently.
+
+Six standing false alarms is worse than no check — it is what trains an operator
+to skim past the two lines that matter. The run that prompted this had 10
+flagged datasets, of which 6 were structural noise.
+
+- **DECISION: add a `shape` field, do NOT relax `COVERAGE_REQUIRED`.** The
+  obvious fix — lower the 80%, or judge everything on the newest member — walks
+  straight back into the 2026-07-20 bug. The two shapes need two rules, so the
+  registry now declares which one each dataset is. `MIRROR` stays the default:
+  a dataset is coverage-judged unless it says otherwise, so the failure mode of
+  forgetting to classify a new dataset is a false ALARM, not a false all-clear.
+- **DECISION: ARCHIVE is judged on the newest member alone.** For an append-only
+  directory the only meaningful question is whether the latest run landed; its
+  old members are history and carry no staleness information.
+- Marked exactly the six demonstrable archives. Anything whose writer rewrites
+  files in place stays a MIRROR — `cache.ohlc`, `intl_pit.cache` and the
+  correlation outputs are unchanged and still coverage-judged.
+- Verified in both directions, because "always OK" would be the worse bug: an
+  archive whose latest run is 5d old still reports STALE; an archive with 1 fresh
+  + 16 old members reports OK; and a MIRROR with a brand-new file but 90% of
+  members 4d old still reports STALE (the 2026-07-20 case, unregressed).
+
+Report goes from 10 stale/missing to 4, and all 4 are real.
+
+## 2026-08-07 — Unbounded RSS fetch cost a full day's brief; timeout added at two layers
+
+The 03:00 data phase fired on time, ran steps 1–4 clean, entered step [5/13]
+(`daily_combined_report.py --market IN --html`) at 03:47 and never came out. At
+08:23 it was still there: 4h50m elapsed, 0.0% CPU, one ESTABLISHED HTTPS socket
+to an Akamai edge and no bytes moving. It held `/tmp/daily_pipeline.lock` the
+whole time, so the 06:30 send hit the lock, printed `already running (pid 283)`
+and **exited 0** — launchd recorded success for a job that did nothing, and no
+brief went out. The same call completed in **7 seconds** on re-run, so this was a
+transient stalled socket, not a reproducible break.
+
+Root cause was NOT in `daily_combined_report.py`, where the symptom appeared. All
+four REST sentiment providers already pass `timeout=15`. The uncapped call was
+`feedparser.parse(url)` in `sentiment_pipeline.py:_all_entries()` — feedparser
+fetches through `urllib`, which has no default timeout, and `get_market_mood()`
+routes straight to it. The surrounding `except Exception` is no defence: a hang
+is not an error.
+
+- **Layer 1 (the fix).** `feedparser.parse(url)` → `feedparser.parse(requests.get(
+  url, timeout=RSS_FETCH_TIMEOUT).content)`. feedparser parses content as happily
+  as a URL, so behaviour is unchanged (verified: 214 live entries still parse); a
+  timeout now *raises*, so the existing handler degrades that one feed to `[]`.
+- **Layer 2 (the backstop).** A hard `STREET_TALK_TIMEOUT` (default 300s, ~40x the
+  healthy 7s) around the whole street-talk component in `get_street_talk`, so any
+  *future* uncapped call downstream also degrades instead of wedging. Component 2
+  is optional colour — the report already renders with an empty talk dict.
+- **DECISION: daemon thread, not `signal.alarm`, for layer 2.** SIGALRM was the
+  obvious choice and is wrong here: the RSS path wraps each feed in
+  `except Exception`, so the alarm's exception would be caught and discarded and
+  the loop would sail on to the next feed. A thread caps by wall clock without
+  needing the callee to cooperate, and `daemon=True` means an abandoned wedge
+  cannot keep the process alive.
+- **DECISION: fix layer 1 as well, rather than rely on the backstop alone.** The
+  cap turns a 4h50m outage into a 5-minute delay, but only layer 1 keeps the
+  sentiment data itself intact — a capped run silently loses market mood for the
+  day, which is a quieter failure than the one being fixed.
+- Both bounds are env-tunable (`RSS_FETCH_TIMEOUT`, `STREET_TALK_TIMEOUT`) so a
+  slow-feed morning can be widened without a code change.
+
+**Same day — per-step wall-clock ceiling in `daily_mailer.sh`.** The socket fix
+above closes one call in one step; this closes the class. A `cap <secs> <label>
+<cmd…>` helper wraps all 23 `$PY` invocations and returns 124 (GNU timeout's
+convention) when a step overruns, so every existing `|| FAILURES+=(…)` handler
+fires unchanged and the alert email still goes out — with an explicit `TIMEOUT:`
+entry naming the step, because "India: combined report" in an alert otherwise
+reads as a crash when it was a hang, and those point at different bugs.
+
+- **Budgets are measured, not guessed** — set from the worst case observed across
+  every run in this directory (`n` recorded per step in the source), then widened
+  to a multiple of it. A ceiling that clips a merely slow day would be worse than
+  no ceiling: it would fail runs that were going to succeed. Longest is [7/13] US
+  scan at 5400s against an observed max of 2783s.
+- **DECISION: kill the descendant tree, not just the child.** A bare `kill` on the
+  direct child orphans grandchildren to init, and several steps shell out —
+  [5/13] can spawn a whole scan via `subprocess`, [7/13] runs a worker pool. The
+  helper recurses through `pgrep -P` deepest-first, then escalates TERM→KILL after
+  a 5s grace. Verified: a 3-deep tree leaves zero orphans.
+- **DECISION: the send gates fail SAFE under the ceiling.** A timed-out reconcile
+  counts as a failed reconcile; a timed-out validation leaves `VALIDATE_OK=1` and
+  suppresses the send. A gate that cannot finish must never read as a gate that
+  passed.
+- **Accepted risk on `[SEND]`.** `send_mailer` has no already-sent guard, so
+  killing it mid-SMTP could half-deliver and a retry would double-send. Capped at
+  900s (~14x the ~65s it takes) anyway: a send that has not returned in 15 minutes
+  is wedged, and an unbounded hang there is precisely the failure being fixed. If
+  it ever trips, check `state/last_brief_sent.json` before re-running.
+- NOT added: a global deadline for the whole data phase. Per-step ceilings sum to
+  more than the 03:00→06:30 window in the pathological all-steps-hang case. That
+  case has never occurred and a global cap would need a policy for which steps to
+  sacrifice; deferred rather than guessed at.
+
+Still open: `pmset -g sched` reads `wakepoweron at 0:10AM`, aimed at the
+`dailybrief` job retired 2026-07-29 and never moved ahead of the 03:00 slot.
+
+## 2026-08-05 — Piotroski tests 5 and 7 corrected in all five market scans
+
+Triggered by a comparison against screener.in's Piotroski-9 screen (`/screens/2/`).
+Scored 490 of its 499 names (195 BSE-only numeric codes via yfinance `.BO`, 304
+NSE-style via the store / `.NS`) and instrumented all nine tests separately.
+Finding: only 4% of lost points were missing data — the rest were real comparisons,
+and the two **level** tests passed ~100% while every **year-over-year delta** test
+bled points. Two of those deltas were scoring 0 on data that is not a failure.
+
+- **Test 5 (ΔLeverage) penalised debt-free companies.** `ltd = _row(...) or 0` turns
+  an absent "Long Term Debt" line into 0, so the test evaluated `0/a0 < 0/a1` →
+  `0 < 0` → False. A firm scored 0 on a leverage test *because it carries no
+  leverage*. Worst offender: 42% of names lost this point, 36% of those debt-free.
+- **Test 7 (no dilution) counted ESOP vesting as an equity raise.** 22 of 31 raw
+  failures were share-count increases under 2% (EUREKAFORB failed on **+0.01%**);
+  two more were a clean 2.0x bonus issue and a 1.55x. None is a capital raise.
+- **A clean share-count multiple alone does NOT identify a bonus issue** — caught
+  when the first cut of this fix rescued IDEA (1.52x). On the India universe the
+  ratio-only rule rescued 9 names of which only 3 were real bonus issues; it also
+  passed COHANCE (equity 2.31x) and MIRCELECTR (1.89x), which are plainly raises,
+  and ALLCARGO (equity 0.24x) and IDEA (0.51x), which are restructurings. A bonus
+  issue reclassifies reserves into share capital, so TOTAL equity is unchanged,
+  whereas a rights issue brings cash in. The split branch now also requires equity
+  within `SPLIT_EQUITY_BAND` (0.85–1.15); missing equity means no rescue, i.e. the
+  pre-fix behaviour. Corrected exactly those 6 back to baseline, kept SHILPAMED /
+  ASIANTILES / BEML. DECISION: gate on equity rather than drop the branch — 3 real
+  bonus issues would otherwise be scored as dilution.
+- Both fixes live in `stock_utils.leverage_improved()` / `no_dilution()` and are
+  called by all five `full_*_market_scan.py`. DECISION: shared helpers, not five
+  copies — the bug existed identically in all five, and a per-market divergence in
+  what "Piotroski 7" means is worse than the bug.
+- DECISION: fix all markets, not just India. REJECTED "India-only" — the same score
+  name would then mean two different things across the daily brief's markets.
+- Measured effect on screener.in's 9s (n=490): agreement at ≥7 **77% → 86%**, at
+  ≥8 44% → 53%, exact-9 12% → 17%. Verified end-to-end: all 154 store-backed India
+  names reproduce the predicted score through the patched `fundamental_scan()`,
+  39 moved, 0 mismatches.
+- **Re-ran the India scan** (`scan_bhavcopy.py`, which calls this
+  `fundamental_scan`) on unchanged 2026-08-04 EOD, so the delta is purely the
+  scoring change: **472 of 1,314 names up, 0 down** (the fixes can only turn a 0
+  into a 1 — a fall would be a bug). `>=7` **314 → 405**, `>=8` 127 → 186, `==9`
+  28 → 41, **Triple_Hits 39 → 57**. Spot-audited the gainers: MARUTI, TECHM,
+  PERSISTENT, HEROMOTOCO, EUREKAFORB are genuinely debt-free; the test-7 gainers
+  are +0.006%–0.5% ESOP drift. ⚠️ `Piotroski >= 7` is now a materially wider gate
+  — 91 more India names clear it, which flows into Triple_Hits and the brief.
+- NOT changed, deliberately: tests 8 (ΔGross margin) and 9 (ΔAsset turnover), the
+  next two biggest point-losers. Spot-checked the arithmetic — the failures are
+  real (assets outgrowing revenue on every sampled name, e.g. MWL revenue +13.9%
+  vs assets +46.0%). We are stricter than screener.in on capex-cycle names and
+  that is correct behaviour, not a bug. The residual disagreement is methodology.
+- ⚠️ **Any Piotroski backtest predating this commit is now stale** — in particular
+  the "US Piotroski is inverted" result, which was computed under the old test 5/7.
+  Re-run before citing it.
+
+## 2026-08-05 — bhavcopy_cache de-duplicated; cold data moved to Dropbox
+
+- **`BHAV_CACHE` default repointed** from `~/Downloads/data/bhavcopy_cache` to the
+  canonical `~/market-pipeline/data/bhavcopy_cache` in all 6 scripts that hard-coded
+  the old path (build_mailer, ipo_monitor, liquidity, market_calendar, ohlcv_cache,
+  screener_kit) + 2 stale path comments. The two dirs held the same data twice
+  (~1.7 GB); the market-pipeline copy is fresher (daily pipeline writes there) and a
+  verified superset (0 Downloads-only files) and is already mirrored to Dropbox
+  (`bhavcopy_cache` tree). Deleted the Downloads copy → −854 MB. DECISION: repoint the
+  default, don't just delete — 6 standalone-run scripts defaulted to the Downloads path.
+- **Cold/large data moved off local to Dropbox** (disk was 92% → 86%, 30 GB free):
+  `repos/branch-archives/*.bundle` (1.4 GB pre-rewrite git safety bundles, were
+  local-only) → `dropbox:market-data-archive/archives/branch-archives/`;
+  `Downloads/data/{china,hk}_scan` matrices (117 MB, no other copy) →
+  `.../current/correlation_matrices/`. Deleted stale `IN.parquet.bak` (67 MB, byte-identical
+  to the live file). LEFT ALONE: repo-tracked `ltm/`/`warehouse/` parquet (moving breaks checkouts).
+- **Follow-through (same day, disk 92% → 75%, ~37 GB total):** MemPalace (5.9 GB, dormant 14 d,
+  redundant with MEMORY.md/ruflo) → Dropbox + plugin disabled; unused Homebrew packages
+  (llvm/julia/flink/pytorch/kafka/…, −5.3 GB); LM Studio orphan (1.3 GB); stale Claude agent
+  worktrees (2 GB); `global-market-data` LFS cache 1.2 GB → 16 KB by deleting two triply-archived
+  pre-rewrite branches (`old-main*`) + `git lfs prune`. All reclaim from redundancy — nothing live.
+
+## 2026-08-02 — Disk reorganisation: stats, a redundant index, workbook retention
+
+Volume is 79% full (44 GB free of 228). Postgres turned out to be a **disk** problem,
+not the memory problem I had assumed: `shared_buffers` is 128 MB, `work_mem` 4 MB — all
+stock defaults — and total postgres RSS is **10 MB**. The cluster is 22 GB on disk.
+
+- 🔴 **`autoanalyze` was `None` on every large table.** The planner had *zero* statistics
+  on a 38.4M-row table, which is why they all reported "0 live rows" and why an ordinary
+  three-table join timed out at 600 s. `ANALYZE` on six tables took 22 s; `ohlcv_history`
+  now correctly reports 38,427,645 rows. Nothing was wrong with the data — only with what
+  the planner knew about it.
+- **Dropped `idx_ohlcv_stock`** — 443 MB, **0 scans**, and a strict prefix of
+  `idx_ohlcv_stock_date` which has 223,176. Verified free-standing (no constraint, no
+  inbound FK) before dropping, and `DROP INDEX CONCURRENTLY` so no reader blocked.
+  Recreate with `CREATE INDEX idx_ohlcv_stock ON public.ohlcv_history USING btree
+  (stock_id)`. Index total 6516 → 6074 MB.
+- **`scan_retention.py`** — 175 workbooks / 111.8 MB reclaimed. **Deliberately not
+  `find -mtime -delete`**: `market_ingest.ingest_snapshot()` globs every workbook and
+  appends "every date not yet in the table", so a *not-yet-ingested* day deleted on age
+  alone vanishes from `market_daily.snapshots` permanently, and the gap is
+  indistinguishable from a day the scan never ran. A file is expendable only when its date
+  is **already ingested** AND older than `--keep-days`. Superseded same-day re-runs (files
+  outnumber dates 39–48 to 15–17) go first. The run reported **0 un-ingested**, and both
+  mailer reconcile gates still pass afterwards.
+
+### `ohlcv_history` — 12 GB, and the case for moving it off Postgres
+
+Not actioned, recorded for a decision. It is **12 GB (5.8 heap + 6.5 GB indexes) for 38.4M
+rows**; the parquet warehouse holds the same 37.4M rows in **846 MB** — 14×.
+
+- It is **derived, not upstream**. `load_ohlcv_to_warehouse.py` *writes into* it from
+  `repos/global-stock-screener/cache_seed/ltm/{US,JP,KR}.parquet` — **490 MB of sources
+  that still exist**. So it is reconstructible by a script already in the tree.
+- That loader is **not in any pipeline script** — manual/one-off. Nothing writes it nightly.
+- Its only nightly reader, `data_index.py:120`, runs `SELECT market, MAX(price_date)` and
+  **those columns do not exist**; the failure is swallowed by a bare `except` returning
+  `{}`. It has never worked against this schema.
+- ⚠️ `completeness_graph.py:87` asserts "ohlcv_history has no writer anywhere in this repo".
+  That is **wrong** — `load_ohlcv_to_warehouse.py` is in the same directory.
+
+Before reclaiming it, confirm no external consumer (the K8s event-driven platform) reads
+it. The broken `data_index.py` query is a real bug regardless of the storage decision.
+
+## 2026-08-02 — Cassandra stopped for the nightly window (8GB box, jetsam)
+
+Claude Code was being killed by jetsam. The 08:54 crash report named the cause without
+ambiguity: `"largestProcess" : "claude"`, `"free" : 7213` pages (~118 MB),
+`"compressorSize" : 224414` (~3.6 GB compressed). The machine is an **8 GB M1** with
+2.87 GB of 4 GB swap committed. At one measurement it had **50 MB free**.
+
+Cassandra runs `-Xms4096M -Xmx4096M` and **nothing in the nightly chain queries it** —
+`ingest.sh`, `daily_mailer.sh` and `daily_research.sh` never touch it; the only nightly
+reference is `system_state.py`'s reachability check. So it is stopped 00:05 → 09:00.
+
+- **`scripts/cassandra_window.sh {stop|start|status}`**. Liveness is decided by port 9042
+  via `lsof`, **not** by the process table or `brew services list` — those report the
+  launchd job's *intent*, and a JVM can be up ~30 s before it accepts CQL.
+- **Must go through `brew services`.** The plist sets `KeepAlive=true`, so killing the
+  process just has launchd restart it seconds later. Only unloading the job keeps it down.
+- **The start job is on the CLOCK, not chained to the pipeline.** Rejected hanging it off
+  the end of `daily_research.sh`: a crashed or skipped run would then leave Cassandra down
+  all day, and since the web app and the whole `herrrickshaw` keyspace depend on it, that
+  reads as a data bug rather than a service nobody restarted. `RunAtLoad` additionally
+  covers a reboot inside the window. The script is idempotent (exits when 9042 listens).
+- 🔴 **The 4 GB heap is NOT what you get back, and the first version of this script claimed
+  it was.** `-Xms` reserves address space; macOS backs only touched pages. Measured:
+  swap 2876→2716 MB (−160), compressed 2.10→1.93 GB (−170), free RAM unchanged; restarting
+  put ~700 MB of compressor back. Honest figure: **~0.3–0.7 GB of relieved pressure, not
+  4 GB.** Worth having for free on a box at 50 MB free, but the `warehouse_update` DuckDB
+  pushdown (1.63 GB → 433 MB) was the larger lever by ~4×.
+- **The plists are NOT in git** — `Library/` is gitignored, so the schedule lives only on
+  this machine. Reproduce with `com.umashankar.cassandra-stop` (`StartCalendarInterval`
+  Hour 0 Minute 5) and `com.umashankar.cassandra-start` (Hour 9 Minute 0, `RunAtLoad`),
+  both invoking the script above. Verified end-to-end via `launchctl kickstart`, not by
+  reading the files back.
+
+## 2026-08-01 — Who actually buys stocks: capital-source review by market
+
+`reports/equity_capital_sources.md` — literature review of public sources on where equity
+demand originates per market, and how much is debt-financed. **Literature only, nothing
+recomputed**; every figure is tagged ⓟ primary (Fed Z.1, SEBI, AMFI, FINRA, BoJ, NPS) or
+ⓢ secondary (press reporting those figures), so the evidence grade is visible per claim.
+
+- **The framing correction that matters.** "DII money is sourced via debt" is only partly right.
+  The bulk of Indian DII inflow is **intermediated household savings** — SIPs, EPFO/NPS, insurance
+  premiums — which is *sticky* and payroll-linked. Debt sits **on top** as a leveraged retail
+  overlay (MTF, F&O). The distinction is the whole point: the savings layer is why drawdowns get
+  absorbed, the leverage layer is why they sometimes accelerate.
+- **India — the crossover happened.** DII holdings ₹71.76 lakh crore, FII:DII ownership ratio
+  below 1 at 0.98 (31 Mar 2025); DII net ₹6 trillion in CY2025, highest since the series began in
+  2007. Apr 2025–Apr 2026: **₹3.8 lakh crore FII selling absorbed by ₹8.85 lakh crore DII buying**
+  with the Nifty holding. SIP flows ₹3,17,502 crore FY2025-26, ~7× the FY2016-17 level.
+- **The debt overlay, quantified where public**: SEBI caps MTF at 50% funding, ~14–18% annualised
+  interest, 4–5× marketed buying power. SEBI's own F&O profit/loss study (25 Jan 2023) is the
+  authoritative source on retail derivatives outcomes.
+- **US — the buyer is the issuer.** Buybacks are the largest single source of net equity demand,
+  with some analysis arguing they are effectively the *entire* net demand over two decades.
+  Leverage: FINRA margin debt (Rule 4521) ~$1.502tn Jun 2026, reported 102.8% above long-term
+  average and +49% YoY — the rate of change matters more than the level for forced-selling risk.
+- **Japan — the central bank is a shareholder.** BoJ overtook GPIF as the largest owner of Japanese
+  stocks (¥45.1tn vs ¥44.8tn) via ETF purchases. Retail back to ~25% of trading value, a 12-year
+  high. Note turnover ≠ ownership: foreigners dominate trading while owning a minority of float.
+- **Korea — the most retail-driven major market.** Retail is **64% of transaction value** vs ~30%
+  in US/Japan. NPS equities passed 50% of assets for the first time — but 36.8% overseas vs 14.8%
+  domestic, i.e. Korea's biggest institution is increasingly a buyer of *foreign* equities.
+- **Europe is the acknowledged gap** — the searches surfaced little, and no primary figure is
+  cited rather than inventing one.
+### `equity_ownership.py` — ownership table built; half of it is measured, half is not
+
+`reports/equity_ownership_table.md`. **Every cell is tagged 🟢 computed or 🟡 cited**, because
+mixing a measured share with a press figure in one table is the main way this could mislead.
+
+- **🟢 US ownership is genuinely COMPUTED** from Fed Z.1 (L.223 direct holders) via FRED, 145
+  quarters 1990–2026Q1, $106.9tn outstanding, shares summing to 100.0%: households (residual) 46.1%,
+  foreign 18.2%, mutual funds 15.4%, ETFs 10.1%, private pensions 4.8%, state/local pensions 3.4%.
+  Households are a residual — that is how the Financial Accounts derive the sector, not a shortcut.
+- **The ten-year drift is the real finding**: mutual funds **−7.1pp**, ETFs **+5.0pp** — the
+  active→passive shift, visible directly in ownership rather than inferred from fund-flow
+  commentary. Foreign +3.9pp, state/local pensions −2.4pp.
+- **🟡 India, Japan, Korea CITED not computed**, with the stock/flow distinction made explicit:
+  Japan's foreigners own ~30% of float but the majority of turnover; Korea's retail is 64% of
+  transaction value. Reading an ownership table as "who moves the market" is the standard error.
+- **Europe left blank rather than guessed** — no primary source reached.
+- **🔴 Data access, tested and recorded in `--sources`.** WORKS: FRED Z.1; NSE
+  `/api/fiidiiTradeReact` (needs a cookie handshake). DOES NOT: NSE's `date=` parameter is accepted
+  and **silently ignored**, so the FII/DII store is **append-only and cannot be backfilled**;
+  `historicalOR` 404s; every AMFI SIP endpoint tried 404s (site renders client-side);
+  `api.bseindia.com` returns HTML. Three FRED IDs from the first attempt (`BOGZ1LM153064105Q` and
+  others) 400'd — the corrected set is in the module.
+- **Rejected: scraping a number into the SIP column to complete the picture.** SIP figures stay
+  cited in `equity_capital_sources.md` until a real endpoint is wired. An unsourced cell in a table
+  like this is worse than an empty one.
+### Quarterly flow proxy built — the absorption claim now has a measured direction
+
+`--flow`. Implied flow from the ownership series + the price panel, since no free source serves
+historical daily FII/DII (routes exhausted, below).
+
+- **Two bugs found and fixed while building it, both material.**
+  1. **Raw vs adjusted prices.** Backcasting market cap off `warehouse/ohlcv/IN` produced quarterly
+     "market returns" of −24.7% and +15.9% for a large-cap panel — corporate-action artifacts, since
+     that panel carries UNADJUSTED closes and a split reads as a price collapse. Switched to
+     `ohlcv_adj/IN` (the `price_adjuster.py` build); returns became a plausible −13.3%..+15.7%.
+  2. **A single panel return leaves a composition artifact.** It reported a **+₹158,147 crore
+     promoter "inflow" in Jun 2026 while the promoter SHARE was flat at 47.2%** — differential
+     performance of promoter-heavy names, not a single share bought. Fixed by applying the identity
+     PER COMPANY with its own return, which collapses algebraically to
+     `flow_i = Δpct_i × mcap_i(t)` because the price term cancels exactly. Same figure became
+     +₹3,104 crore.
+- **Result, 11 quarter pairs, ~50 liquid large caps (₹ crore):** cumulative **FIIs −155,420,
+  DIIs +334,423**, promoters −124,141, public −58,413.
+- **The absorption behaviour is measurable, not just asserted**: DIIs positive in **10 of 11
+  quarters** with **corr(flow, market return) = −0.50** — they buy weakness. FIIs are the mirror at
+  **+0.38** — they buy strength. That is the mechanism behind the press narrative, independently
+  measured.
+- **What it is NOT**: implied flow, not observed cash. Share COUNT is assumed constant, so buybacks,
+  QIPs and fresh issuance are indistinguishable from trading; quarterly, so everything intra-quarter
+  nets out; ~50 large caps, not market-wide. Directionally useful; not a substitute for the real
+  daily series.
+
+### Follow-up: SIP endpoint found, India ownership computed, flow history exhausted
+
+- **AMFI SIP: SOLVED.** Not an API — `amfiindia.com` is Next.js server-rendered (28 JS chunks
+  scanned, one path found, all `/modules/...` 404). Real channel is static PDFs at
+  `/Themes/Theme1/downloads/AMFIMonthlyNote_<Month><YYYY>.pdf`. 13 months parsed, ₹21,000 →
+  ₹28,265 crore. **The first parser was wrong**: an unanchored regex returned 33,430 for Aug 2025,
+  which is the EQUITY FUND inflow appearing earlier in the document. Now SIP-anchored with a
+  plausibility range; returns None rather than a wrong number. Validated twice — Aug 2025 verbatim,
+  and Aug 2024 = 23,547 matching the year-ago base quoted inside the Aug 2025 note.
+- **India OWNERSHIP: SOLVED via screener.in** (`--inown`). Cap-weighted over 52 liquid large caps,
+  12 quarters: promoters 54.0→47.2%, FIIs 19.4→20.0%, **DIIs 15.3→20.6%**. The crossover measured
+  independently rather than taken from the press. Scope stated: liquid large-cap segment only, so
+  promoter share is biased down; quarters under 30 companies dropped (Jul 2026 arrived as n=1,
+  reporting one company's 72% promoter stake as the market's).
+- **FII/DII FLOW history: NOT SOLVED, routes exhausted.** NSE ignores its `date` param; BSE's API
+  returns XHTML errors and the host is browser-blocked; NSDL `Latest.aspx` is richer than NSE
+  (equity/debt-VRR/debt-FAR/hybrid, INR+USD) but current-day only with all date params ignored;
+  `ReportDetail.aspx` renders `ddlSubReports` as an empty `<select></select>` with the list injected
+  client-side, and `ReportsListing.aspx` has no ReportDetail links to copy; `fpi.nsdl.co.in` is
+  denied by browser policy. **Next option, not built**: derive quarterly flow from the ownership
+  series — Δ(FII% × market cap) with a market-return adjustment to strip the price effect. Quarterly
+  proxy, not a daily series.
+
+## 2026-07-31 — Bond↔equity linkage measured; three of four hypotheses came back NULL
+
+`bond_equity_entropy.py` runs the two entropy directions the literature actually supports, plus
+the two practical questions behind them, on S&P 500 + the full Treasury curve, 1990–2026 (9,135
+days). Report: `reports/bond_equity_linkage.md`. **Most results are null, and that is the finding.**
+
+- **Estimator validated before use.** On synthetic data with a known 1-lag coupling, effective TE
+  recovers it at p=0.007, correctly rejects the reverse direction (p=0.64) and an independent
+  series (p=0.42). Raw TE on independent series reads 0.0015 — the finite-sample upward bias —
+  which the surrogate correction removes to 0.00008. Reporting raw TE without this correction
+  would have manufactured "information flow" between unrelated series.
+- **Transfer entropy found essentially nothing.** One of ten direction/period cells reached p<0.05
+  (equity→bond 2000-09, p=0.020), about what ten tests give by chance; several effective values are
+  NEGATIVE. At a 1-day lag there is no reliable directional flow. The plain contemporaneous
+  correlation (−0.165) carries more than any lead-lag measured. **Same shape as the entropic yield
+  curve rejection** — an elaborate method that does not beat the boring number.
+- **A bond selloff does not predict equity weakness.** 49 de-clustered episodes (20-session 10y
+  rise > 95th pct, +43bp): edge over unconditional is +0.24pp at 21d and NEGATIVE at 63/126/252d.
+- **No borrow-and-trade carry channel.** The opposite, if anything: dearest-funding quintile has the
+  HIGHEST forward 1y return (+12.47% vs +10.42% cheapest), and a funding shock correlates
+  POSITIVELY with forward equity returns (+0.213) — the procyclical reading, not a carry unwind.
+  The Q3 outlier (−2.20%) is period clustering (2000-02, 2007-08), not a rate effect.
+- **Crisis entropy: weakly supported, one event carrying it.** SampEn fell in GFC (−0.03), COVID
+  (−0.63) and 2022 (−0.06) but ROSE in dot-com (+0.14). Only COVID is a large move. Not merely
+  inverted volatility (corr −0.352), so it does measure something distinct — but on this data the
+  published claim rests almost entirely on one crisis.
+- **The one durable finding: the stock–bond correlation is not constant and has flipped twice.**
+  +0.34 in the 1990s (fell together), −0.23 to −0.41 across 2000–2021 (bonds hedged), +0.05 in
+  2022–2026 (hedge broke). So "what happens to equities in a bond selloff" has no era-independent
+  answer, because whether bonds hedge is itself regime-dependent. **Any allocation rule assuming
+  the 2010s negative correlation is assuming a regime that ended.**
+- **🔴 Effective sample size governs section 4.** Forward returns use OVERLAPPING windows: 9,135
+  rows over 37 years is ~37 independent observations at the 252-day horizon, not 9,135. A quintile
+  holding 1,800 "days" holds ~7 independent years. Stated at the top of the report, not in a
+  footnote, because the row counts otherwise imply precision that is not there.
+- **Rejected: reporting TE as a finding because the method is fashionable.** Held to the same bar
+  as Parker — measured against a baseline, bias-corrected, permutation-tested. It failed that bar.
+
+### Literature check, and a limitation it exposed (`reports/bond_equity_literature.md`)
+
+- **The correlation flip has a theory that matches our numbers.** Campbell, Pflueger & Viceira:
+  the stock–bond correlation sign tracks the **inflation/output-gap** correlation. Demand-shock
+  world (≈2001–2021) → recession brings disinflation and cuts, bonds rally as stocks fall →
+  negative correlation. Supply-shock world (1980s–90s, 2022–) → inflation scare means higher
+  yields *and* weaker growth, tightening into weakness → positive correlation, both fall. This is
+  why the selloff study found no era-independent answer: the question is underdetermined until you
+  know the shock regime.
+- **🔴 Our carry null is scoped, and the scope matters.** `--carry` used the **US 3-month bill**,
+  i.e. DOMESTIC funding. The carry trade that actually moves equities is **cross-currency** — a
+  yen-funded trade borrows at the BoJ's rate, not the Fed's, so our proxy moves with the wrong
+  central bank and the test was **structurally blind** to it. Absence of evidence, not evidence of
+  absence.
+- **August 2024 is the counter-example our method could not see.** BoJ hiked 0.1%→0.25% on 31 Jul;
+  weak US payrolls on 2 Aug compressed the differential from the other side; the yen rose ~6.15%
+  over 29 Jul–5 Aug; Topix/Nikkei fell **>12%** on 5 Aug (steepest since 1987), S&P −3%. The
+  equity drawdown was **not** caused by a bond selloff — it was a funding-rate convergence in
+  another currency, invisible to a US-yield analysis.
+- **Why the option re-emerged post-recovery**: carry is a function of policy DIVERGENCE, and
+  post-pandemic normalisation produced it directly — the Fed hiking into the 2022 inflation shock
+  while the BoJ held ultra-easy far longer. Reported mid-2026 as regaining momentum on renewed
+  divergence.
+- **Second reason section 4 found nothing**: carry unwinds are **convex** — quiet accumulation,
+  violent liquidation, self-reinforcing through margin calls (close position → buy back yen → yen
+  appreciates → more margin calls). A linear correlation on daily data averages the asymmetry to
+  approximately zero.
+### The cross-currency test, now run (`yen_carry_test.py`, `reports/yen_carry_linkage.md`)
+
+USD/JPY + Nikkei + S&P, 1996–2026 (7,703 sessions), with the real US−JP funding differential from
+FRED (`IR3TIB01JPM156N`, 2002+). Key read from the FRED key in the canonical credential store,
+never printed.
+
+- **Validation caught a false alarm in my own check.** The first run reported "August 2024 NOT
+  flagged". It was flagged — the episode spans 2024-07-18 .. 2024-09-10 with peak 2024-08-05
+  (+5.71% 5-day yen move). My validation window (25 Jul – 15 Aug) was simply too narrow, because
+  30-day clustering dates the episode at its ONSET (18 Jul), 18 days before the crash. Fixed to
+  test episode COVERAGE, and both datings are now reported since they answer different questions.
+- **🔴 The damage is CONTEMPORANEOUS, not forward — which is why every forward-looking test found
+  nothing.** Over the unwind window the Nikkei averages **−2.10%** (worst episode −49.37%) and the
+  S&P **−0.71%** (worst −42.69%). Forward returns from either dating are flat-to-positive
+  (peak-dated: +1.30pp edge, S&P 21d). Equities fall DURING an unwind and rebound after. **This
+  likely explains the bond-selloff null too** — that study only looked forward.
+- **My convexity hypothesis was WRONG, and the data says so plainly.** I predicted a hard fall on
+  yen appreciation with no matching rise on depreciation. Deciles reject it: strongest-appreciation
+  D10 has the BEST forward 5-day S&P (+0.51%), depreciation D1 the worst (−0.10%) — +0.61pp the
+  OPPOSITE way. The linear corr of +0.069 was not hiding an asymmetry.
+- **Carry LEVEL predicts nothing (corr +0.009); carry COMPRESSION does.** After a top-decile 63-day
+  compression of the US−JP differential — the unwind trigger — forward 63-day S&P is **−1.07% vs
+  +1.96% unconditional, a −3.03pp edge**. Largest effect found across both studies.
+### Growth control added — and it KILLS the one surviving result (`--growth`)
+
+The −3.03pp compression effect had an obvious alternative explanation: the differential narrows
+when the Fed cuts relative to the BoJ, and the Fed cuts when the US is deteriorating. Controls
+added from FRED — initial claims, unemployment, Chicago Fed NFCI — each shifted by its publication
+lag so it is knowable on the day applied.
+
+- **NBER's `USREC` deliberately EXCLUDED.** It is dated retroactively, often a year later, so
+  conditioning on it injects information nobody had and would have manufactured a clean result.
+- **🔴 A silent alignment bug nearly produced a fake "no data" answer.** `ICSA` is stamped on
+  Saturdays (week-ending); reindexing straight onto a trading-day index dropped 1,907 of 1,908
+  observations *before* `ffill` could carry them, while `NFCI`/`UNRATE` happened to land on
+  weekdays and survived. Fixed by aligning on the index UNION, forward-filling, then restricting
+  to trading days. Worth noting the failure was loud (zero rows) — a slightly different join would
+  have silently produced a biased subsample instead.
+- **Result: the effect does NOT survive.** Double sort over 2002–2026 (6,182 days):
+
+  | growth state | carry state | n | mean fwd 63d S&P |
+  |---|---|---|---|
+  | stable | no compression | 3,476 | +2.06% |
+  | stable | COMPRESSING | 88 | +4.20% |
+  | deteriorating | no compression | 2,088 | +3.27% |
+  | deteriorating | COMPRESSING | 530 | **−2.02%** |
+
+  The compression effect is **−5.29pp when growth is deteriorating and +2.14pp when it is not** —
+  concentrated entirely in the deteriorating bucket. Regression agrees: compression alone
+  R²=0.0009, growth alone R²=0.0729, both together R²=0.0733, i.e. **ΔR² = 0.0004**.
+- **Conclusion**: carry compression carries **no information about forward equity returns that the
+  growth outlook does not already contain**. The headline −3.03pp was the Fed easing into trouble.
+- **Rejected: claiming the sign flip as a finding.** The growth-stable/compressing cell holds 88
+  overlapping days — a couple of independent episodes on 63-day windows. The defensible claim is
+  "no effect independent of growth", NOT "compression is good for equities when growth is fine".
+- **Net across all four studies**: entropic yield curve rejected, transfer entropy null, bond
+  selloff null, domestic carry null, cross-currency carry null once controlled. The only durable
+  results are (a) the stock–bond correlation regime flip and (b) that carry-unwind damage is
+  **contemporaneous, not forward** — which is likely why every forward-looking test here found
+  nothing.
+
+## 2026-07-31 — Entropic yield curve tested and REJECTED; ticker→exchange reference built
+
+**`entropic_yield_curve.py`** implements Parker (2017, *Entropy* 19:292) — a yield curve
+derived from information loss, whose "implied information processing ratio" R/C is claimed to
+have exploding variance just before bear markets. Built as a measured quantity and tested, not
+adopted. **Verdict: rejected. Do not wire into the brief.** Full result in
+`reports/entropic_rc_test.md`, literature boundary in `reports/entropic_rc_literature.md`.
+
+- **The reconstruction is faithful, and that is what makes the negative result stick.** Parker's
+  Table 1 says only "(Time starts at t = 1)" — ambiguous between years, months, and a maturity
+  index. `--sensitivity` fits all three. Months reproduces his published Table 2 in the BULL
+  zones (I: 3.47/0.40 vs his 3.41/0.41; V: 4.11/0.05 vs 4.07/0.10); years does not (0.21/0.34).
+  So the estimator is right — and it still fails to reproduce the two CRISIS zones the whole
+  thesis rests on: he reports mean R/C −56.78 and −24.35 with variances 1097 and 1302; the same
+  dates and the same Treasury series give 3.38/1.06 and 3.52/1.62. Mean R/C is flat (3.33–4.11)
+  across all five zones, and zone III — a *bull* period — has higher variance (1.85) than either
+  crisis zone.
+- **It is a reparameterisation of the term spread.** corr(R/C, 10Y−3M) = **+0.821**. In an
+  expanding-window event study over 1990–2026 (4 bear onsets, no lookahead), Var(R/C) fires 11
+  times, catches 1 of 4 at precision 0.09. Plain 10Y−3M inversion fires the same 11 times,
+  catches 2, at precision 0.27. **Strictly dominated by the simplest possible baseline.**
+- **Mechanism.** Under Parker's own settings (σ=1 kills the second term entirely) the model
+  collapses to one parameter, and R/C = 1 + ln(1−a) has a log singularity at a=1. Values like
+  −56.78 are what a fit wandering near that singularity prints. Corroboration: Parker's own
+  later work (Entropy 2020) reports **no** negative R/C and triggers on a *bounded* R/C < 1.02.
+  **Rejected: declaring the paper wrong outright** — the 2020 variant solves for σ over 1M–30Y
+  maturities and was NOT tested here; the claim is scoped to the 2017 specification.
+- **Fit quality**: the fixed-shape one-parameter curve misses the real Treasury curve by a median
+  67bp (p95 210bp), and R/C is undefined (a ≥ 1) on 8.7% of days.
+- **The 2020 variant (Entropy 20:662) was then tested too, and fails the same way**
+  (`--variant2020`, `reports/entropic_rc_2020.md`). It differs substantively: first term
+  `ln(t)/t`, maturities 1M–30Y, and **σ free** rather than pinned at 1. With `A = 1−p` and
+  `B = −p·ln σ` it reduces to ordinary OLS in `{ln(t)/t, 1/t}` — no solver needed. Freeing σ
+  **improves the curve fit a lot (67 → 34 bp median RMSE) and the signal not at all.** His 2020
+  trigger is a LOW-LEVEL one (R/C < 1.02), so that shape was tested directly: 8 fires, 1 of 4
+  bears, 0.12 precision, against inversion's 2 of 4 at 0.27. corr(R/C, 10Y−3M) = **+0.811**,
+  still the term spread. **C₁ is unknown and cannot rescue it**: R/C = 1 + ln(p)/C₁ is monotone
+  in p for any C₁>0 and Var(R/C) = Var(ln p)/C₁², so every percentile-breach signal is invariant
+  to C₁ — only printed levels move. One honest positive: σ is uncorrelated with the spread
+  (−0.014), so it is genuinely new information, but it still scores below the baseline (0.17 vs
+  0.27) and n=4 onsets cannot distinguish those.
+- **Correction to a widely repeated claim**: entropy does *not* spike in crises. Olbryś & Majewska
+  (36 EU+US indices, GFC and COVID) find sequential entropy **falls** — crises make indices more
+  regular. Distribution entropy rises, sequential entropy falls; summaries conflate them.
+
+**`ticker_exchange_map.py`** — every ticker must be exchange-qualified, so
+`cache_seed/ticker_exchange_reference.parquet` is now the ready reference: **74,239 symbols, 42
+exchanges, 34 countries**, with MIC codes, 0.4% unresolved.
+- Exchange is re-derived from the yfinance suffix, because `global-ticker-universe`'s own
+  `exchange` column is coarse — "NSE/BSE", "SSE+SZSE", "Xetra + Frankfurt" each cover 2–3 venues.
+- US symbols are bare and unresolvable from a suffix, so the NASDAQ Trader directory supplies the
+  real listing venue plus an ETF flag. yfinance and NASDAQ spell classes, preferreds and warrants
+  differently (`BRK-B`↔`BRK.B`, `ABR-PD`↔`ABR$D`, `ACHR-WT`↔`ACHR.W`); indexing on all three
+  published symbol columns and trying each spelling cut unresolved from 733 to 272 (the remainder
+  are rights, units and delisted names genuinely absent from the live directory).
+- Distinct from `build_ticker_reference.py`, which builds the Postgres name/liquidity/earnings
+  dictionary and has no exchange column. That file is untouched.
+
+## 2026-07-31 — A backup file inside the dataset directory doubled every 2026 bar
+
+Ingest `[7/7]` had been refusing to fold fresh bars into the deep panels since 2026-07-27, so
+`warehouse/ohlcv/IN` was frozen at 2026-07-29 and `US` at 2026-07-27 while the daily brief kept
+shipping. The refusal was the guard working — but it was guarding against its own writer.
+
+- **Root cause: `_write_years` wrote its pre-write backup NEXT TO the partition it backed up.**
+  `year=2026.parquet.bak` sat inside `warehouse/ohlcv/<MKT>/`, and `pd.read_parquet(<dir>)` loads
+  every file it discovers there, not just `year=*.parquet` — a `.bak` is itself valid parquet. So
+  each read returned the 2026 partition twice: **IN 338,851 and US 1,207,003 duplicate
+  (Symbol, Date) keys, every one byte-identical, zero conflicting values, and confined to 2026** —
+  the only year the writer had ever backed up. The merge's `drop_duplicates` then correctly
+  collapsed them, the row-count check read the collapse as lost history, and the write was refused.
+  Self-sustaining: the guard could never pass, because reading the panel re-created the condition.
+- **Fixes.** Backups now go to `warehouse/_backup/ohlcv/<MKT>/`, outside the dataset root. Panels
+  are read through `_read_panel()`, which globs `year=*.parquet` explicitly, so a stray `.bak` or a
+  `.tmp` from an interrupted run can never be counted as data. The guard's baseline is now the
+  DEDUPED panel: the invariant that matters is *no bar disappears*, not *no row disappears* — only
+  the former is history loss. Years touched by a dedup are added to the rewrite set, and a dedup
+  repair now writes even when there are no new bars, so cleanup no longer depends on fresh bars
+  happening to land in the same year.
+- **Rejected: relaxing the guard to a tolerance** (e.g. allow ≤15% row loss). It would have let this
+  write through while leaving the panel corrupt, and would have masked genuine truncation — the
+  exact failure the guard exists to catch. The guard was right; its baseline was wrong.
+- **Rejected: deleting the `.bak` files.** They are the only copy of the pre-merge partitions, and
+  the corruption they caused was positional, not intrinsic. Moved, not removed.
+- **Verified.** Against a pre-image of the deduped panels: 0 pre-existing bars missing, 0 values
+  changed, 0 duplicate keys remaining, and two consecutive runs are a clean no-op. IN now current
+  to 2026-07-31 (4,493,072 rows), US to 2026-07-30 (16,326,906).
+- **Blast radius.** ~15 modules read the warehouse; all but one glob `year=*.parquet` and were
+  unaffected. `signal_tracker.py` read the directory and was consuming doubled 2026 bars — hardened
+  to the same `_panel()` pattern.
+
+### Uncovered by the above: the India LMDB was serving a GLOBAL universe
+
+Unfreezing the merge immediately exposed a second fault the four-day freeze had been hiding. The
+first successful fold took the IN panel from 7,043 to 15,845 symbols — the new arrivals were
+**2,874 `.SZ`, 2,297 `.SS`, 992 `.TW`, 962 `.AX`, 421 `.HK`, 223 `.SI`**: Shenzhen, Shanghai,
+Taiwan, Sydney, Hong Kong and Singapore tickers written into the *India* panel. `_fresh_in()` reads
+`bhavcopy_store.symbols()`, and that LMDB was holding a global universe rather than NSE/BSE.
+
+This is the nastiest failure mode in the repo: the IN and US panels hold **bare** tickers, so a
+foreign ticker sitting in one is not visibly wrong — it reads as an unfamiliar Indian smallcap, and
+every India-wide statistic silently widens to include six other markets.
+
+- **Contained.** 8,802 contaminant bars, all a single date (2026-07-31), all year 2026, removed;
+  pre-cleanup partition preserved at `_backup/ohlcv/IN/year=2026.parquet.precleanup`. The panel now
+  holds 7,078 symbols — the original 7,043 plus 35 genuine new Indian names.
+- **Guard added** (`_drop_foreign`). Fresh tickers carrying an exchange suffix are dropped from
+  IN/US merges with a loud line. Above 20% foreign the merge is REFUSED outright: at that share the
+  source is not dirty but the wrong market, and drop-and-continue would quietly rebuild the panel
+  from another country's data. **Rejected: refuse on any foreign ticker at all** — one stray symbol
+  would re-freeze the panel, which is the failure this release exists to end.
+### Root cause found: nothing polluted the LMDB — it was never India-only
+
+The earlier note here ("a subsequent `ingest.sh` rebuild restored it") was wrong. That run did not
+restore anything; it simply **won the last write**. `bhavcopy_store.build()` has two entry paths
+that rebuild the SAME store with DIFFERENT universes, and each `shutil.rmtree`s it first, so the
+store's contents are whoever ran most recently:
+
+| caller | call | resulting store |
+|---|---|---|
+| `bhavcopy_history.py:365,451` | `_build_store(out_all)` — India dict passed | India-only, 7,837 |
+| `screener_kit.py:69,181` | `store.build()` — no `hist` | **global, 23,868** |
+
+With no `hist`, `build()` takes its glob branch, and the intent is explicit in its own comment:
+*"ingest every market seed present … into one store."* That is working as designed. The defect was
+that `warehouse_update._fresh_in()` read that shared store as though it were the India bhavcopy
+store — its docstring said exactly that — and folded whatever it found into the India panel.
+
+- **Why it stayed hidden until now.** The glob had nothing else to find: no `cleaned_long_<MKT>.parquet`
+  existed, so the "global" path coincidentally produced India-only. The new
+  `com.umashankar.weekly-extended-scan` job (plist created 2026-07-31 05:02) calls
+  `screener_kit.update()` per market, which materialised 15 seeds (`TW` 05:09, then `DK AU BR CA CH
+  CN DE FI HK SA SE SG UK ZA` 06:06–06:27) and rebuilt the store global. Smoking gun in its own log:
+  `weekly_extended_scan_20260731.log:514  update TW: 0 symbols got new bars; store rebuilt`.
+- **Fix**: `_fresh_in()` now reads the INDIA SEED (`bs.CLEANED` = `cleaned_long.parquet`) directly
+  and never touches the shared LMDB. That seed is India by construction —
+  `screener_kit._seed_name("IN")` returns exactly that filename — so the ambiguity is removed at
+  source instead of filtered afterwards. Verified byte-identical to the LMDB path when the store
+  happens to be India-only (1,242,325 rows / 7,837 symbols / 0 suffixed, same symbol set), and
+  **immune to the store's universe**: re-running with a simulated global store returns the same
+  7,837 India symbols. It is also cheaper — the function scans every symbol anyway, so the LMDB's
+  keyed access never bought anything here.
+- **Rejected: intersecting the LMDB against the ticker reference.** The reference holds 5,981
+  Indian tickers against the bhavcopy's 7,837, so that would have silently dropped ~1,850
+  legitimate names — trading one invisible data error for another.
+- The LMDB fallback (seed missing/unusable) is retained but now passes through the same exchange
+  allowlist, and refuses outright on a global store (75% foreign ≫ 20%) rather than corrupting.
+
+### Consumer audit: one more consumer was due to break on 2026-08-01
+
+Every reader of the shared store was then audited for the same assumption. Five call sites:
+
+| consumer | pattern | verdict |
+|---|---|---|
+| `warehouse_update._fresh_in` | `symbols()`+`get()` | was broken; fixed above |
+| `bhavcopy_history._lmdb_max_date` | `symbols()` sample → median | **broken from 2026-08-01** — fixed here |
+| `watchlist_pnl.py:164` | `symbols()`+`get()` | latent collision — fixed below |
+| `custom_screener.py:189` | `symbols()[:800]`, labels `"IN"` | demo block (`__main__`) only |
+| `screener_kit.get` | `get(symbol)` keyed | **safe by design** — screener_kit is the multi-market layer and *wants* the global store |
+
+`_lmdb_behind_cleaned()` is the guard added 2026-07-21, after the LMDB sat 5 days behind while
+watchlist_pnl marked India positions to stale closes. It medians ~200 sampled symbols against
+`cleaned_long.parquet`. On a global store that median spans 16 markets, and the foreign seeds are
+STATIC snapshots (written once when the weekly extended scan runs) while India advances daily.
+Measured: with both at 2026-07-31 the medians agree and the guard is correct — but from 08-01 the
+global median stays pinned at 07-31 and the guard returns **True forever**. That means a
+destructive 94MB rebuild per call, and worse, a guard that can no longer distinguish a genuinely
+stale India store from foreign seeds merely being old. An alarm that always fires is as useless as
+one that never does, and this one protects P&L from stale prices.
+
+- **Fix**: `_lmdb_max_date(only=…)` restricts the median to a symbol set, and
+  `_lmdb_behind_cleaned()` passes the symbols of `cleaned_long.parquet` itself — making the
+  comparison apples-to-apples ("is the store behind the file that feeds it") rather than scoring
+  India's dates against a median dragged by other calendars.
+- **Verified both directions.** On a simulated global store with India advancing and seeds frozen,
+  the old guard fires on 08-01/03/07 and the new one does not. Critically, it still fires when
+  India is genuinely stale by 3 and by 5 days — the 2026-07-21 scenario — so the false positive
+  was removed without introducing a false negative.
+### watchlist_pnl hardened — and the first attempt at it was wrong
+
+`watchlist_pnl._current_prices("IN")` marks India positions off the shared store. The obvious fix
+was to filter its iteration to the India seed's symbol set. **That was implemented, tested, and
+found insufficient**, which is worth recording because the reasoning looked sound:
+
+The collision is not in the consumer, it is **inside the LMDB's key namespace**. `build()` merges
+seeds with `hist[str(sym)] = …` — a plain dict write over one namespace — so when two markets carry
+the same bare ticker the LAST SEED WINS and the other market's series is *gone from the store*.
+Filtering afterwards cannot repair that: the India key is still present, it just holds foreign
+prices. Simulated with a US seed loaded, `INFY` (listed on both NSE and NASDAQ) priced at the US
+close of 1234.50 instead of 1130.10 while passing the India-membership filter untouched.
+
+- **Actual fix**: read `cleaned_long.parquet` directly, as `_fresh_in` now does. It has its own
+  namespace, so it is immune by construction, and it is the fresher source anyway — the LMDB is
+  built *from* it, which is precisely what `_lmdb_behind_cleaned()` polices.
+- **Verified equivalent**: all 7,837 symbols agree with the old path, keys identical. Only 2,746
+  matched to 1e-9 at first glance — the remainder differ solely by **float32 round-trip**, since
+  `bhavcopy_store._ser()` downcasts OHLC to float32 for storage. Max relative difference 5.7e-08
+  (worst case 1028.69 vs 1028.68994140625), i.e. the new path is marginally MORE precise. `asof`
+  capping preserved (2026-07-28 → 7,825 prices, max date 07-28).
+- **Verified protective**: under a simulated US seed, `INFY` holds 1130.10 and `AAPL` does not leak
+  into the India price map.
+- The LMDB loop is retained as a fallback for a missing seed. It remains exposed to the collision,
+  which is why it is the fallback and not the path.
+
+- **`custom_screener.py` demo fixed too — it was broken twice over.** The `__main__` block is off
+  every pipeline path, but was wrong in two independent ways. (1) `store.symbols()[:800]` reads the
+  shared store and hard-labels every row `"IN"`; `symbols()` sorts lexicographically, so on a global
+  store the first 800 are numeric Chinese codes and the demo would have screened Shenzhen stocks
+  and printed them as Indian. (2) Even on an India-only store the slice was useless: India's
+  bhavcopy leads with bond/debenture codes (`0ANSPL28`, `0APL26`, `0KFL25` …), so it screened 800
+  debt instruments and printed an **empty table**. Now takes its universe from `kit.load(market,
+  min_turnover_usd=1e6)` — the seed for the market actually requested, with the documented
+  liquidity pre-filter — and the market is a CLI arg, so the label cannot drift from the data.
+  Verified: `IN` → 794 liquid equities with a populated result; `TW` → 735, correctly labelled;
+  unknown market exits with the list of seeded markets.
+- **Why `watchlist_pnl` was worth fixing before the US seed lands rather than after**: all 15
+  foreign seeds are currently exchange-qualified (verified: **zero** bare symbols), so nothing
+  collides today. The failure only appears when a `cleaned_long_US.parquet` arrives — and it
+  appears silently, as a plausible number on a P&L line, with no error anywhere.
+
+## 2026-07-29 — Claims audited against their own evidence; three locks; a stale-price near-miss
+
+An end-to-end pipeline run at 22:36 (off the usual 00:30 schedule) exposed a class of failure the
+repo had no detector for: **numbers that had drifted from the evidence they cite, and producers
+that were silently feeding stale data into working guardrails.** Every fix below sits UPSTREAM of
+a gate that was already doing its job.
+
+- **Re-entry edge claim WITHDRAWN** (`reentry_engine.py`, pipeline `[13w]`, nightly). The docstring
+  asserted "IN +12.9%/63d t14.2 · KR +24.9% t14.8 · JP +6.1% t10.3 · US +5.1% t7.0" and named
+  `reports/tier_anomaly_backtest.md` as its authority. **None of those numbers are in that report.**
+  Once `backtest_tier_anomalies.py` was extended past the anomaly touch, the same report measured
+  IN 63d at excess −2.01% median / +0.04% mean, **t=0.06**; `reentry_book.py`, written separately
+  against the event file, returned −1.88% / +0.18%, **t=0.27** on n=508. Two independent
+  measurements agreeing to two decimals. Likely origin of t=14 on n≈500: differencing against a
+  period-constant instead of the contemporaneous index, which leaves market drift in the numerator
+  and removes no covariance. **Decision**: ranking and the paper-track still run, but watchlist
+  injection is now opt-in (`--commit`) — those picks reach the morning brief via
+  `reports/reentry_candidates.csv`, and shipping a daily recommendation on a withdrawn premise is
+  the one thing that file must not do. **Rejected**: deleting the step (the queue is worth
+  observing; it can re-earn its place by measurement). Boomerang rate is NOT edge — in a bull
+  market most names recover and so does the benchmark.
+- **`completeness_graph.py` — LangGraph audit** (4 nodes: inventory fans out to claims/gates/power,
+  joins at synthesis; deterministic, no LLM). Checks data freshness, whether a quoted number still
+  exists in the report it cites, contamination gating, and universe breadth. The claim check is the
+  one that would have caught `reentry_engine` mechanically. **Its own false alarms were fixed
+  rather than tolerated**: string-matching `t 17.62` against `t = 17.62` failed on the `=`;
+  `peer_warranted`/`reentry_book` were flagged ungated when they load no price panel;
+  `etf_builder`'s comment explaining why it does NOT gate was read as an implementation of gating;
+  a retraction paragraph was read as a stale claim. An audit that cries wolf gets muted.
+- **Staleness judged against an expected CADENCE, not a flat 7 days.** All three "stale critical
+  sources" were modelling errors, not faults: `nse_deep_ohlcv` is a static archive with no live
+  writer by design, `india_quarterly` was measured on `period_end` (a REPORTING period, so a fresh
+  quarterly table always looks a month behind), and `ohlcv_history` has no writer in this repo at
+  all.
+- **`cluster_indices` reshipped at the default k.** The report on disk was the **k=80** run
+  (+0.0752, t 17.62) while the docstring names k=45 as the fair comparison — the shipped number was
+  the most flattering point on the sweep. Re-run at default: **+0.0272, t 4.37**, about a third the
+  size. The conclusion survives; its advertised strength did not. **Decision**: the full k-sweep is
+  now printed INTO the report, because the sign flips between k=30 and k=45 and the t-statistic
+  climbs monotonically with k — higher k means smaller groups, which raises within-group
+  correlation mechanically, so any single-k claim is partly an artefact of k.
+- **Small-cap validation persisted, keyed by hold period.** `--validate` printed its result and
+  saved nothing, so the +3.07%/t 8.75 quoted in `custom_indices.py` lived only in a terminal. The
+  headline depends on the hold: **+1.76% (t 6.09) at the default 63 bars, +3.07% (t 8.75) at 126**.
+  Both legitimate, different questions. Filename carries the hold so whichever ran last cannot
+  silently define "the" result.
+- **India price panel was 5 sessions stale.** `warehouse/ohlcv/IN/year=*.parquet` had **no daily
+  writer**; it sat at 07-22 while `cleaned_ohlcv` ran to 07-27. That parquet is what
+  `load_prices()` reads, so `india_pe_daily` trailed live prices by a week and every P/E screen was
+  screening a week-old market. New `scripts/warehouse_ohlcv_sync.py` appends from `cleaned_ohlcv`
+  (the collision-safe NSE+BSE merge — bare NSE/BSE symbols COLLIDE), wired into `[15]`.
+  **Append-only by date, deliberately**: the parquet holds history past `cleaned_ohlcv`'s ~1-year
+  window, so a full rebuild from that source would truncate the panel and destroy every
+  long-horizon backtest. `india_pe_daily` 1,957,213 rows ending 07-22 → 1,961,485 ending 07-27.
+- **`pe_bands --source` now defaults to `xbrl`.** It defaulted to `screener`, which is NOT what the
+  live table is built from, so a plain `--build` silently replaced the 1,744-symbol XBRL table with
+  a 1,301-symbol screener one and dropped 277k observations — **done accidentally during the lag
+  fix above, caught because the row count fell when it should have risen, then reverted.** XBRL
+  wins on both axes: coverage 1,744 vs 1,301 symbols, accuracy ~20.5% vs ~28.5% median error. The
+  screener path reaches back to 2016 where XBRL starts at 2019, so it stays — but explicitly.
+- **`ohlcv_cache` freshness follows each market's own session clock.** The rule was
+  `exp = today − 1 day`, so a bar from yesterday always counted as current — correct at 00:30 IST
+  when no Asian market has traded "today", wrong at every other hour. At 22:43 the scans accepted
+  07-27 bars for Japan and Korea, whose sessions had closed ELEVEN HOURS earlier, **on a day both
+  markets fell 10–15%**: 005930.KS carried at 254,000 against an actual close of 220,000. `[13d]`
+  caught it (8/8 stale in both markets) and suppressed the send — the gate worked; the cache should
+  not have produced the input. US is excluded (its session runs past midnight IST) and unknown
+  market keys keep the old conservative rule. **This bug was only visible off-schedule**: at 00:30
+  the old rule is accidentally correct, so it had been latent.
+- **Three locks where there were none.** `daily_pipeline.sh` had **no concurrency guard** — a run
+  takes hours and launchd fires another at 00:30, and the watchlist is read-modify-write, so a
+  collision does not merge: the second writer discards the first's rows entirely, with both runs
+  reporting success. Added an atomic-`mkdir` lock (macOS has no `flock`); **it stood the 00:30 job
+  down that same night**, which is the failure it was written for occurring hours later.
+  `cloud_backup.sh` had a lock keyed by REMOTE, which never excluded the *other* backup script
+  (`repo-data-dedup`, cron 20:30) writing to a different Dropbox path from the same source trees;
+  rclone rate limits are per-ACCOUNT, and the two took step `[16]` from minutes to **4h19m** while
+  Dropbox returned `too_many_write_operations`. **Decision — the two locks have OPPOSITE semantics
+  on purpose**: the pipeline lock SKIPS (a duplicate run is redundant work) while the backup lock
+  WAITS (a skipped backup is lost coverage, and the two write to different destinations so both
+  must run), giving up after 90 min so a wedged peer cannot suppress backups forever. Both backup
+  scripts were patched by **atomic rename, not in-place edit** — both were RUNNING, and bash reads
+  a script incrementally as it executes.
+- **Corrections made during this work**: (1) a `contaminated()` gate was added to `etf_builder.py`
+  and **reverted** — India never reaches that loader (`main()` refuses the unadjusted panel, which
+  is stricter) and in the verified-adjusted JP/KR/US panels a >30% unreversed fall is a REAL crash,
+  so filtering that shape would delete losers and manufacture survivorship bias. (2) "All four
+  correlation scans failed" was reported twice and was **wrong** — those tracebacks
+  (`ModuleNotFoundError: zstandard`) came from the 00:30 run, before commit `d166cb47` fixed it at
+  05:08; this run's scans succeeded and wrote their matrices. Both runs share one date-stamped log
+  and the timestamps were not checked.
+- **`india_split_adjust --patch-residual` reported a clean bill on unchecked work.** It printed "no
+  additional share-count actions found" while **29 of 71 targets (41%) had never been checked** —
+  delisted/renamed symbols (MINDTREE, MOTHERSUMI, ABIRLANUVO) do not resolve on Yahoo, so the
+  adjusted-series authority is unavailable and the fetch failure was swallowed by `continue`.
+  MINDTREE 2016-03-09 is named CONFIRMED in that function's own docstring. Same shape as
+  `fetch_splits` returning `[]` on error. Now reported and written to
+  `india_unverifiable_symbols.csv`. **Ratios are deliberately NOT inferred from the price gap**:
+  DHFL and SINTEX really did collapse, and snapping a genuine −90% to a bonus ratio would
+  manufacture alpha out of a fraud. Measured impact: 3.2% of IN tier events, similar outcome mix —
+  bounded, does not drive the headline.
+- **Brief sent 03:36 on a clean 5/5 reconcile**, every market on final 07-28 closes (US rescanned
+  after its 01:59 IST close rather than overriding the gate — its earlier "pass" was an in-session
+  4% tolerance that tightened back to 2% once the session ended).
+
+## 2026-07-28 — The Volume Dividend: blend-energy fiscal analysis + parity scenarios + CBG (side repos)
+
+Built in `~/omc-retail-profitability-model` (public: india-omc-fuel-fleet-model) with paper +
+slides mirrored to `~/vehicle_fuel_mileage`; logged here because the decisions generalise.
+
+- **New scripts**: `energy_blend_comparison.py` (LHV dilution → extra litres → per-litre levies),
+  `price_parity_scenarios.py` (funding tests for honest pricing), `cbg_satat_economics.py`
+  (SATAT ₹/MJ + SIAM-FE ₹/km + CBO pass-through), `build_energy_doc.js` / `build_slides.js`
+  (docx+pdf paper, 10-slide pptx — generators, outputs never hand-edited).
+- **Headline results**: E20 volume effect = +2.16 bn L/yr = ₹22,703 cr consumer overspend at an
+  unchanged pump price (excise 4,303 / VAT 4,216 / dealer 886 / OMC 757 cr — the OMC column
+  reconciles the existing `omc_model.py` figures exactly, which was the validity check). Parity
+  price P₀×(1−drop): E20 ₹100.80. S1 (pass through the dual-tax exemption embedded in the ethanol
+  fraction) funds parity 1.3–1.5× at every blend. E27 grand bargain: parity ₹98.44 + 5% ethanol
+  SGST (₹4,787 cr/yr, from the existing sweetspot grid) still leaves ₹1.27/L slack. CBG renewable
+  energy costs ₹1.16/MJ vs ethanol's ₹2.94 (2.5×); CBO at 5% moves the CNG pump ~₹0.59/kg.
+- **Decision — frame the E25/E30 case incrementally vs today's E20, not vs E0.** India is already
+  at E20; the absolute-vs-E0 framing (rejected as the lead) overstates the live policy stake.
+  Both tables are kept; the incremental one leads.
+- **Decision — REJECTED funding parity from cheaper ethanol (S4).** Requires ₹37–41/L against a
+  ₹57.97/L cheapest feedstock slab (C-heavy molasses); maize, the E30 marginal feedstock, is the
+  *dearest* slab (₹71.86). Grain mandi prices are a hard floor — parity must come from the tax
+  side. Also rejected: leading with S2/S3 duty cuts (fiscally identical to S1 but reads as a new
+  ₹22.7–41k cr subsidy; S1 is the same money already sitting unrebated in the price build-up).
+- **Decision — diesel B15/B20 presented as a what-if ceiling, not a forecast**: actual blending
+  <1% in FY24-25, NBP targets B5 by 2030, OEM warranties unresolved beyond B7. Isobutanol rows
+  energy-basis only (no India fleet trials) — flagged in every table rather than dropped.
+- **Correction**: two conflicting excise figures existed across repos (vehicle_fuel_mileage
+  sources cite ₹13/L petrol "basic"; statewise_tax_impact.py uses ₹19.90/L all-in). Standardised
+  on ₹19.90 all-in (matching the statewise script) and noted the basis in the paper's caveats.
+- **Mileage anchor**: SIAM/ARAI BS-VI FE declarations from vehicle_fuel_mileage (petrol 16.67
+  kmpl, CNG 27.40 km/kg, +40.3% same-nameplate petrol→CNG uplift) — reused, not re-derived.
+
+**Same-day extension — supply match + RON95** (`ethanol_supply_match.py`, `ron_octane_analysis.py`;
+paper → 10 sections + glossary, deck → 12 slides):
+
+- **Supply verdict flips the framing**: the higher blends are the *cure* for the CareEdge-flagged
+  distillery overcapacity, not a supply risk. E20 = 59% utilisation on FY27's 2,400 cr L (the
+  malaise), E27 = 76% (top of CareEdge's 65–75% consolidation band, zero new construction),
+  demand-grown FY31 E30 = 104% (only then does the 4,530 cr L DFPD sanction register need to
+  build). Sources: CareEdge 14-May-2026 study (fetched PDF), DFPD ISS annexures + FCI risk sheet
+  reused from the existing E20_to_E30 stakeholder workbook, digital-twin layer 24d (UP register).
+- **Decision — do NOT count a cooperative-mill capacity wave.** The NCDC ₹10,005 cr to 56 CSMs is
+  96.5% working capital; the ₹251 cr ethanol tranche ≈ 293 KLPD ≈ 9.7 cr L/yr (0.5% of installed)
+  at DFPD average intensity. Rejected the press framing of a coop ethanol expansion.
+- **Decision — FCI rice leg treated as small AND fragile**: ~211 cr L effective at a 65% lifting
+  lever (band 55–75%), with the Jul-2023 rice-to-ethanol suspension as an explicit policy-risk
+  toggle, not a footnote. E27/E30 increment attributed to open-market maize (dearest slab).
+- **RON added on user request**: blending RON 112 lever (literature 108–115, linear model —
+  flagged). Two limiting routes: today's (pump held at RON 91 → BOB falls to 85.7 at E20; saving
+  retained upstream) vs the opportunity (BOB held at 91 → E20 is a free RON95 fuel, E30 → 97.3).
+  Octane credit deliberately priced BOTH ways — retail XP95 spread (~₹9.5/L at E20, willingness-
+  to-pay ceiling) and refining cost (₹0.3–0.8/L, resource floor) — to avoid overclaiming.
+  Net-mileage synthesis: RON95-calibrated engine (+2.2% from CR 10.5→12) shrinks E20's −4% to
+  ≈ −1.8%, arriving with fleet turnover, composing with (not replacing) parity pricing.
+- **Bio-isobutanol pitch built** (`isobutanol_pitch_model.py` + `build_isobutanol_pitch.js`,
+  9 slides): the paper's isobutanol row turned into a venture — retrofit idle ethanol capacity
+  (the CareEdge glut) to a molecule with half the dilution (IB20 −3.5% vs E20 −6.9%) and +25%
+  ATJ/SAF yield. Decisions: the MISSING policy (no administered slab, no BIS spec, not ISS-
+  eligible) is presented as the headline gate, not a footnote — at ethanol's per-LITRE slab the
+  margin is −₹9.58/L because isobutanol yields 280 L/t vs ethanol's 400, so energy-basis pricing
+  is framed as the correct unit rather than a subsidy ask. Blending-only IRR 13.8% published
+  unflattered; the SAF routing (30% → 33.9%) named as what actually carries the case, and the
+  sensitivity's loss cells left visible. Labelled explicitly as the higher-risk sibling of the
+  molasses-to-grain conversion (technology risk: no Indian bio-isobutanol plant exists).
+- **DME blending pitch built** (`dme_pitch_model.py` + `build_dme_pitch.js`, 9 slides): the
+  fourth-quadrant finding made investable rather than contradicted. Decisions: underwrite at
+  ENERGY PARITY only (₹39/kg vs commercial LPG ₹62) with the kg-parity ₹34.7/kg margin shown as
+  "the temptation" and contractually refused; wedge = unsubsidised C&I LPG (19-kg, deregulated)
+  so the PMUY inversion never arises; domestic-carbon methanol gated by a ≤₹17/kg take-or-pay
+  contract BEFORE capex (imported methanol shown failing at ₹1.9/kg). Base IRR 26.0% / equity
+  42.1% / DSCR 1.94×; methanol at ₹20/kg compresses to 15.6% — the feed contract is the
+  investment decision. No subvention assumed (unlike CBG/ethanol pitches) — flagged as upside.
+- **DME-in-LPG evaluated on the LERC basis** (`dme_lpg_blending.py`; paper §10 + slide 13). The
+  fourth quadrant closes the framework: DME dilutes −37%/kg but LPG is SUBSIDISED, so the volume
+  dividend inverts — DME20 bills households (+₹312/yr, ₹9,325 cr pool-wide) AND the exchequer
+  (+₹1,201 cr PMUY). Anchors: LERC measured −5.26% thermal efficiency at DME20 (IS 4246, below
+  the −7.4% energy math — oxygenate recovery, same pattern as E20/octane), IS 18698:2024 20% cap.
+  Decision: methanol-route DME rejected as import substitution (feed ₹33.6/kg > ₹32.7 parity
+  ceiling — re-denominates the import bill); honest only on coal/bio routes, and DME20 needs
+  6.3 MMT/yr ≈ 6× India's methanol output. Guardrails stated: parity cylinder pricing + domestic
+  carbon only.
+- **Multi-feed distillery conversion pitch built** (`distillery_conversion_model.py` +
+  `build_distillery_pitch.js`, 9 slides). The supply-match finding inverted into a deal: single-
+  feed molasses plants are the overcapacity casualties, so ₹50 cr brownfield conversion (180→330
+  days, maize slab ₹71.86) yields IRR 38.4% / equity 81% on DFPD-subvented debt. Decisions: the
+  administered slab premium named as BOTH the biggest lever and biggest risk (not buried); the
+  damaged-grain-slab stress (17%) and maize-₹26k rows presented as the honest downside; base case
+  uses today's published prices only — no E30-on-schedule, no carbon, no premium widening.
+- **CBG investment pitch built** (`cbg_pitch_model.py` + `build_cbg_pitch.js` →
+  `docs/CBG_Investment_Pitch.pptx`, 9 slides, problem→market→moat→model→financials→ask per the
+  standing deck format). Reference plant 12 TPD: EBITDA ₹12 cr, project IRR 20.6%, equity IRR
+  32%, NPV@12% ₹26.6 cr, DSCR 1.85×, sensitivity 13.5–27.1%. Decisions: carbon priced at a
+  conservative ₹800/credit and NCDC coop money deliberately NOT counted as capital; the no-FOM
+  sensitivity (IRR 16.1%) surfaced as a headline because digestate marketing is the real
+  operating moat; ask framed as a 10-plant ₹150 cr platform with the cooperative-sugar-mill
+  press-mud entry (BOT/JV) as the differentiator.
+- **CBG incentive annex added** (paper Annex A + slide 12): 19 instruments by lever compiled from
+  the official GOBARdhan important-circulars register (70 circulars; ~half dated 2025-26 — the
+  cadence itself is a finding). Fertiliser leg gazette-checked (CG-DL-E-29032025-262118, Schedule
+  VIII 'Organic Carbon Enhancer' — defined on carbon + heavy metals, deliberately no NPK/C:N so
+  CBG digestate passes). Decision: scheme AMOUNTS left qualitative where circulars are revised
+  frequently (capital-assistance rates, MDA quantum) — the annex cites the governing circular
+  date instead of hard-coding numbers that will go stale.
+
+## 2026-07-28 — Peer groups: the VALUATION mechanism, and where it sits in the literature
+
+- **User's point**: peer-group P/E clustering is what drives co-movement —
+  comparables are marked off each other's multiples, so peers move together for
+  a relative-valuation reason, not only a shared-fundamentals one. This is a
+  different mechanism from the one tested in cluster_indices.py, which grouped
+  on RETURN correlation and never looked at valuation.
+- **The literature it belongs to**, worth naming because it has already run this
+  argument: **Bhojraj & Lee (2002), "Who Is My Peer? A Valuation-Based Approach
+  to the Selection of Comparable Firms"** (JAR) argues industry classification is
+  a poor peer definition and selects peers by *warranted multiple* instead,
+  beating SIC. **Bhojraj, Lee & Oler (2003), "What's My Line?"** finds GICS
+  outperforms SIC/NAICS specifically at explaining cross-sectional variation in
+  valuation multiples. For composite construction itself the canonical reference
+  is the **OECD/JRC Handbook on Constructing Composite Indicators** —
+  normalisation → weighting → aggregation → sensitivity analysis, in that order.
+- **TESTED** (India, 316 names carrying BOTH an NSE Industry label and a P/E),
+  within-group dispersion of log P/E, median absolute deviation — log because
+  multiples are ratio-scale, so 10→20 must count the same as 40→80, and MAD
+  because P/E tails are brutal:
+
+| grouping | within-group log-P/E dispersion | groups |
+|---|--:|--:|
+| RANDOM (the null) | 0.5365 | 17 |
+| OFFICIAL NSE Industry | 0.3857 | 17 |
+| **DATA return-correlation clusters** | **0.3612** | 5 |
+
+- **The mechanism is real**: both groupings sit far below random, so peers do
+  share multiples. And return-correlation clusters are at least as tight on
+  VALUATION as the industry taxonomy — despite 5 groups averaging ~63 names
+  against 17 averaging ~19, and larger groups should be MORE dispersed, so this
+  is the harder direction to win in.
+- **CAVEATS, and they are not small**: this is ONE cross-section (today), not a
+  panel — `fundamentals.ratios` holds a single fiscal year, so P/E history does
+  not exist here and the test cannot yet be run point-in-time. Group counts
+  differ. The Bhojraj-Lee construction proper selects peers ON warranted
+  multiple rather than testing dispersion after the fact; doing that here needs
+  stock-level P/E history, which is the same gap that blocked fundamental
+  exclusions in smallcap_screener.py.
+
+## 2026-07-28 — Sector rotation: NO signal; weighted index P/E does not reconstruct
+
+- **`sector_rotation.py`** — 12 NIFTY sectoral indices, 10y daily history with
+  P/E (collected today), 91 monthly formations, 63-bar hold, top-3, excess over
+  Nifty 500 total return, 20bp charged.
+- **🔴 EVERY SIGNAL LOSES TO EQUAL-WEIGHT.** The bar is not "beat zero" — that
+  only says sectors outran the benchmark on average, a property of the universe.
+  The bar is beating `eq`, holding all 12 sectors equally:
+
+| signal | mean excess | win% | t | vs equal-weight |
+|---|--:|--:|--:|--:|
+| eq (the null) | +0.12% | 48% | 0.65 | — |
+| momentum 12-1 | −0.12% | 42% | −0.21 | **−0.24pp** |
+| value (P/E z vs own history) | −0.03% | 49% | −0.06 | **−0.15pp** |
+| trend (above 200DMA) | −0.61% | 47% | −1.67 | **−0.72pp** |
+| mom+value | −0.02% | 41% | −0.03 | **−0.13pp** |
+
+  Consistent across sub-periods: all four are negative in 2018-2020, all
+  positive in 2020-2023, mixed after — i.e. they track the regime, not the
+  sectors. `eq` itself is insignificant (t 0.65), so even sector exposure as
+  such added nothing over the broad index.
+- **The factsheet sector weights CANNOT drive a rotation backtest.** They are a
+  single 2026-06-30 snapshot — niftyindices publishes no dated archive — so any
+  historical use is look-ahead. Signals were taken from the sectoral index
+  HISTORY instead; the weights are an implementation input, not a signal.
+- **Weighted index P/E reconstruction FAILS the validation.** Worth recording
+  the correct formula because it is a real trap: index P/E is NOT the weighted
+  average of sector P/Es — earnings yields are additive, multiples are not, so
+  index P/E = 1 / Σ(wᵢ/PEᵢ). Applied to the factsheet weights against the
+  sectoral index P/Es:
+
+| index | reported | harmonic | naive avg | coverage |
+|---|--:|--:|--:|--:|
+| Nifty 50 | 20.52 | 18.87 | 20.85 | 84% |
+| Nifty 500 | 22.90 | 19.94 | 22.42 | 82% |
+
+  The theoretically correct harmonic figure is FURTHER from reported than the
+  naive average, which locates the error in the inputs rather than the formula:
+  ~18% of index weight has no matching sectoral index (Chemicals, Consumer
+  Durables, Consumer Services, Construction Materials, Diversified), and
+  mappings like Healthcare→Nifty Pharma or Capital Goods→Nifty Infrastructure
+  are approximations. A sector's large-cap slice inside Nifty 50 also need not
+  carry the whole sector index's multiple. **Not accurate enough to be a
+  signal**; the naive number matching better is coincidence, not validation.
+
+## 2026-07-28 — Small-cap screener validation extended: edge is 2x LARGER in the bear
+
+- The 2019 start was an artefact of requiring 756 bars of warm-up for the
+  3-year-high rule, which skipped the 2016-2020 bear — the regime that motivated
+  the whole thing. `flags()` already degraded gracefully (its window is
+  `max(0, i-756):i`), so the only real constraint was the 200DMA. Warm-up
+  dropped to 220 bars; the turnover-rank band needs 260, so formations now start
+  **2017-01** (the panel itself begins 2016-01 — "2016" is not reachable).
+- **RESULT STRENGTHENS**: 105 formations vs 82, edge **+3.07%/126 bars
+  (t 8.75)** against the earlier +2.59% (t 5.44).
+
+| period | n | band | screened | edge | t |
+|---|--:|--:|--:|--:|--:|
+| 2017-01 → 2020-10 (bear) | 44 | +3.04% | +7.37% | **+4.33%** | 6.06 |
+| 2020-11 → 2025-12 (bull) | 61 | +11.40% | +13.55% | **+2.15%** | 8.23 |
+
+- **The edge is TWICE as large in the bear (+4.33% vs +2.15%)** — and that is
+  exactly what the fund evidence predicted: small-cap managers beat their index
+  by +4.78pp pre-bull versus +2.22pp over the full cycle. The rules work hardest
+  in the regime they were derived from, which is the opposite of a curve-fit.
+- Marginal effects all strengthen on the longer window: distress −8.11pp (the
+  names it removes returned **−0.21%**) · untradeable −6.12pp · downtrend
+  −4.85pp · blowup −2.37pp.
+- CAVEAT KEPT: before 2019 the "3-year high" is a since-inception high over a
+  shorter window, making `distress` HARDER to trigger — so the bear sub-period
+  understates that rule rather than flattering it.
+
+## 2026-07-28 — Point-in-time constituents NOT obtainable; official TRI collected instead
+
+- **🔴 THE ASK COULD NOT BE MET.** Point-in-time NSE index constituents are not
+  reachable from any source available here. What was tried: niftyindices.com's
+  press-release / index-maintenance / index-review pages all return the SAME
+  77,788-byte SPA shell (no server-rendered content); the site's own
+  IISLComponet.js exposes nine `/BackPage/*` endpoints and **none** concerns
+  constituents, press releases or index changes; guessed
+  `getPressReleaseData` / `getIndexMaintenance` both 302; NSE circular-archive
+  patterns 404; and dated constituent files
+  (`ind_niftysmallcap250list_01012020.csv`) do not exist — only the CURRENT list
+  is published. Rolling today's membership backwards through a change log stays
+  the only route, and that log is not machine-readable from here.
+- **CONSEQUENCE, stated not hidden**: `smallcap_screener.py`'s turnover-rank
+  band proxy stands, with its ~43% match to the real index. The rules remain
+  validated on the survivorship-free price panel and applied forward to the real
+  250 — which is why the screener was built that way in the first place.
+- **WHAT THE SEARCH DID FIND — `scripts/nse_index_tri.py`.** The official NIFTY
+  **Total Return Index** is served by `/BackPage/getTotalReturnIndexString`,
+  entire 2016-08→2026-07 window in ONE request per index. Collected 9 indices ×
+  2,474 obs = **22,266 rows** into `indices.nse_tri`.
+- **WHY THAT MATTERS MORE THAN IT SOUNDS**: today's only surviving fund-category
+  alpha rested on a RECONSTRUCTED total return (price index plus the archive's
+  trailing `div_yield` accrued daily). An approximation underneath a headline is
+  the wrong place for one. Re-run on the official TRI:
+
+| category | approx TRI | OFFICIAL TRI | %beat |
+|---|--:|--:|--:|
+| Large Cap | +0.09pp | **+0.12pp** | 57% |
+| Mid Cap | −0.79pp | **−0.62pp** | 37% |
+| **Small Cap** | +2.22pp | **+2.33pp** | **92%** |
+| Flexi Cap | +0.26pp | +0.34pp | 63% |
+| ELSS | +0.23pp | +0.31pp | 59% |
+| Value | +0.96pp | +1.04pp | 67% |
+
+  Every cell within 0.17pp, and the approximation erred CONSERVATIVE — it
+  understated alpha slightly rather than inventing it. **The headline holds on
+  official data: small-cap active +2.33pp/yr, 92% of funds beating.**
+
+## 2026-07-28 — Small-cap exclusion screener: rebalanced, NOT Coffee Can
+
+- **`smallcap_screener.py`** acts on the one fund-category alpha that survived a
+  full cycle: small-cap active beat the Smallcap 250 by +2.22pp/yr (92% of funds)
+  over 10 years and +4.78pp (92%) pre-bull. Mechanism is in the raw numbers —
+  over 2016-2020 the index made 1.95%/yr while the median manager made 6.72%.
+  A cap-weighted index must hold everything in the band; a manager declines to.
+  So this EXCLUDES rather than selects.
+- **VALIDATED SURVIVORSHIP-FREE**: run on the price panel (6,731 symbols
+  including delisted names — DENABANK, DHFL, DISHMAN), band approximated
+  point-in-time by turnover rank. 85 formations, screened-minus-band
+  **+1.40%/quarter (t 4.70)**. All four rules help: untradeable −5.11pp ·
+  distress −3.15pp · downtrend −2.44pp · blowup −1.17pp.
+- **🔴 NOT A COFFEE CAN — the edge decays and REVERSES.** Holding-period sweep:
+
+| hold | edge vs band | t |
+|---|--:|--:|
+| 63 (quarterly) | +1.40pp | 4.70 |
+| **126 (semi-annual)** | **+2.59pp** | **5.44** |
+| 252 (annual) | +2.47pp | 3.18 |
+| **504 (two years)** | **−1.32pp** | **−0.66** |
+
+  Past ~1 year the excluded names start winning — distress continuation gives way
+  to mean reversion, the De Bondt-Thaler horizon. **Semi-annual is the sweet
+  spot**: highest t AND best net of cost (+5.2%/yr gross edge against ~2%/yr
+  turnover, vs quarterly's +5.6% against ~4%).
+- **NO historical backtest on the REAL constituents, deliberately.** NSE
+  publishes only the current list; a market-cap reconstruction from
+  fundamentals.ratios reproduces it at 71% but that table holds only companies
+  existing TODAY, so projecting it backwards embeds the survivorship that cost
+  7.5 points in the ETF study. Rules are validated on the survivorship-free
+  panel; the live screen runs forward on the real 250, where the bias cannot bite.
+- Live screen 2026-07-22: **250 → KEEP 123**, 127 excluded (downtrend 106,
+  distress 35, blowup 25). Concentrated in Information Technology (11 of 13
+  small-cap IT names excluded) and Construction (9 of 11).
+- CAVEATS: validation starts 2019 (the 3-year-high rule needs 756 bars of
+  warm-up), so it MISSES the 2016-2020 bear where fund alpha was largest — the
+  rules are untested in the regime that motivated them. The turnover-rank band
+  matches the real index at only ~43%, so validation is "small caps generally",
+  not "the Smallcap 250". Cost is charged equally to both legs, so the screened
+  book's extra turnover is not penalised inside the edge figure.
+
+## 2026-07-28 — Fund "outperformance" decomposed: only SMALL CAP survives 10 years
+
+- **`scripts/nse_index_history.py`** — official NSE daily index archive into
+  Postgres `indices.nse_daily`: **240,314 rows, 173 indices, 2016-07 → 2026-07,
+  2,465 trading days**, each with close, turnover AND **P/E, P/B, dividend
+  yield**. Chosen over niftyindices.com's monthly reports (both reachable):
+  monthly gives 12 observations a year against ~250, and is per-index files
+  needing separate parsing. 404s are cached as non-trading days so a re-run
+  never re-requests a decade of weekends.
+- **Why it was needed**: benchmarking a mid-cap fund against Nifty-50 is a
+  category error, and the only per-segment bars available were index FUNDS —
+  which start 2020-10 (midcap) and 2023-05 (Nifty 500). That capped the honest
+  test at 4.6 exceptionally bullish years.
+- **DIVIDEND ADJUSTMENT IS NOT OPTIONAL.** The segment indices published here
+  are PRICE indices (the 13 "TR" names in the panel are leveraged/inverse/sector
+  products, not total-return versions of the core indices). Fund NAVs are total
+  return, so comparing them to a price index fabricates the dividend yield as
+  alpha — 1.26%/yr on Nifty 50, 0.94% on the mid/small indices. The panel's own
+  `div_yield` column is accrued daily to reconstruct total return.
+- **🔴 THE 4.6-YEAR RESULT REVERSES.** Mid-cap active looked like +4.95pp of
+  alpha with 87% of funds beating over 2020-11→2025-05. Over the FULL 10 years
+  it is **−0.79pp with only 32% beating**. That window was the best small/mid
+  run in a decade and the "alpha" was the window.
+
+| Category | 10y alpha vs own segment | %beat | 2016-08→2020-10 | %beat |
+|---|--:|--:|--:|--:|
+| Large Cap | +0.09pp | 57% | −1.17pp | 19% |
+| **Mid Cap** | **−0.79pp** | **32%** | +0.10pp | 55% |
+| **Small Cap** | **+2.22pp** | **92%** | **+4.78pp** | **92%** |
+| Flexi Cap | +0.26pp | 58% | −0.16pp | 45% |
+| ELSS | +0.23pp | 59% | −0.29pp | 41% |
+| Value | +0.96pp | 67% | −2.54pp | 8% |
+
+- **ANSWER to "how do funds beat the index": mostly they don't.** Large Cap,
+  Flexi Cap and ELSS are all within ±0.3pp of their own segment over ten years —
+  the SPIVA result, reproduced on this panel. What looks like outperformance
+  against Nifty-50 is segment beta: the mid-cap index itself beat Nifty-50.
+- **SMALL CAP is the exception and it is robust**: +2.22pp over 10 years and
+  +4.78pp in the pre-bull sub-period, **92% of funds beating in BOTH**. A hit
+  rate that stable across opposite regimes is not a window artifact. Likely
+  mechanism: the Nifty Smallcap 250 returned just 1.95%/yr over 2016-2020 while
+  managers made 6.72% — an index carrying names an active screen can simply
+  decline to own, in the segment least efficiently priced (the same direction
+  as the PEAD finding).
+- CAVEATS: Multi Cap shows +2.07pp/100% but n=6 and SEBI redefined the category
+  in 2020, so its mandate changed mid-sample — not comparable. Survivorship was
+  measured separately and is worth only +0.20pp (13% of funds died; their median
+  12.65% vs survivors' 15.91%), so it does not explain any of the above.
+
+## 2026-07-28 — Both proposed fixes to the PEAD book FAILED (regime filter, decile)
+
+Tested on a COMMON window (2017-02-10 → 2024-12-06) so the comparison is not
+confounded by the filter's 200-bar warm-up shifting the start date — the first
+attempt was, and made the filter look worse than it is:
+
+| threshold | regime | trades | CAGR | maxDD |
+|---|---|--:|--:|--:|
+| 80th pct | none | 4,280 | **9.46%** | −75.2% |
+| 80th pct | ma200 | 3,926 | **0.34%** | −78.6% |
+| 90th pct | none | 2,325 | **5.56%** | −80.9% |
+| 90th pct | ma200 | 2,103 | **−2.65%** | −85.0% |
+
+- **REGIME FILTER: −9.1 points, and it made drawdown WORSE.** Diagnosed rather
+  than assumed — the two books share 3,725 trades and the ones the filter
+  removes average **+5.97%** against **+5.83%** for those it keeps, so selection
+  quality explains nothing. The entire gap is six months: the filter was in
+  **CASH for 2020-05 and 2020-06** (the unfiltered book made +10.8% and +13.0%
+  in them) and near-cash in 2020-07 and 2022-05/06/07. Cumulative −70pp over 97
+  months. **A 200DMA filter is structurally late for V-shaped recoveries, and a
+  V-shaped recovery is exactly when a beaten-down-name signal pays.** It avoided
+  the drawdown and missed the repair, which is why maxDD got worse not better.
+- **TOP DECILE: −3.9 points vs the quintile** (9.46% → 5.56%), despite a HIGHER
+  per-trade median (+3.18% vs +2.76%). Positions fall from ~93 to ~50, and for
+  a right-skewed edge that concentration costs more in volatility drag than the
+  sharper signal returns. Same mechanism as the mean-vs-median finding: the
+  compounded portfolio tracks the median while diversification is what converts
+  a skewed mean into a compounded return.
+- Both of these were MY hypotheses ("a regime filter would have avoided
+  2018-2020"; "the decile may concentrate the effect enough to clear costs").
+  Both are wrong, in the same direction: they trade away the tail and the
+  breadth that the edge actually depends on.
+- Caveats on the harness itself: `benchmark_series` reindexed onto the price
+  calendar injects `bench=0` on 148 of 2,603 bars where AMFI has no quote,
+  producing 137 flat stretches that mildly distort any moving average built on
+  it; the `breadth` regime mode failed to produce output and is untested. Both
+  noted rather than papered over — neither changes the sign of the result.
+
+## 2026-07-28 — A REAL signal that still loses: the PEAD Q5 book
+
+- **`pead_portfolio.py`** turns the confirmed PEAD signal into a tradeable book:
+  4,678 trades, 2016-08 → 2025-05, ~92 positions open, 100% invested, ₹1cr
+  liquidity floor, 63-bar fixed hold, one open position per name.
+- **🔴 The study's quintile was NOT tradeable.** It used `pd.qcut` over the
+  whole sample, so the Q5 breakpoint depended on CARs of events that had not
+  happened yet — the same look-ahead class that cost 7.5 points in the ETF
+  universe. The book uses a **trailing 80th-percentile threshold** recomputed at
+  every event, so the study's +2.43% is an upper bound, not a forecast.
+- **RESULT: 10.75% CAGR at fee parity vs Nifty-50's 13.57% over the identical
+  window.** Loses by 2.8 points, and ranks last or next-to-last in **all 10**
+  fund categories (medians 13.57%–18.41%). Drawdown is **−75.2%** (NAV 1.595 in
+  2017 → ~0.40 at the 2020 COVID trough → 3.686 by 2024-08) — a Calmar of 0.16.
+  Verified as a real path, not a data artifact: worst single month is −16.4%,
+  and the extremes are genuine events (TALWALKARS −86%, ASIANTILES +506%).
+- **WHY A t=4.93 SIGNAL PRODUCES A LOSING PORTFOLIO — the lesson of the day.**
+  Per-event mean raw 63-bar return is **+5.86%**, which annualises naively to
+  **25.6%/yr**. The book actually compounds at **10.75%**. The per-event
+  **MEDIAN** is +2.70%, which annualises to **11.2%** — almost exactly the
+  realised book. The arithmetic mean of a right-skewed return distribution is
+  not the compounded portfolio return: volatility drag, position overlap and
+  costs consume the difference, and the same tail that inflates the mean is what
+  made the t-statistic impressive. **Mean-positive / median-negative was the
+  warning; this is the warning priced.**
+- Practical reading: the signal is real and survives every robustness check
+  (ex-COVID t 3.78, bootstrap CI [+1.91%, +2.98%] excluding zero), but "real
+  signal" and "portfolio that beats the index" are different claims and this one
+  clears only the first. Anything built on it would need the tail retained
+  (no winsorising in live trading), far better drawdown control, and a reason to
+  expect the median rather than the mean.
+
+## 2026-07-28 — PEAD replicates on the FULL India panel; liquidity premium does not
+
+- **Scale**: prior work ran on `pit_quarterly.parquet` (9,456 parsed filings).
+  This uses the entire NSE results index — **152,879 filings → 42,369 usable
+  events across 2,031 symbols, 2016–2025**. Possible because the SUE-FREE
+  formulation sorts on the market's OWN announcement reaction rather than on
+  parsed EPS, so it needs only filing dates + prices, both of which exist for
+  the whole panel.
+- **PEAD: CONFIRMED.** Forward 63-bar index-relative excess by announcement-
+  reaction quintile: Q1 +0.55% · Q2 +0.59% · Q3 +0.54% · Q4 +0.88% ·
+  **Q5 +2.43%**. Top-minus-bottom **+1.88% (t 4.93)**, rank IC **+0.0302
+  (t 6.22)**. Survives dropping the 2020–21 COVID regime entirely: **+1.48%
+  (t 3.78)**, IC +0.0285. Bootstrap 95% CI on Q5 [+1.91%, +2.98%], P(mean≤0)=0.
+- **But it is NOT a clean ladder and NOT a long-short.** Q1–Q3 are flat within
+  6bp of each other; the entire effect is Q5. Q1 is POSITIVE (+0.55%), so there
+  is no short leg. And the distribution is severely right-skewed — Q5 median is
+  **−1.23%** against a +2.43% mean with a **47% win rate**. Winsorising at 5%
+  cuts it to +1.54%; dropping the top 1% of observations cuts it to +1.18%.
+  Roughly half the raw edge is the tail. Honest tradeable estimate: ~+1.2%/qtr
+  ex-COVID and winsorised ≈ +4.8%/yr gross, less ~2%/yr cost at 4 rebalances
+  ≈ **+2.8%/yr net over Nifty**, before market impact and taxes.
+- **🔴 Liquidity premium: NOT replicated.** 118 monthly formations, 63-bar hold,
+  index-relative: illiquid-minus-liquid **−0.64% (t −0.85)**, and non-monotone
+  (Q1 +0.81 · Q2 +1.18 · Q3 +1.24 · Q4 +1.75 · **Q5 +0.17**) — an inverted U,
+  not a premium. The paper reported +4.24%/quarter (t 2.16) via a 10-year
+  Fama–MacBeth regression; this is a quintile-sort estimator on a different
+  universe, so it is a NON-REPLICATION UNDER THIS PROTOCOL, not a refutation.
+  Note also that ALL five quintiles beat Nifty (+0.17% to +1.75%), which says
+  what is really being measured is small/mid-beats-large-cap breadth, not
+  liquidity.
+- **PEAD is STRONGER in liquid names** (+2.24%, t 3.94) than illiquid (+1.40%,
+  t 1.92, IC +0.0095) — the opposite of the "less-efficient markets" mechanism
+  at the within-market level. Most likely errors-in-variables attenuation:
+  illiquid names have noisier prices, so both the signal and the forward return
+  are measured with more error and the IC is biased toward zero.
+- Protocol: day 0 = first bar at/after the filing timestamp (filings land as
+  late as 21:29, so same-day prices can never be used); signal window [0,+1] and
+  forward window [+2,+65] never overlap; prices split-adjusted; **287 symbols
+  with unexplained residual discontinuities excluded**; every return
+  index-relative.
+
+## 2026-07-28 — ETF builder: nothing beats SPY risk-adjusted once the bias is out
+
+- **`etf_builder.py`** — walk-forward optimiser harness. Weights at each
+  rebalance use only data strictly before it; no in-sample number appears
+  anywhere in the output. US top-200, 110 monthly rebalances 2017-06→2026-07,
+  long-only, 10% cap, Ledoit-Wolf shrunk covariance, 10bp/side turnover cost.
+- **🔴 THE BIAS THAT NEARLY GOT REPORTED AS A RESULT.** v1 ranked turnover over
+  the WHOLE period and kept the top 200 for every rebalance — look-ahead in the
+  UNIVERSE, since a name qualified only by surviving and staying liquid to the
+  end of the sample. It showed 1/N beating SPY by **+4.92%/yr doing nothing**,
+  and every scheme inherited that and reported it as its own. Selecting the
+  universe point-in-time (top-200 by TRAILING turnover at each rebalance) took
+  1/N from **19.75% → 12.26%**: **7.5 points of pure survivorship**. SPY, an
+  external series, did not move. The correction flipped the conclusion from
+  "four schemes beat the market" to "essentially none do".
+- **RESULT (debiased)**: 1/N 12.26% (Sharpe 0.66) · inverse-vol 12.20% (0.76) ·
+  min-variance 5.81% (0.59) · max-Sharpe 13.52% (0.78) · momentum 12-1 18.95%
+  (0.67) · **SPY 14.85% (Sharpe 0.93, maxDD −23.9%)**. SPY has **the best
+  Sharpe and the shallowest drawdown in the table**. Four of five schemes lose
+  to it outright.
+- **Momentum is the only raw-return winner (+4.10%) and it is not an edge**: it
+  buys that with 28.3% vol against SPY's 16.0% and a −35.3% drawdown, so its
+  Sharpe is 0.67 vs 0.93. Levered SPY at the same volatility beats it. Cost is
+  NOT the objection though — measured turnover 118%/mo gives a **breakeven of
+  39bp/side**, ~4× realistic US large-cap cost, so the raw edge does survive
+  frictions. It simply is not worth the risk taken.
+- **Two priors of mine that the data corrected**: max-Sharpe was expected to be
+  a disaster (error maximisation) and instead **beat 1/N by +1.26%** with the
+  second-best Sharpe — with covariance shrinkage and a weight cap the classic
+  result is much softer than stated. And min-variance delivered exactly what it
+  promises (9.8% vol, by far the lowest); it just paid 9 points of return for it
+  in a bull decade.
+- CAVEATS recorded with the result: 110 monthly observations, one US regime, no
+  taxes, US only. India is refused by the harness until its panel is split-
+  adjusted.
+
+## 2026-07-28 — Can an optimiser build a better portfolio? Timing good, SELECTION negative
+
+- **An optimiser sets WEIGHTS; it cannot fix SELECTION — and there is no signal
+  to weight on.** Across 20 ex-ante-feature × market tests against 63d excess
+  (`rsi_at_evict`, `drift_at_evict`, `rsi_at_trigger`, holding days,
+  `exit_ret_pct`), exactly ONE crosses |t| > 2 (US `exit_ret_pct`, t −2.99) —
+  which is what 20 tests produce by chance. With no predictable cross-sectional
+  dispersion, an optimiser over these picks reweights noise. Same conclusion
+  `portfolio_bundles.py` reached when it chose inverse-vol over max-Sharpe.
+- **DECOMPOSITION (India, split-clean, cash parked in a real Nifty-50 Direct
+  Growth index fund rather than at 0%)**:
+  - book, cash at 0% … **8.77%**
+  - book, cash parked in the index … **13.07%**
+  - index alone, 100% passive … **14.85%**
+  - picks only, on invested days … **16.76%**
+  - **index on those SAME days … 20.16%**
+  The last two lines are the finding. The book was invested during
+  better-than-average market days (20.16% vs 14.85% — the TIMING was good), and
+  gave it all back on stock selection, trailing the index by **−3.4 points on
+  the very days it chose to hold**. Selection alpha is negative, so no
+  cash-management overlay rescues it: parking idle cash in the index still lands
+  at 13.07% against 14.85% for simply owning the index.
+- **CONSEQUENCE**: there is no portfolio construction — optimised, equal-weight
+  or otherwise — that turns this pick list into something that beats the index,
+  because the picks themselves underperform it while held. Fixing weights was
+  never the lever.
+
+## 2026-07-28 — 🔴 India warehouse panel is split-UNADJUSTED (corrects today's numbers)
+
+- **FOUND**: `global-market-data/warehouse/ohlcv/IN` carries raw closes. Its
+  top-200 alone holds **71 unadjusted split events** reading as ~−90% single-day
+  "returns" — NESTLEIND 2024-01-05, JSWSTEEL 2017-01-04, EICHERMOT 2020-08-24
+  are all 1:10 splits. The US panel's equivalent outliers are genuine (OXY on
+  the 2020 oil crash, SNAP's guidance cut), confirming US/JP/KR are adjusted and
+  **India alone is not** — the hazard the memory note warned about, now measured.
+- **CORRECTION to the fund scorecard published earlier today.** Three of 721
+  India tier events had a split inside their holding window (DRREDDY −80.6%,
+  KOTAKBANK −80.2%, HDFCAMC −50.2% — all fake). Excluding just those three:
+  - book CAGR at fee parity **4.84% → 7.32%**
+  - invested-only CAGR **10.73% → 15.60%**
+  - monthly maxDD **−33.1% → −24.4%**
+  Three bad rows in 721 moved the like-for-like number by 4.9 points. The
+  headline verdict stands — 7.32% still loses to every category and to passive
+  16.53% — but **the diagnosis changes**: fully invested the book ranks mid-pack
+  (16/26 Large Cap · 18/25 Flexi Cap · 64/88 Sectoral), so selection is roughly
+  market-average and **the 46% cash drag is what kills it**, not the picks.
+- **Consequence for optimisers**: `etf_builder.py` REFUSES market IN unless
+  `--allow-unadjusted` is passed. Three fake −90% observations would dominate
+  any covariance estimate and therefore every weight in the book.
+- OPEN: the India panel needs real split adjustment (corporate-action feed or a
+  ratio-detection pass) before any India price-return optimisation is credible.
+
+## 2026-07-28 — Re-entry book tested: NO EDGE, and the prior claim is unreproducible
+
+- **Extended `backtest_tier_anomalies.py` past the anomaly touch.** New additive
+  columns `reentry_ret_{21,63,126}` / `bench_ret_*` / `reentry_excess_*` /
+  `trigger_date` / `rsi_at_trigger`. `open_until` was deliberately LEFT ALONE:
+  extending it to cover the re-entry horizon would have changed the EVICTION
+  stream and silently invalidated the fund_scorecard result already computed
+  from this file. Verified — IN/JP/KR events are byte-identical to the prior
+  run. Overlapping re-entry windows are instead dropped at book construction.
+- **RESULT: no edge, anywhere.** Excess vs the equal-weight index of the same
+  universe over the same window, paired per event, all 12 market×horizon cells
+  |t| < 2: IN 63d **+0.18% (t 0.27)** · US **+0.09% (t 0.14)** · JP **+0.36%
+  (t 0.80)** · KR **−1.16% (t −1.02)**. Every median excess is NEGATIVE while
+  means sit near zero — right skew, a few big winners over a typical trade that
+  loses to the index. That is the signature of no edge with positive skew.
+- **As a book it is worse than the eviction book**: 1.36% CAGR at fee parity
+  (4.50% fully invested) — **last of last in all 11 rankable categories**
+  against medians of 13.2–22.8%.
+- **🔴 THE PRIOR CLAIM CANNOT BE REPRODUCED.** The 2026-07-27 entry recorded
+  "Re-entry edge VALIDATED … IN +12.9%/63d (t 14.2) · KR +24.9% (t 14.8) · JP
+  +6.1% (t 10.3) · US +5.1% (t 7.0)", and `reentry_engine.py` — LIVE in the
+  pipeline at [13w] — cites those numbers in its header as its justification.
+  The script that produced them is not in the repo. Every construction that can
+  be built from the data gives, for IN 63d:
+    - from the TRIGGER, anomalies (the actual re-entry book): +0.18%, t 0.27
+    - from the EVICTION, anomalies only (LOOK-AHEAD): +2.81%, t 4.87
+    - from the EVICTION, all evictions (unbiased): −0.43%, t −0.81
+  Outcome-selection does inflate the result by ~3.2 points, confirming
+  look-ahead as a real mechanism here, but nothing approaches +12.9%/t 14.2.
+  Treat the engine's stated justification as UNVERIFIED until reproduced.
+- **Incidental data-quality find**: `VXX` — a volatility ETN, not a stock — sat
+  in the US top-200-by-turnover backtest universe until last night's warehouse
+  refresh displaced it (CVNA in). Same contamination class as the LIQUIDSBI ETF
+  that once shipped as a golden-cross pick. The universe filter screens on
+  turnover only, never on instrument type.
+- Also confirmed benign: the US event count moved 2,195 → 2,177 purely because
+  the pipeline rewrote `warehouse/ohlcv/US/year=2026.parquet` at 00:17, shifting
+  the full-period median-turnover ranking. Not a logic change.
+
+## 2026-07-28 — Fund scorecard: the eviction book loses to every peer category
+
+- **RESULT (India, 2020-11 → 2026-02, 721 trades)**: the unbiased tier book
+  compounds at **5.89%**, or **4.84% at fee parity** (100bp/yr synthetic fee,
+  the user's ask), against category medians of **15.9%–23.8%** and **passive
+  Nifty-50 index funds at 16.53%**. It ranks **last or next-to-last in all 10
+  rankable categories**, and stays there when credited with being fully
+  invested (10.73%). Clean negative result, not a tuning problem: it loses to
+  active management AND to just buying the index, by ~12 points a year.
+- **THE EDGE IS ONE YEAR, AND IT IS GONE.** Calendar-year book returns at fee
+  parity: 2020 +8.8% · **2021 +40.9%** · 2022 −1.0% (zero trades — fully in
+  cash) · 2023 +16.6% · 2024 −10.3% · 2025 −12.4% · 2026 −6.2%. The entire
+  lifetime gain is the post-COVID V. **From 2021-04 onward the book is −3.3%
+  over 4.9 years.** Mean-reversion off evictions worked in the rebound and has
+  not worked since — this is regime dependence, not an edge. Moving the start
+  date five months later takes CAGR from 4.84% to 0.21%, which is the single
+  most damning number in the study and the reason sub-period decomposition
+  should precede any headline CAGR here.
+- **WHAT BOOK THIS IS, precisely.** `backtest_tier_anomalies.py` is a
+  triple-barrier experiment and `exit_ret_pct` runs FROM THE EVICTION for all
+  three outcomes, with the label known only afterwards. So the only unbiased
+  book the file supports is **buy every evicted name at eviction, exit at the
+  first barrier** — i.e. "fade our own evictions". **It is NOT the re-entry
+  book**: buy-at-anomaly-trigger returns begin where this dataset's returns end
+  and remain untested here. The negative result does not touch that thesis.
+- **The look-ahead that would have flattered it**: filtering to
+  `outcome == 'ANOMALY'` reports a median +6.3% in 28 days for India and is
+  worth nothing — it picks winners after the fact. `--outcome` now prints a
+  LOOK-AHEAD banner instead of quietly obliging.
+- **A bug in the scorecard's own construction, found by cross-check and fixed.**
+  Aggregating position month-fragments and averaging them weights a position
+  open 3 days of a month the same as one open all 30, dragging every month
+  toward zero: it reported **CAGR 2.15% where the truth is 5.89%**. Rebuilding
+  the curve DAILY (equal weight across positions actually open each day) as an
+  independent check exposed it, and that check is now the implementation. Note
+  the direction — the correction moved the book UP and it still loses.
+- **Robust to the two biases that cut the other way.** Ranks are against funds
+  with marks at both ends of the window, so dead funds — which skew bad — are
+  excluded and the peer bar is if anything too high; and no synthetic fee is
+  charged to the book, so a strategy BEFORE fees is losing to funds AFTER fees.
+  Both corrections would widen the gap, not close it.
+- Peer-set construction bugs caught by a synthetic-book dry run before the real
+  data landed: negative "died" counts (`&` precedence), rank exceeding the field
+  (book missing from its own denominator), split categories (AMFI ships both
+  `Equity Scheme -` and `Equity Schemes -`), and hybrids leaking in via
+  `ILIKE '%Equity%'` matching *Hybrid Scheme - Equity Savings*.
+
+## 2026-07-28 — AMFI NAV collector: fund PERFORMANCE enters the warehouse
+
+- **The gap**: `portfolio_bundles.py` builds "mutual-fund-style" bundles and
+  `bundle_validation.py` checks them against index/ETF **holdings** — but the
+  platform had never held a single fund's **performance**. "Fund-style" was a
+  metaphor. `scripts/amfi_nav_collect.py` makes it measurable.
+- **Source: AMFI** (`portal.amfiindia.com/DownloadNAVHistoryReport_Po.aspx`),
+  free and unauthenticated, **verified reachable from this machine back to at
+  least 2016-07** — which matters, because SEBI and IMF are both blocked here.
+  Semicolon-delimited with AMC and CATEGORY as bare header lines: the category
+  is not a column, it is **positional state** while parsing. Chose AMFI over a
+  SEBI feed for reachability, and over a scraped aggregator for provenance.
+- **Why India first**: AMFI carries SEBI's own category taxonomy (Small Cap,
+  Value, Contra, Focused, Flexi Cap…) — the cleanest peer-grouping any of the
+  five markets offers. The scorecard's question is "did the book beat its
+  CATEGORY after costs", and no other market hands you the categories for free.
+- **NOT GUESSED, deliberately.** PLAN (Direct/Regular) and OPTION
+  (Growth/IDCW/Bonus) are parsed from the scheme name and stay `unknown` when
+  the name does not say. They are worth ~0.6–1.2%/yr (Direct vs Regular) and
+  IDCW NAV drops on every payout, so a wrong guess corrupts the comparison in
+  exactly the direction that flatters us; a null the scorecard can exclude is
+  safer. Naming traps found and covered by unit cases: the AMC **"Groww" is not
+  "Growth"** (word-boundary anchored), *"Unclaimed Dividend - Growth"* is a
+  GROWTH option (Growth tested before IDCW), *"Regular Premium … Regular Plan"*
+  (Direct tested first), **"Cumulative" IS Growth** under an older name, and
+  **Bonus is a third option** whose NAV is comparable to neither.
+- **Survivorship is RECORDED, not corrected.** `funds.schemes` keeps
+  `first_seen`/`last_seen`; `funds.scheme_status` marks a scheme dead once it
+  stops reporting (10 sessions of slack). This is the whole point: **2016 had
+  11,366 schemes vs 8,612 today** — SEBI's 2017–18 rationalisation merged
+  thousands away, and benchmarking only against survivors would silently delete
+  every fund that failed. Widening is one-way: a backfill of older months can
+  push `first_seen` back but can never drag `last_seen` backwards.
+- **Append-only + idempotent**, like `market_ingest.py`. Two counting methods
+  were tried and rejected before the third worked: `RETURNING` (duckdb's pg
+  extension cannot bind it on an attached table) and diffing `count(*)`
+  before/after (**both reads land in one transaction snapshot, so the delta is
+  always 0 — it silently reported "appended 0" for a 158,643-row load**). The
+  count now comes from the anti-join itself, before inserting.
+- VERIFIED: re-run of a loaded window appends 0; a new window appends in full;
+  incremental resumes from the high-water mark; parser holds on 2016/2019/2022
+  files; `first_seen` widened to June while `last_seen` held, and 70 schemes
+  that stopped reporting were flagged dead off two months of data alone.
+- **Scope decision (user)**: tier 2 is a **scorecard**, not a short book — "did
+  our evictions underperform" is pure measurement, and a short book would need
+  borrow assumptions per market against an India playbook that is long-only.
+
+## 2026-07-28 — Reconcile [13d]: intraday drift no longer suppresses the send
+
+- **The incident**: the 00:30 run built a sound brief (validation PASSED 6/6,
+  close-date verified) and did not send it. NVDA at 4.63% against a 4%
+  in-session tolerance failed [13d] on its own and suppressed the whole mailer.
+  The US scan runs at 00:33 IST = 15:03 ET — **mid-session by construction,
+  every weekday**. One liquid name moving >4% intraday is an ordinary Tuesday.
+- **REVERSES part of the 2026-07-27 call** ("a materially-off brief price should
+  block a send even when the cause is the market moving"). That was reasoned from
+  SKHY 9.4%, which looked like drift and was in fact a **stale cache** —
+  `_is_stale()` judging freshness by fetch time. Fixed at the source earlier
+  today (`market_data_cache` + `ohlcv_cache` now compare the last BAR date), so
+  the evidence the strict rule rested on no longer exists. What the per-name
+  tolerance still catches in session is drift — and drift is not a defect:
+  **when the market is open at build time there is no better price to quote.**
+  The brief is read hours later, after the close; any build-time snapshot is
+  stale by then. Blocking does not buy a more accurate brief, it buys no brief.
+- **New rule, in session only**: the gate stops asking "is this one price off?"
+  and asks the two questions that actually indicate a broken scan —
+  1. **exact-match warehouse signature** (scan LTP == yesterday's close to the
+     cent). No live market reproduces this. Promoted from a printed warning to a
+     **hard fail in every session state** — this is the precise staleness test,
+     and the INFY/SKHY class it was built for.
+  2. **systematic breach** — a majority (`_quorum`, ≥2) of sampled liquid names
+     off together. Drift is idiosyncratic; a re-served cache moves the sample as
+     one.
+  **Outside session hours the strict per-name rule is unchanged** — nothing but
+  bad data explains a gap when the market is shut.
+- **Scope is narrower than it sounds**: at 00:33 IST only US is in session
+  (JP/KR pre-open, EU/IN shut), so this changes the verdict for **one market at
+  pipeline time** and leaves the other four strict.
+- VERIFIED by replaying the real 00:33 workbook against the logged fresh quotes:
+  in-session 2/7 breaching → **PASS** (below the 4-name quorum, brief sends);
+  identical data with the market closed → **FAIL**; a whole sample re-served
+  (8/8) in session → **FAIL**. Live all-market run: IN/US/EU clean.
+- **Known residual (accepted)**: a genuine market-wide gap during the US session
+  would trip the quorum and suppress a correct brief. Not defended against,
+  because check 1 is the exact staleness test and check 2 is deliberately a
+  fuzzy backstop — tightening it further would re-import the false positive this
+  change removes.
+
+## 2026-07-27 (night 3) — Performance: --post-only, weekly US correlation, session-aware gate
+
+- **Measured before fixing** (scan_timings.py / step_timings, per the
+  measure-don't-guess rule): US correlation 28.6 min (~55% of a warm run) ·
+  cloud backup 10 min · US scan 5–26 min · every other step ≤1.5 min. The day's
+  real waste: FOUR full pipeline runs where one full + three partials would do —
+  runs 2–4 rescanned five closed markets with identical inputs just to verify
+  small post-scan logic changes.
+- **`--post-only` flag** — skips scans+correlations [1–13], runs only the
+  post-scan block (screens → prediction/tiers/re-entry → gates → mailer).
+  VERIFIED: the full re-entry loop in **13m21s vs ~90 min** (7×). This is now
+  the way to verify pipeline-logic changes; full runs are for data refresh.
+- **US correlation → WEEKLY (Mondays)** — a ~7,000×7,000 matrix whose clusters
+  drift over weeks, not days; same Monday cadence as the paper-track scorecard.
+  Other markets stay daily (each ≤5 min). Tue–Fri warm runs drop ~50 → ~20 min.
+- **Session-aware reconcile tolerance** — when a market is in session (per-market
+  IST windows), scan-vs-fresh gaps are intraday drift, so [13d]'s tolerance
+  loosens 2×. Root-caused the first flags: ASML 3.6% during the EU session =
+  drift; **SKHY 9.4% = the gate being RIGHT** (scan captured Friday's close at
+  the 09:06 ET open, stock genuinely −9% intraday — a materially-off brief
+  price should block a send even when the cause is the market moving).
+
+## 2026-07-27 (night 2) — Tier-3 anomaly backtest + the mean-reversion re-entry engine
+
+- **Backtest (`backtest_tier_anomalies.py`)** — replayed the live eviction presets
+  over 10y warehouse data (top-200 liquid × US/JP/KR/IN, monthly evals 2018+,
+  exact tier rules): **6,151 evictions, anomaly rates IN 75% / KR 63% / US 49% /
+  JP 45%**, median boomerang +11% in ~3–4 weeks. Evicting a bear-state dip DURING
+  a market bull is usually evicting the bounce. RSI at eviction has ZERO separating
+  power (median 41 vs 41 everywhere). BUG FIXED en route: label_states uses
+  −1=warm-up/0=bear — `states.min()` selected warm-up rows (31 events instead of
+  6,151).
+- **DECISION (user): keep thresholds as-is; tier 3 = RE-ENTRY QUEUE**, not a
+  failure log — the anomalies are the discovery output.
+- **Re-entry edge VALIDATED before building**: buying at the anomaly trigger,
+  excess vs a median-return market index — IN +12.9%/63d (t 14.2) · KR +24.9%
+  (t 14.8) · JP +6.1% (t 10.3) · US +5.1% (t 7.0); raw returns positive in all
+  four. CAVEAT: top-200-by-full-period-turnover panel is survivorship-lite; the
+  paper-track scores the live engine out-of-sample to settle it.
+- **`reentry_engine.py`** (pipeline [13w], after watchlist_tiers): fresh tier-3
+  anomalies (≤10d) → market-bear gate → per-market RSI overbought VETO → top-3
+  per market enrolled in watchlist.csv as `status=reentry` rows with entry
+  price/date so the paper-track scores the engine automatically. Stale tier-3
+  rows (>30d, never re-entered) age out. Mailer shows the ↩ re-entry queue.
+
+## 2026-07-27 (night) — Prediction filter routine, per-market RSI layer, 3-tier watchlist
+
+- **`prediction_filter.py` as daily step [13w]** — the one-off mailer_prediction_audit
+  is now a STANDING eviction input: refresh regime×Markov×Kalman scores → auto-purge
+  non-held WEAK (bear state + negative drift) → held WEAK to
+  `reports/held_sell_review.csv` (SELL-REVIEW — portfolio rows are NEVER auto-purged,
+  same guardrail as zone eviction). Stale-panel guard: stock panels >7d old are
+  skipped (`--max-age` for deliberate one-offs). The one-time 40-name purge itself
+  ran in the parallel session (`8ee61e95`, PR #23) and included 32 held names —
+  the ROUTINE will not repeat that without the user.
+- **Per-market RSI layer, linked into the filter** — the SAME RSI-14 is read
+  differently per market character, mirroring the backtested zone rules (uniform
+  bands were wrong, KR t−2.5): momentum IN buys strength (50–75, exits <40/>80);
+  mean-revert US/JP/KR/EU buys oversold (≤35), sells overbought (≥70). Refinement:
+  ENTER-OK in an RSI SELL band → **ENTER-WAIT (RSI)**. First live pass: 453/454
+  priced, HOLD 269 / BUY 157 / SELL 27, 7 ENTER-OKs downgraded RSI-hot.
+- **Three-tier watchlist (`watchlist_tiers.py`, runs with [13w])**:
+  - **Tier 1** `watchlist.csv` — filter/screener-driven picks (unchanged).
+  - **Tier 2** `watchlist2.csv` — VALIDATION watchlist: every purged name
+    auto-enrolls with a baseline price and is tracked daily against the exact
+    criteria that evicted it (return since purge + live per-market RSI zone).
+    Seeded with 134 names (today's 40 prediction-purges + the historical
+    zone-purge archive). Names that behave as predicted age out (ret ≤ −15%
+    or 90d tracked): eviction VALIDATED, logged.
+  - **Tier 3** `watchlist3.csv` — ANOMALIES: tier-2 names whose price action
+    CONTRADICTS the eviction (ret ≥ +10%, or ≥ +5% while back in the RSI BUY
+    band) are MOVED here with the trigger recorded — the prediction model's
+    misses, i.e. the research queue. Full audit trail in
+    `reports/watchlist_tiers_log.csv`.
+  - Mailer's 🔮 Prediction-lens block now shows verdict counts, RSI zones,
+    SELL-REVIEW held names, today's purges, and tier-2/3 counts + latest anomalies.
+
+## 2026-07-27 (evening) — Graph-driven screener hardening: scan_core, gates, reconcile
+
+- **`scan_core.py` — ONE Darvas implementation** (SMOOTHNESS #5, the big one). The
+  3-repo knowledge graph (10,754 nodes) found `compute_darvas_box()` in 13 copies;
+  a source diff showed they had ALREADY drifted the dangerous way: JP/KR carried the
+  trailing-NaN settled-close fix (Korea 2026-07-21: `.fillna(0)` → 2,472/2,480 false
+  BREAKDOWN_SELL) which **IN/US never received** — their variants returned IN_BOX
+  computed against a NaN current price on a missing final bar. EU had only the older
+  half (NO_DATA instead of settled-close). Unified on the fixed semantics,
+  parameterized only where markets genuinely differ (India bhavcopy `CH_*` columns,
+  `decimals=0` for ¥/₩); returns a SUPERSET of both historical key schemas so the
+  five monoliths became 2-line wrappers with zero call-site changes. Also unified:
+  `_retier` ×5, `_first_df` ×3, `style_sheet` ×2 (byte-identical, verified before
+  extraction). LEFT ALONE: `fundamental_scan` (legitimately market-specific),
+  `bulk_download_ohlc` (3 diverged variants), nested `_bq_fields`. Net −298 lines.
+  VERIFIED: differential test 5 markets × 4 cases ALL PASS, then a full pipeline
+  run — JP/KR/EU signal distributions IDENTICAL to pre-refactor baselines
+  (closed markets = same data); US deltas were live-market movement only.
+- **`preflight_scan_inputs.py` as step [0b]** (SMOOTHNESS #4): cache dirs writable,
+  universe row counts, bhavcopy freshness ≤5d, Postgres reachable — asserted BEFORE
+  compute. First production run: 0 fail / 3 warn (us/japan/korea lists are
+  scan-self-fetched — warn is the right severity).
+- **`scan_price_reconcile.py` as step [13d]** (SMOOTHNESS #3): the INFY class now
+  gates the mailer in ALL five markets — (1) free warehouse signature (scan LTP
+  exactly == yesterday's `market_daily.snapshots.ltp`), (2) fresh-session yfinance
+  spot-check of top-8 liquid names, >2% flags. First production run CAUGHT
+  ASML.AS 3.6% off and suppressed the send. CAVEAT: EU/US markets are OPEN during
+  evening runs, so part of such gaps is legitimate intraday drift — consider a
+  looser open-market tolerance if false blocks recur.
+- **~/Downloads wipe-hazard eradicated from the last 3 live paths** (SMOOTHNESS #2):
+  `market_data_cache.py` default → data_registry (was the last consumer defaulting
+  to Downloads), `darvas_breakouts.py` outputs → repo dir + dead mirror globs
+  removed, `scan_timings.py` stale log glob removed. Plus `sentiment_pipeline.py`
+  earlier the same day (the 3rd incident of this class).
+- **Weekly graph refresh** in `weekly_maintenance.sh` [3b] (SMOOTHNESS #1): graphify
+  incremental detect + 3-repo merge; manifests now saved so updates take seconds.
+- **Mailer: GDrive watchlist web link** — full watchlist uploads to
+  `gdrive:/Market-Reports/` on every send, share link at the top of the digest
+  (attachment stays). Dropbox link API returned `banned_member` → GDrive.
+  CORRECTION for the record: the "brief carries stale INFY" readout from the
+  evening run was a MISREAD of the afternoon log block — evening validation showed
+  all 6 names ≤0.06% with '27 Jul close' labels; the brief builder already uses
+  the scan's live prices, no fix was needed.
+- Retrospective + local RAG + knowledge graph (3,223 nodes, committed to git with
+  a targeted gitignore exception) all updated the same evening.
+- **Prediction strategy audited over the LIVE mailer output**
+  (`mailer_prediction_audit.py`, commit `666abe66`; scores in
+  `reports/watchlist_prediction_scores.csv`). Two headline results:
+  - **(A) The regime gate's cleanest validation yet** — June 12–26 signal window:
+    India's basket regime was never bull, US was bull throughout. The gate would
+    have **blocked all 6,855 India signals** (which lost −0.49% excess at 5d) and
+    **passed all 11,709 US signals** (+0.93% at 5d, +2.20% at 21d). It filtered
+    exactly the losing cohort and kept exactly the winning one — zero overlap,
+    whole live sample, no cherry-picking.
+  - **(B) Today's watchlist through the prediction lens** (454 active names):
+    DEMOTE-market-bear 216 IN + 27 KR (gate blocks all India/Korea entries today);
+    ENTER-OK 103 US + 3 JP; HOLD-OK 58 US + 7 JP; **WEAK 38 US + 2 JP — the
+    actionable purge candidates** (pass the market gate but own Markov state AND
+    Kalman drift negative) for the next eviction cycle.
+  - READING NOTES: extreme Kalman drifts on small biotechs (RTB +1040% annualized)
+    are rankings not forecasts — a parabolic run maxes the slope; several such
+    names carry NEGATIVE Markov 21d expectations (RTB −11.8%), so treat the
+    Markov column as a veto on ENTER-OK. Stock-level panels are stale (JP to
+    Jul 1, US to Jul 17) — verdicts there are a week+ old; the market-level
+    regime is live from yfinance.
+
+## 2026-07-27 — Regime gate on scanner + mailer (10y replay-backed)
+
+- **`market_regime.py` (new, also mirrored to `backend/scanners/`)** — daily
+  point-in-time trend (bull/chop/bear) + vol (LOW/MID/HIGH) regime per market
+  from a trimmed top-20 blue-chip basket (EMA100 position+slope; trailing-252d
+  vol percentile). Cached one day in `reports/regime_cache.json`.
+  DECISION: basket index, NOT full-universe breadth median — the replay showed
+  breadth medians compound ~−98% over 10y in IN/KR/CN (sporadic microcaps +
+  decliner-heavy turnover tail) and label whole decades "bear".
+- **Backend daily scanner** (`routers/cassandra_router.py`): Darvas BUY →
+  WATCH demotion when the market's trend regime is bear (`regime_gated` flag,
+  `market_regime` on every row). Evidence: 10y replay, ~470k signals — bear-
+  regime breakout excess ≤0 in US/JP/IN (US −0.85%/21d), bull-gated excess
+  ~2x ungated (github.com/herrrickshaw/price_prediction_backtest).
+- **Mailer** (`build_mailer.py`): regime badge on each Darvas breakout
+  section (bear ⇒ explicit "watch-only, not entries" warning) + a six-market
+  regime-gate strip under the market snapshot.
+- REJECTED: hard-dropping bear-regime breakouts from the mailer — the sell/
+  breakdown leg is contrarian (bounces), and hiding rows loses information;
+  demote-and-flag preserves the audit trail.
+- **Vol gate added (same day):** graded, not binary — replay shows HIGH-vol
+  breakout excess is weaker everywhere but only flat in non-bull regimes.
+  Rule: bear ⇒ demote (any vol); chop+HIGH vol ⇒ demote
+  (`regime_gated='vol'`); bull+HIGH vol ⇒ keep BUY, `vol_caution` flag +
+  "size down" note in the mailer. REJECTED: demoting all HIGH-vol BUYs —
+  bull+HIGH cells are still solidly positive (KR +2.85, JP +0.64 at 21d).
+
+## 2026-07-27 — Official fundamentals for JP/KR/CN; unified global layer; DBMS ETL
+
+- **Japan via EDINET (official FSA source)** — `scripts/edinet_api_downloader.py`
+  pulled 3,933 annual reports (FY-ends across Jul 2024–Jun 2025), 421 MB, 0 failures,
+  34 min. KEY FINDING after hours of dead ends: **the real API host is
+  `api.edinet-fsa.go.jp/api/v2`** — the `disclosure2` website's paths return HTML
+  error pages to every programmatic call (bulk URLs, "API" paths, scraping all
+  failed). `--format csv` (type=5) = EDINET's pre-extracted UTF-16 TSV, skipping
+  iXBRL parsing entirely. `japan_aggregate_all.py` merged 7 sources (fresh EDINET >
+  prior EDINET > jquants > yfinance) → `JP_master.parquet` + Postgres
+  `japan_fundamentals_history` (18,679 rows). **Live-universe coverage: 2,936/2,937
+  (99.97%) with FY2024+.** Raw ZIPs tarred → Dropbox + GDrive (verified byte-equal),
+  local deleted. DECISION: cloud-first — Postgres+parquet are the query layer, raw
+  filings are cold archive only, 0 MB local.
+- **Korea via DART (official FSS source)** — `scripts/dart_api_downloader.py` replays
+  the same playbook: corpCode map (3,979 listed cos) → `fnlttSinglAcntAll` annual
+  CFS-with-OFS-fallback, FY2023–25. 6,352 filings ok / 5,584 no-data / 1 error in
+  82 min (~145 req/min, quota-aware halt on status 020). BUG FIXED: `fs_div` is a
+  *request* param — response rows don't carry it; filtering rows on it silently
+  discards everything. Verified: Samsung ₩300.9T rev / ₩34.45T NI FY2024.
+  `korea_aggregate_all.py` → `KR_master.parquet` + `korea_fundamentals_history`
+  (10,143 rows). Raw JSONL → Dropbox + GDrive, local deleted.
+- **China via Eastmoney bulk (akshare)** — `scripts/cn_fundamentals_bulk.py`.
+  DECISION: rejected the per-stock collector pattern (old `cn_akshare_collect.py`,
+  600-stock LIMIT, eps/roe only) for `stock_lrb_em/zcfz_em/xjll_em` report-date
+  endpoints that return **all ~5,200 A-shares per call** — full statements
+  2016–2025 in 30 calls: 50,442 rows, 100% revenue fill (`CN_em.parquet`).
+  Verified: Moutai FY2024 rev ¥174.1B / NI ¥86.2B. LESSON: first run fetched 18 min
+  of data then lost it to a missing pyarrow on the final write — CSV fallback added
+  so serialization can never discard a fetch again.
+- **Unified layer `global_fundamentals`** — `scripts/global_fundamentals_merge.py`
+  maps every market parquet to ONE canonical schema, keyed
+  (market,ticker,fiscal_period): **236,999 rows / 14 real markets** (US 111k EDGAR
+  true-PIT, CN 67k, JP 19k, KR 18k, IN 14k…). Consistency hygiene baked in: fy_end
+  sanity filter (>today+1yr dropped — killed 12 US EDGAR rows dated 2029), EU
+  currency resolved per exchange suffix (.L=GBP, .ST=SEK, .CO=DKK, .OL=NOK, .SW=CHF,
+  .WA=PLN) + `fx_usd` static-snapshot column, CH/BR/SG/SE placeholder parquets
+  (≤4 tickers) skipped and purged. KNOWN QUIRK: US revenue only 42% filled (EDGAR
+  tag absent for financials) — screen on net_income (87%).
+- **DBMS-grade ETL** — `scripts/etl_fundamentals.py`: extract → stage
+  (`etl.stage_fundamentals`, UNLOGGED) → SQL quality gates → priority-balanced
+  upsert → `etl.load_batches` lineage. DECISION: source precedence lives in SQL
+  (`etl.source_registry`: EDGAR 95 > EDINET/DART 90 > Eastmoney 85 > screener.in 80
+  > baostock 55 > yfinance 30) via `WHERE EXCLUDED.src_priority >= src_priority` —
+  official data can overwrite yfinance, never the reverse, regardless of load
+  order. Gates proved out immediately: cn_full (eps-only) auto-REJECTED on the
+  net_income≥50% fill gate. `--incremental` uses per-source fy_end watermarks.
+- **Graphify knowledge graph** — `/graphify` skill installed; market-pipeline graph
+  built (3,170 nodes / 5,786 edges / 237 communities; AST free + docs via Gemini).
+  Verified a query answers "how does EDINET flow into Postgres" with file:line
+  citations in ~2k tokens vs ~100k naive. Used it to drive redundancy cleanup:
+  9 dead EDINET files (3 broken downloaders + 6 stale manual-download docs) deleted,
+  replaced by one `EDINET_README.md`.
+- **Pipeline run (`--draft`) + 2 failures fixed** — full 16-step run 15:36–17:05.
+  (1) India combined report crashed on `~/Downloads/market_cache/sentiment_cache.json`
+  — that tree is wiped by a parallel session (again); cache default moved into the
+  repo with mkdir self-healing. (2) Mailer send suppressed by external validation:
+  INFY ours ₹1,040.9 vs screener ₹1,079 — **validation was RIGHT, our scan carried
+  Friday's close** (INFY +3.7% Monday); scan rerun fixed it to 0.02% diff, brief
+  sent on explicit user go-ahead (452 picks · 214 buy-zone · 14 bundles). The
+  screener.in gate earned its keep today.
+
+## 2026-07-24 — Weekly maintenance consolidated; correlation matrices → parquet; LFS
+
+- **`weekly_maintenance.sh`** — ONE weekly entry point chaining clean → dedup-verify →
+  compress → backup, wired to a single Monday-10:00 cron. It *calls* the existing
+  `cloud_backup.sh --with-pg` + `cloud_backup_verify.sh` gate rather than
+  reimplementing them; every step is idempotent and single-instance-locked.
+  DECISION: one coupled job, not four schedules — uncoupled off-wake schedules are
+  what drifted ingest 8 days before. It deliberately does NOT absorb the separate
+  `repo-data-dedup` Monday crons (different repo, already scheduled) — absorbing them
+  is how things double-fire.
+- **`compress_correlation_matrices.py`** — `correlation_scan/*_correlation_matrix.csv`
+  → same-named **float16 zstd parquet** (retain base name so a consumer only swaps
+  `.csv`→`.parquet`). One-off result: europe 16→2.8 MB, nse 93→13, korea 137→19,
+  japan 238→33, us 805→113 MB. ~1.3 GB of regenerable CSV reclaimed; disk 94→92 %.
+  This is now the weekly compress step so the matrices don't re-bloat each scan.
+- **Correlation matrices pushed to `market-correlation-matrices`** as REGULAR git
+  objects (verified `filter: unspecified`, 0 LFS files) — EU/IN/JP/KR only. DECISION:
+  **us (113 MB float16, incompressible further even at zstd-22) exceeds GitHub's
+  100 MB regular-object limit; LFS is banned (8.9 GB / 8× over the 1 GiB free tier,
+  no-paid-packs policy), so us lives in `dropbox:market-data-archive/current/
+  correlation_matrices/` instead.** Big data → Dropbox, never LFS, is the anti-billing rule.
+- **LFS situation (2026-07-24):** billed 8.90 GB across 6 real repos (research-platform
+  3.56, working-files 1.42, global-market-data 1.31, global-stock-screener 0.91,
+  market-screener-backtests 0.77, market-data-artifacts 0.24; ocaml-stock-screener ≡
+  stock-screener-platform 0.19 dup). Archive-2026-07-17 twins confirmed deleted.
+  Weekly job now asserts 0 LFS files in the correlation repo so LFS can't creep.
+
+## 2026-07-24 — Learned model wired into digest (shadow mode)
+
+- **`learned_recommender.py`** — applies the Lasso factor weights offline to the live
+  liquid universe, caches `cache_seed/learned_recs.parquet` (market,symbol,score,
+  rec_learned). Active only where Lasso kept factors: IN (1,438 names, `trend`) + KR
+  (1,725, 4 factors); US/JP/EU skipped (regime rule stands).
+- **Digest `annotate_learned(rows)`** joins the cache → `r['rec_learned']` +
+  `r['rec_agree']` (agreement vs live rule). SHADOW MODE: does NOT change `r['rec']`,
+  eviction, or the mailer — it accrues an A/B record vs the regime rule for later
+  promotion. Wired after assign_recommendations in send_mailer + digest, fully
+  try-wrapped. DECISION: shadow not live, because the static Lasso model is still weak
+  (Deflated-Sharpe + Lasso both flag fragility); promote only after it beats the
+  regime rule on forward paper-track data.
+
+## 2026-07-24 — Adaptive ML layer: Lasso factor selection + online learning rate
+
+- **`factor_learning.py`** — learns a sparse, adaptive factor model instead of
+  hand-picking one factor:
+  - LASSO (CV-tuned α, `LassoCV`) → sparse factor weights per market. FINDING:
+    static Lasso zeros most factors OOS (US/JP/EU keep 0; IN keeps only `trend`;
+    KR keeps 4) — the discrete factor signals have weak *linear* predictive power,
+    corroborating the Deflated-Sharpe fragility.
+  - ONLINE SGD with a LEARNING RATE η (grid-tuned; η=0.01 won everywhere) that
+    `partial_fit`s on each new week of realised outcomes → weights ADAPT to regime
+    drift. OOS IR jumps to ~2.8-3.9. 🔴 Stress-tested for leakage: a per-week
+    target-shuffle null collapses KR's OOS IR 3.86→0.47, so it's REAL signal, not a
+    leak — the adaptation is what generalises where the static fit doesn't. Caveats:
+    gross of costs, broad dollar-neutral book inflates IR, ~0.47 null floor to
+    discount.
+  - Writes `cache_seed/factor_weights.json` (learned per-market weights + weight
+    evolution by year) — a drop-in learned model. Instrumented via obs.py.
+- METHODOLOGY NOTE: online adaptive learning > static single-factor selection here;
+  the learning rate is the key hyperparameter (how fast to trust new outcomes).
+
+## 2026-07-24 — Methodology features: risk overlay + Deflated-Sharpe overfitting guard
+
+- **`risk_management.py`** — the risk overlay the book lacked: inverse-vol sizing
+  (risk parity within the book), portfolio vol-targeting (10%), and a drawdown
+  KILL-SWITCH (halve exposure >15% DD, restore <7%). Big win: vol-target+KS roughly
+  HALVES max drawdown (IN −77%→−31%, US −52%→−20%, JP −61%→−26%, KR −69%→−25%,
+  EU −59%→−20%) while RAISING Sharpe (JP 0.89→1.42, EU 0.88→1.34). Kill-switch
+  fired 3-4×/desk over 10y. This is the balance-sheet protection + a known vol
+  budget for sizing the carry leverage.
+- **`deflated_sharpe.py`** — López de Prado multiple-testing correction on the
+  factor optimiser (best-of-10 selection inflates the winner's Sharpe). 🔴 FINDING:
+  only 3/10 selected factors clear DSR≥0.95 — the BULL edges are real (IN trend
+  0.994, KR breakout 0.99, EU mom252 0.985) but the BEAR-regime picks are largely
+  FRAGILE (US bear 0.25, JP bear 0.11, KR bear 0.16) — statistically within the
+  best-of-10 noise. DECISION: treat fragile bear cells as unproven — default to the
+  incumbent rule or re-test OOS; do NOT over-trust the bear factor selection.
+- Both wired to obs.py (logged + decision-logged). Near-normal returns assumed in
+  DSR (skew≈0) — the AWS run can plug in realised skew/kurtosis per factor.
+- Methodology features still open (next): purged/embargoed CV, pre-trade risk
+  checks (fat-finger/exposure caps), formal walk-forward (walk_forward_backtest.py
+  exists), turnover-surge accumulation factor.
+
+## 2026-07-24 — Observability: loggers, clocks, decision logs (obs.py)
+
+- **`obs.py`** — shared production observability, motivated by the HFT literature's
+  requirement that algo traders log input/output parameters for back-testing and
+  supervisory review:
+  - `get_logger(name)` — UTC-timestamped, leveled, stdout + `logs/<name>_<UTCdate>.log`.
+  - `timed(log, label)` context manager + `Stopwatch` — phase timing (AWS cost/
+    profiling); logs elapsed seconds even on failure.
+  - `DecisionLog` — append-only JSONL audit trail (`logs/decisions_<UTCdate>.jsonl`),
+    each record tagged with a run id so a whole run is reconstructable. `.read(run)`
+    replays it.
+  - `MARKET_LOGDIR` env override for the log location on EC2.
+- Wired into `strategy_regime_survival.py`: `main()` and `refresh_regime()` now time
+  each market, log a WARNING on any REGIME FLIP, and record every rule decision
+  (market, bull/bear rule, current_regime, active_rule, breadth_asof, flip) to the
+  decision log. Verified end-to-end (refresh logged 5 markets in 5.9s + audit trail).
+- `logs/` added to `.gitignore` (runtime artifacts, not committed).
+
+## 2026-07-24 — Production hardening for AWS (path portability + bug fixes)
+
+- **Env-configurable warehouse path** — `strategy_regime_survival.py` and
+  `backtest_zone_rules.py` now read `WH = os.environ.get("MARKET_WH", <local>)`.
+  Every session module imports `S.WH`, so setting `MARKET_WH` on EC2 (to wherever
+  the panels were pulled from Dropbox/S3) makes the whole stack run unchanged.
+  The two hardcoded `/Users/umashankar/...` paths were the only AWS blockers.
+- **Fixed `long_short_tp.py` year-attribution bug** — `book_series` now returns a
+  DATE-indexed Series (tracks the weeks that actually passed the min-names filter);
+  the firm-PAT rollup groups straight by `index.year`. The old code mapped values
+  onto `wk_idx[:len(series)]`, misaligning every skipped week and producing the
+  spurious negative firm PAT reported earlier. Verified: KR bear def_revert now
+  attributes cleanly per year.
+- **Headless-safe FX** — `currency_matrix` loads from `cache_seed/fx_matrix.parquet`
+  with no network; verified `usd_per`/`convert` work offline (EC2 needs no live FX).
+- All 10 session modules compile; env override + default fallback + offline FX
+  smoke-tested. Fixed stale ADV-percentile label in the capacity report.
+
+## 2026-07-24 — HFT-research-driven orchestration: execution/impact model + FX matrix
+
+Research inputs: Gomber et al. "High-Frequency Trading" (Goethe/Deutsche Börse) +
+github.com/baobach/hft_papers. Key frame adopted: "HFT is a technical means to
+implement established strategies, not a strategy" → we upgrade the EXECUTION/COST
+layer, not chase latency.
+- **`execution_cost_model.py`** — replaces flat-bps cost with Almgren-Chriss
+  square-root impact (`half_spread + η·σ·√(Q/ADV)`) + 15%-ADV participation cap.
+  Computes per-desk CAPACITY (AUM where net edge → 0). FINDING: this is a
+  small-money edge — low single-digit $M/desk at η=1 (η-sensitive) — which is the
+  hard ceiling on how far JPY-carry leverage can deploy before impact eats the
+  edge. Directly motivates the AWS capacity×leverage sweep.
+- **`currency_matrix.py`** — historical FX layer (yfinance, 2016-2026, 10 ccys →
+  `cache_seed/fx_matrix.parquet`) with `usd_per(ccy,date)` / `convert()` /
+  `matrix(date)`. Fixes the recurring local-currency contamination (marketCap, ADV
+  both hit it). Shows INR −30% / JPY −35% / KRW −23% over 10y — a single spot rate
+  is wrong across the backtest, and the yen's 35% slide is *why* JPY carry paid.
+  🔴 prior hardcoded FX (INR 83/JPY 150/KRW 1350) was stale — real is 96.5/163.8/1466.
+- Research→strategy links already in place: `def_revert` (oversold ∩ low-vol) IS
+  the adverse-selection-screened liquidity-provision the report warns about;
+  long/short (`long_short_tp.py`) IS market-neutral statistical arbitrage; the
+  sell-news linkage IS a newsreader-algorithm analog. Next factors to add:
+  turnover-surge accumulation (liquidity-detection analog).
+
+## 2026-07-24 — Reward-optimised factor selection + real-firm profitability benchmark
+
+- **`profitability_optimizer.py`** — treats each desk's (market × regime) screener
+  as the decision variable and MAXIMISES a reward = annualised information ratio of
+  the liquidity-gated long-only book's excess over its index (risk-adjusted, so it
+  lifts income AND shrinks loss-year drawdowns → balance sheet). Expands the factor
+  library with low-vol, 12m-momentum (mom252) and multi-factor blends (qual_mom =
+  momentum ∩ low-vol; def_revert = oversold ∩ low-vol). Writes
+  `cache_seed/zone_regime_optimized.json` (drop-in for zone_regime.json once
+  validated). Wins: def_revert > plain revert in bear (IN/US/KR), mom252 > mom126
+  in bull (US/EU), breakout for KR bull (IR 1.52→2.04).
+- **`firm_benchmark.py`** — quantifies the lift (one panel pass, current vs
+  optimised map) and benchmarks vs REAL listed firms (live yfinance). Optimised map
+  lifts mean annual PAT $0.19M→$0.34M, ROE 3.9%→6.8%, annual Sharpe 0.29→0.54,
+  worst year −1.12→−0.96M, and improves EVERY one of 11 years. Reality check: our
+  6.8% prop-book ROE sits below Motilal Oswal (15.6%), IBKR (24%), Nomura (10%) —
+  pure long-only prop lacks the fee/interest/AMC income + leverage of a real
+  brokerage. 🔴 yfinance marketCap is LOCAL currency — labelled "local bn", not USD.
+- Carry pitch (`carry_funding_model.py`, scratchpad): JPY carry hedged into INR
+  costs ~8.1% (CIP kills the cheap-yen illusion; only the ~40bp xccy basis survives).
+  Two structures that work: JPY→Japan natural FX match (+3.1% cycle, no swap), and
+  regime-gated JPY→India (unhedged+levered in bull, swap-hedged in bear — same
+  breadth signal drives rule + hedge ratio + leverage).
+
+## 2026-07-24 — Regime-conditional zone rule + news-linked sell signals + quarterly earnings
+
+- **Regime-conditional Buy/Hold/Sell** — `strategy_regime_survival.py` now emits
+  `cache_seed/zone_regime.json` = per market `{bull_rule, bear_rule,
+  current_regime, active_rule}`. `watchlist_digest.assign_recommendations` reads
+  it (falls back to flat `zone_rules.json` if absent) and applies the rule keyed
+  to today's regime: momentum/trend in bull, **mean-revert in bear** everywhere.
+  Backtest verdict driving it: uniform trend dies in bear (US −0.43, JP −0.54,
+  KR −0.77, EU −0.39 excess); the single per-market rule survived both regimes
+  only for IN & EU. Restricted to rules the digest can apply cross-sectionally
+  (trend/revert/mom126/mom_st). current_regime = live breadth.
+  - Freshness: `[13c/14]` runs `strategy_regime_survival.py --refresh-regime`
+    daily (fast, ~2y panel, only updates current_regime/active_rule) BEFORE the
+    mailer; monthly `[16d]` reruns the full backtest (bull/bear rule table).
+    DECISION: split fast-daily vs full-monthly because regime flips faster than
+    the rule table changes, and a full 10y reload every morning is wasteful.
+- **News-linked sell signals** — `sell_news.py` reverse-matches every SELL /
+  evicted holding against the live RSS pool (reuses `news_picks._distinctive_phrase`
+  + `sentiment_pipeline`), classifying the exit: **news-confirmed** (negative
+  tape backs it), **technical-only** (no catalyst), **news-contradicts**
+  (positive tape — reconsider). Wired after `assign_recommendations` in both
+  `send_mailer.py` and `watchlist_digest.py`; the SELL chip shows the catalyst +
+  headline. IN/US only (RSS pools); other markets = technical-only. Fully
+  try/wrapped — a news/network failure never breaks the mailer.
+- **Quarterly earnings** — `quarterly_earnings.py` builds a listed-brokerage-style
+  (Motilal-Oswal-style) quarterly P&L from the 10y backtest: 5 geography desks as
+  segments, regime-conditional + liquidity-gated, fixed AUM, with trading revenue,
+  treasury income, fees/opex, PBT, per-jurisdiction tax (no cross-desk offset),
+  PAT, margin, EPS, QoQ/YoY + annual roll-up. Outputs `reports/quarterly_earnings.
+  {md,csv}` + `segment_revenue_by_quarter.csv`. FINDING: profitable across the
+  cycle but LOSS years in 2018 (−$1.15M) and 2022 (−$0.78M) — the regime switch
+  cushions bear drawdowns, doesn't erase them (an honest cyclical prop-desk P&L).
+
+## 2026-07-24 — Trading financial statements + bull/bear strategy-survival backtest
+
+- **`trading_financials.py`** — turns the paper-track ledger
+  (`reports/signal_outcomes.parquet`) into firm-wise + per-geography income
+  statement and balance sheet: revenue (realized gains), losses, txn costs,
+  jurisdiction cap-gains tax (losses offset within geography+term), net income,
+  ROIC, cost-of-capital charge (EVA). Outputs `reports/{income_statement_by_geo,
+  balance_sheet_by_geo,firm_financials,strategy_vs_benchmark}.csv`. DECISION:
+  $10k equal-weight/position, USD, so returns stay currency-neutral (no FX).
+  CAVEAT baked into output: the ledger is a ~2-week window (87% entered
+  2026-07-21), so ROIC is un-annualized and raw EVA over-penalizes — not a
+  live P&L.
+- **`strategy_regime_survival.py`** — the historical answer the paper book
+  can't give: runs 6 price-based filters (trend/revert/mom126/mom_st/
+  golden_cross/breakout) PIT on each market's 10y warehouse panel
+  (`repos/global-market-data/warehouse/ohlcv`), scored SEPARATELY in bull vs
+  bear, excess vs the equal-weight index. Outputs
+  `reports/strategy_regime_survival.{md,csv}` + `cache_seed/*.json`.
+  - LIQUIDITY SURVIVAL (user req): universe each week = HIGH+MEDIUM turnover
+    tier only (bottom-tercile illiquid names dropped). India breakout still
+    nets +0.44/+0.41 excess after the cut — the all-weather edge is not purely
+    a microcap artifact.
+  - REGIME PROXY — rejected alternatives: (1) equal-weight MEAN index vs 40wk
+    MA → US got 2 bear weeks (strong uptrend never dips below own MA);
+    (2) drawdown of MEAN index → US IPO/SPAC inflation, still 9 bear weeks;
+    (3) drawdown of liquid-MEDIAN index → KR microcap bleed gave 8 bull /
+    488 bear. ADOPTED: BREADTH (% of liquid names above 40wk trend, BEAR
+    <45%) — drift-neutral, all 5 markets get non-degenerate splits.
+  - FINDING: uniform trend rule (digest incumbent) dies in bear everywhere
+    (US −0.43, JP −0.54, KR −0.77, EU −0.39). Only IN & EU single zone-rules
+    survive both regimes; US/JP/KR need a REGIME-CONDITIONAL rule
+    (momentum/breakout in bull, mean-revert in bear) — a concrete upgrade to
+    `zone_rules.json` / the digest.
+
+## 2026-07-23 — Annual IMD rainfall refresh as [18/18] (self-guarded no-op)
+
+- **`~/iudx-flood-collector/annual_refresh.py` appended as [18/18]** — each
+  Jan/Feb, once (marker file), re-pulls the two newest IMD 0.25° grids
+  (prior year revised + finalized year), rewrites the 12-city daily series,
+  recomputes metrics/charts, mails the summary, pushes kalki_flooding.
+  DECISION: guard lives inside the script, pipeline calls it daily — a
+  standalone January launchd date would fire while the Mac sleeps (the
+  market_ingest lesson, third time). DECISION: refresh re-pulls TWO years —
+  IMD revises its real-time product after the fact, so last year's
+  "final" numbers change; single-year refresh would freeze the revision.
+  E2E-tested 2026-07-23 with --force --no-mail (dup-free rewrite verified,
+  test marker removed so Jan-2026 still fires).
+
+## 2026-07-23 — IUDX flood-sensor collector rides the pipeline as [17/17]
+
+- **`~/iudx-flood-collector/collector.py` appended as step [17/17]** — archives
+  India's 77-sensor urban flood fleet (Pune 46 / Chennai 27+3 / Kalyan-Dombivli 1)
+  from IUDX into `flood.duckdb`. DECISION: ride `daily_pipeline.sh` instead of
+  its own launchd job — a separate schedule would fire while the Mac sleeps
+  (the market_ingest lesson; same reasoning as [16]). DECISION: keep it in the
+  run even though it archives 0 rows today — all 3 provider access requests are
+  PENDING (filed 2026-07-23 via ACL-APD), and the daily run doubles as the
+  approval-checker: first run after approval starts archiving with no config
+  change. Rejected alternative: wait for approval before scheduling — that
+  turns "approved" into a fact someone must notice manually.
+
+## 2026-07-23 (later) — gap-fill landed + validated; dual-source JP validation
+
+- **EC2 collection COMPLETE**: 3.52M rows / 10,257 tickers, 1 failed ticker
+  (8013.HK, no Yahoo data). Full DB + exports live in dropbox:market-data-ec2/
+  (NOT local — user directive). Instance i-0fb61188e3373794f STOPPED after.
+- **JP backfill validated vs official JPX**: 489/494 return-series checked,
+  ONE real flag — 7343.T 2026-03-30 (ours −4.65% vs official −9.66%, partial-
+  adjustment signature; quarantine that ticker's history before backtesting).
+- **jp_dual_validator.py (new)**: kabupy × J-Quants mutual validation.
+  Identity mapping 119/119 clean (the 1 name flag = full-width-space artifact).
+  ROE/PER divergences are FY-vintage skew (JQ free window ends 2026-04-30 ≈
+  FY2025; kabupy scrapes FY2026) — expected, not corruption. 🔴 kabupy `price`
+  + `market_capitalization` are DOM-broken (2026-07) — never use those fields.
+- **Compact snapshot** (global-stock-screener `compact-snapshot-2026-07-23`,
+  also dropbox:market-data-ec2/compact/): 2025+ OHLCV, 7 markets, 33k symbols
+  incl. full NSE+BSE India and first-ever full HK; liquidity_filters.parquet
+  (ADV/pct_days/Amihud, T1–T4). 🔑 gapfill exports contain duplicate
+  (Symbol,Date) rows from a restart overlap — dedup via QUALIFY row_number
+  (compact builder already does).
+
+## 2026-07-23 — Korea fundamentals from DART; J-Quants V2 validator; EC2 gap-fill
+
+- **Korea joins financial_ratios via official DART filings** (`dart_kr_store.py`
+  → `fundamentals/KR_current.parquet`, MARKETS gained `korea`). Shares from
+  `stockTotqySttus` (unlocks mcap/pe/pb). DECISION: `ebit`/`fcf`/`total_debt`
+  left NULL — the single-account endpoint has no borrowings/EBIT tags, and
+  mapping total liabilities to "debt" would overstate D/E (provisions + deferred
+  tax counted as debt). Rejected alternative: `noncurrent_liabs` as
+  `long_term_debt` — same mislabeling, quieter. Absent beats wrong.
+- **`jquants_validator.py` (new)** — validates JP panels against official JPX
+  J-Quants **V2** (V1 is 410 Gone; V2 = `x-api-key` header, `/equities/bars/daily`,
+  `AdjC`). DECISION: compares daily RETURNS, not price levels — our panels are
+  yfinance dividend+split adjusted, J-Quants is split-adjusted only, so levels
+  always drift by the dividend factor; returns isolate the real failure mode
+  (missed splits → one-day >5pp divergence). Free-plan window 2024-04-30→
+  2026-04-30; validator caps its window 13 weeks back so absence ≠ mismatch.
+- **India "staleness" ≠ gaps**: all 2,573 ledger-stale India tickers have
+  max(trade_date) in raw bhavcopy == ledger last_update — illiquid names that
+  didn't trade. Don't backfill India off the ledger's stale count.
+- **EC2 gap-fill collector** (i-0fb61188e3373794f): 10,257 tickers CN/US/EU/JP/KR/HK
+  (incl. first-ever HK 10y backfill, 1,504 syms), yfinance batches of 20 with
+  Pyth-oracle cross-validation (>1.5% close deviation flagged), 5-min logger →
+  dropbox:market-data-ec2/. India excluded (NSE blocks AWS IPs).
+
+**What belongs here:** a change that alters what the pipeline *produces* or what
+a number *means* — a corrected signal, a new data source, a changed threshold, a
+path or store that moves. Also the decisions themselves: what was chosen, what
+was rejected, and why, so a future reader can tell a deliberate trade-off from an
+accident.
+
+**What does not:** refactors, formatting, dependency bumps, anything already
+legible from `git log`. If the output is byte-identical and no number changed
+meaning, it does not go here.
+
+**Corrections are entries too.** Several below record findings that turned out to
+be wrong. A changelog that only lists successes teaches nothing about how the
+mistakes were made, and the mistakes here have repeated.
+
+---
+
+## 2026-07-23 (latest: PIT event studies; NSE results API silently migrated)
+
+### Two data gaps fixed: KR sectors (.KQ), staleness false-positives
+
+* **Sector: 91 → 44 unlabelled.** Root cause = the sector fetch mapped every
+  KR code to `.KS`, but KOSDAQ names are `.KQ` and yfinance only classifies
+  them on the right venue (119850.KQ→Industrials, .KS→nothing) — the same
+  suffix-ambiguity as the price fallback. Now tries both KR suffixes; resolved
+  ~50 KR names. The residual 44 are genuine yfinance blanks (mostly KOSDAQ
+  micro-caps; pykrx sector API broken KeyError 종가, FDR/KRX carry no sector,
+  KR scan workbook has no sector column) — now CACHED so they stop burning the
+  daily 40-fetch budget (they were starving new names), and re-attempted by a
+  new monthly full rebuild [16e]. Gap message now names the real cause.
+* **Stale: 33 → 2.** The reference was each market's MAX last-bar; on a JP/KR
+  non-trading tail a few names carry a phantom next-day stamp, so the whole
+  market's correct last session read as stale. Switched to the MODAL last-bar
+  with a >1-session tolerance — only genuinely-halted names remain (MSW 07-17,
+  LMFA 07-21). Message now lists them and notes equity-list repair covers only
+  IN/US (JP/KR/EU halts aren't auto-detected).
+
+### Watchlist as report card + "act today"; paper-track scorecard
+
+* **🔔 Act today** (mailer, top section): the watchlist now surfaces earlier
+  recommendations coming DUE — names flagged ≥3 sessions ago now reading SELL
+  (per-market rule) or with the eviction/purge clock at/over the limit — each
+  shown WITH its return since we flagged it, so a sell call is graded not
+  blind. Fresh same-day overbought names stay in the zone tables, not here.
+* **📇 Report card** line: of all live recommendations with an entry price,
+  how many are up and the average move since flagged. First read: 338 recs,
+  43% green, −0.3% avg over a 3-day-median hold — market-neutral in a
+  drawdown window, matching paper_track.
+* **paper_track.py** (pipeline [13x], weekly Mondays): accumulates every past
+  mailer pick from the signal ledger, marks to today, reports return + excess
+  vs market by book / market / filter / entry-cohort. Finding: CURATION is the
+  value-add (raw −0.41% excess → graded-A+fundamentals −0.02%; KR raw −1.51%
+  → curated +0.60%, dodging the KOSDAQ crash; piotroski+debt +2.99% excess).
+  🔴 The window (87% of picks entered 21 Jul, 2-3 forward sessions, mid-crash)
+  CANNOT test the 2-week mean-revert rule — a lookahead bug that applied
+  today's oversold flag to old entries was caught and fixed (rule now applied
+  point-in-time at entry); rule validation stays in backtest_zone_rules.py.
+  Below-floor strip moved to attachment-only; strategy cards 4→3 to hold the
+  body under the Gmail clip.
+
+### Per-market Buy/Hold/Sell rules (the uniform trend rule was wrong)
+
+backtest_zone_rules.py tested 4 candidate zone rules on each market's own 10y
+weekly panel (BUY−SELL forward-2wk spread, penny-floored, ±40% winsorized,
+de-overlapped t). Result overturns the uniform EMA-trend rule:
+
+| market | trend (old) | mean-revert | winner |
+|---|---|---|---|
+| IN | +0.15% t0.6 | +0.24% t1.4 | none sig → keep trend |
+| US | −0.22% t−1.5 | +0.41% t2.0 | **mean-revert** |
+| JP | −0.16% | +0.28% **t3.1** | **mean-revert** |
+| KR | −0.29% **t−2.5** | +0.20% t2.4 | **mean-revert** |
+| EU | −0.18% | +0.24% t1.9 | **mean-revert** |
+
+Trend-following is SIGNIFICANTLY NEGATIVE in Korea (t−2.5) — buying strength
+loses, matching the KOSPI-contrarian / retail-reversal literature (Balvers-Wu
+2005; emerging-market fast reversion; 2026 KR inverse-ETF behaviour). India
+has no significant short-horizon technical edge — consistent with its value
+(not momentum) profile; keeps trend as the incumbent.
+
+Implementation (user chose SPLIT semantics): assign_recommendations() sets
+r['rec'] from each market's winning rule (cache_seed/zone_rules.json) —
+cross-sectional tercile for mean-revert markets, per-name EMA for trend/India.
+The mailer's chip, buy-zone sort, thematic picks, and subject now use `rec`.
+EVICTION/PURGE are untouched — still the trend SELL-streak (`zone`), the
+genuine-decliner check validated earlier — so a mean-revert "SELL/overbought"
+winner shows a trim flag, never a death clock (the ⏳ clock appears only on
+trend-broken names). Header prints the rule per market so a US name reading
+SELL on a green day is explained (overbought, not falling).
+
+### Data gaps fixed at the root (watchlist_repair.py, pipeline [13y])
+
+The three standing gaps were symptoms of identifiable causes, now repaired
+from authoritative sources (user: "use direct NSE website and EDGAR"):
+
+* **Renames** — NSE's own symbolchange.csv (chain-resolved: ITCAGRO→ATFL→
+  SUNDROP): 14 applied incl. AMARAJABAT→ARE&M, TATAMOTORS→TMPV (kills the
+  daily yfinance 404), CENTURYTEX→ABREL, GMRINFRA→GMRAIRPORT. Old symbol
+  preserved in the note.
+* **Wrong symbols** — 6 corrected by conservative unique-prefix match against
+  the current EQUITY list (GMDC→GMDCLTD); ambiguous → untouched.
+* **Delisted/merged/non-equity** — 48 tracking rows archived WITH REASONS:
+  HDFC (merged into HDFCBANK 2023), GSPL (merged into Gujarat Gas), EMBASSY
+  (REIT, not EQ series), BAAZARSTYLE (bad symbol; real one is STYLEBAAZA,
+  prefix rule correctly refused to guess). US rows checked against SEC
+  EDGAR's company_tickers.json. held/sold rows exempt everywhere.
+
+Effect on the mailed gaps: "45 names no price data" → GONE (remaining
+missing are held-tier ETFs, outside the research view); sector-unlabelled
+111→90 (renamed names now resolve; residue is KOSDAQ names yfinance can't
+classify — pykrx's sector API is broken upstream, KeyError '종가');
+stale-vs-market 36→31 (listed-but-thin/suspended, correctly still reported).
+Runs daily as [13y] before the value screen; downloads cached 7 days.
+
+### Bundle validation vs real funds/indices (user request)
+
+bundle_validation.py + reports/bundle_validation.md: every bundle is compared
+against the closest PUBLIC benchmark — SPDR sector ETF daily holdings for US
+(with weights → constituent overlap, active share, HHI/concentration) and NSE
+index constituent lists for India (membership + Nifty-500 check). MSCI MCP
+was tried first: connected but UNENTITLED ("data access could not be
+verified") — no index data without a subscription. JP/KR/EU have no free
+constituent feed; skipped explicitly, never silently.
+
+Result: **every US/IN bundle is a differentiated satellite, not a closet
+index** — 0-1 of 4-10 names overlap the sector ETF/index, active share ≈100%
+across the board. IN Financials: 8/10 names are Nifty-500 members yet only
+1/10 sits in Nifty Financial Services — mid-cap financials the sector index
+does not carry. Weight style is deliberately more concentrated (HHI 0.11-0.22,
+25% cap) than cap-weighted ETFs (0.05-0.09) — satellite sizing, not index
+mimicry. Interpretation: the screens are selecting off-benchmark; the bundles
+COMPLEMENT index funds rather than replicate them, and validation would flag
+any future drift toward closet indexing (verdict thresholds encoded).
+
+### value_rerating — the screen the backtests earned
+
+screen_value_rerating.py, pipeline step [13z/14] (runs BEFORE the mailer so
+today's picks are in today's email): cheap vs own sector (within-industry PE
+percentile ≤ 0.20) ∩ re-rating (12M ΔlnPE > 0), ₹1cr/day liquidity-gated at
+source, top-15 rank-blend promoted to watchlist.csv as `signal` rows with
+entry stamps. First run: 18 passers, 11 new — a PSU-bank re-rating cluster
+(CANBK, UNIONBANK, KTKBANK, BANKINDIA), industrials, healthcare. Digest grew
+a 💎 Value re-rating category (chip, section, why-parser). Body re-trimmed to
+100 KB (card cap 5→4).
+
+### PE anomaly backtests (India, 2017-2026) — both user hypotheses tested
+
+backtest_pe_anomalies.py + reports/pe_anomaly_backtest.md. 1,458 NSE names,
+109 monthly formations, PIT annual EPS (fy_end+90d lag), adjusted closes.
+🔴 DATA TRAP found en route: fundamentals_history/IN.parquet mixes screener_in
+rows (₹ crore) with yfinance rows carrying QUARTERLY magnitudes mislabelled
+annual (TCS "FY26" = one quarter) — a 4x EPS error. Used
+IN_screener_only_backup (pure screener.in, validated TCS EPS 120/133/136 ✓).
+
+Findings (survivorship-biased levels; SPREADS are the statistic):
+* **Sector-relative PE anomalies DO correct**: cheap-vs-own-industry Q1 beats
+  rich Q5 monotonically — +0.85%/1M, +2.60%/3M, +5.26%/6M (de-overlapped
+  t ≈ 2.5-2.9). Sector-level stretch corrects ASYMMETRICALLY: sectors at
+  z<−1.5 vs own 36M PE history return +9.37% fwd-3M vs +6.96% neutral;
+  rich-stretched sectors (+7.34%) barely lag neutral — buying beaten-down
+  sectors pays, fading hot ones does not.
+* **PE trend is MOMENTUM, not reversion (3-6M)**: 12M multiple-expanders beat
+  compressors (fwd-3M +5.6/+5.2% vs +3.5/+2.7%) — even "hope rallies"
+  (PE↑ EPS↓) beat "cheapening on delivery". Consistent with the standing
+  India-is-momentum-friendly finding.
+* **High PEs are EARNED on average**: subsequent-12M EPS growth is monotone
+  in PE quintile (−37% cheap → +34% rich) — the market forecasts growth
+  correctly, yet the value spread survives → systematic OVERPAYMENT for
+  correctly-predicted growth. Level (cheap-vs-sector) and trend (re-rating)
+  are separate, compatible signals; their intersection is an obvious future
+  WATCHLIST_FILTER.
+
+### Bundles report ALPHA, not absolute return
+
+Takeaway adopted from the user-supplied active-vs-index literature (Weiner
+2022): a bundle is an active mini-fund, so its since-formation return is only
+meaningful NET of what simply owning the market's pick universe returned over
+the same window. value() now computes each bundle's alpha vs an equal-weight
+benchmark of ALL its market's picks, anchored to the same last-bar-≤-formation
+close the members use (day 0 → α = 0 by construction, never n/a); bundles are
+RANKED by alpha and the card prints "α +x.x% vs market".
+
+### Model portfolios — the watchlist as a bundling tool
+
+portfolio_bundles.py (user, 2026-07-23): single-stock picks are now bundled
+into MUTUAL-FUND-STYLE portfolios, on the rationale that stocks which cluster
+together on return behaviour keep behaving similarly — the bundle is the
+tradeable thesis, not the individual name.
+
+* **Clustering**: average-linkage hierarchical on 1−corr of 90d daily returns,
+  per market, universe = above-floor BUY/HOLD picks with ≥60 bars; clusters
+  kept at 4-10 names with intra-corr ≥0.30. First build: 14 bundles — e.g.
+  "US · Energy" intra-corr 0.76, "IN · Financial Services" 0.63.
+* **Weights**: inverse-volatility (60d), 25% cap, renormalised. REJECTED
+  max-Sharpe/Markowitz (the ssrn-2747802 primer approach): mean estimates
+  from 90 daily bars are noise and MV optimisers amplify it into corner
+  solutions; inverse-vol needs no expected-return estimate at all. A future
+  upgrade path is HRP-style recursive bisection or ML-predicted returns
+  (s44199-025-00140-z), both of which slot into build() without changing the
+  store schema.
+* **Rebalance**: monthly, first pipeline run of the month (same exactly-once
+  marker pattern as the Dropbox purge archive); daily valuation reports each
+  bundle's 1d, since-formation return, weight DRIFT, and how many members
+  have decayed into the sell zone.
+* **Rationale per constituent** (procurement trail): which screen nominated
+  it, its avg correlation to the bundle, its vol → weight. In the full
+  attachment; the body shows fund-style cards (weights bar, drift, top-5).
+* Caveat recorded: clustering is instrument-type-blind — one bundle grouped
+  US preferred shares/CEFs (they DO co-move), and OILU (a 2x levered ETP)
+  landed in the Energy bundle. The instrument-type gap already lives in the
+  data-gaps section.
+
+### Mailer redesigned: portfolio-free, strategy-first, data-gaps section
+
+Full render() rewrite (user, 2026-07-23). The digest is now a RESEARCH
+product, not a portfolio tracker:
+
+* **Portfolio excluded** — held/sold rows dropped inside render(), so every
+  caller gets the analysis view; hygiene (maintain/evict/purge) still runs on
+  the full watchlist. Subject counts picks, not holdings: "+ 📊 Picks (442 ·
+  281 buy-zone · 28 new)".
+* **Strategy-first sections** (moneycontrol/INDmoney-style card UI: white
+  rounded cards, change pills, NEW badges, filter-chip index row): 🎯 Thematic
+  (buy-zone names inside the top-3 sectors by median 1d) · 🚀 Breakout (129) ·
+  📈 DMA crossovers (149) · 🏆 Piotroski+ROCE · 🧾 Piotroski+debt · 🎰 Triple ·
+  🔁 Recurring (28) · 🚄 Momentum · 🪫 RSI · 🧪 Justified (14). pick_category()
+  classifies from status+note; validated against all 531 live notes (zero
+  fell to "other"). Watch ideas (manual, not analysis) live in the FULL
+  attachment only. Cards sorted buy-zone first, then 1d move.
+* **🔍 Data gaps section** — computed fresh each run and mailed, because a gap
+  that only lives in a log stays open: names with no price data (45),
+  sector-unlabelled (103), liquidity-unmeasurable, rows staler than their own
+  market's latest bar (36), signals missing entry dates.
+* Body 98 KB (under the clip); zone tables from the previous layout are
+  superseded — zone survives as a per-card chip + the buy-zone-first sort.
+
+### Three charts in the morning email (treemap / RRG / breadth)
+
+New watchlist_viz.py (matplotlib+numpy only), techniques from the open-source
+screener ecosystem the user asked to mine (PKScreener itself is table-only;
+the good viz lives around it):
+
+* **Market map** — Finviz-style squarified treemap (openalgo-heatmap's
+  approach, layout hand-rolled — no `squarify` dep): 5 market panels, tile
+  area = median USD turnover (tradeability), colour = 1d move. Two bugs
+  caught by LOOKING at the rendered image, not the code: the worst-aspect
+  function compared an area against a length (every row degenerated into
+  full-width strips), and unclamped panel widths let the US eat 2/3 of the
+  figure.
+* **Sector rotation RRG** — JdK RS-Ratio × RS-Momentum per sector basket vs
+  market equal-weight benchmark (RRGPy-style approximation), 5-session
+  smoothed tails, fixed 94-106 frame. Bug found the same way: normalising by
+  the union calendar's first row NaN'd 320/322 India columns (names start on
+  different dates) — normalise by each name's own first valid bar.
+* **Breadth** — % of names above EMA50 per market, 30 sessions, straight out
+  of the digest's own zone engine (breadth IS the zone series aggregated —
+  zero extra data work). Korea's 20%→82% V-recovery is immediately visible.
+
+Delivery: body references cid: inline MIME images (image parts do NOT count
+toward Gmail's ~102KB HTML clip — body stays 99 KB); the full attachment
+inlines them as data: URIs to stay self-contained. All three fail SOFT: a
+crashed chart is a missing image, never a missing mailer. build_rows() now
+exposes turn_usd per row and hands loaded frames to the viz pass so nothing
+re-reads ~800 parquets.
+
+### Sell-zone audit (user query) — data verified sound; held-row clock fixed
+
+User challenged green rows in the Sell zone (CME +5.28% showing "43d/6").
+Audit findings: (1) NOT a bug — the dot is the 1-day move, the zone is trend
+position; CME closed 249.90 vs EMA50 254.18, GFI 33.15 vs 36.64 — green
+bounces inside 2-month downtrends, exactly what the table exists to catch.
+(2) KR "grade-A breakout" names with −20% 5d: warehouse series verified clean
+(no dup dates / splits / scale breaks) — KOSDAQ names genuinely crashed
+together on 07-16 and 07-20, and breakout_quality graded them A on 07-21 on
+patterns the crash had invalidated; the sell-streak clock is correctly
+cleaning up after the scanner. (3) Real bug fixed: held rows showed the
+eviction countdown ("43d/6") though held names are never auto-evicted — now a
+plain grey "43d"; sell-zone subtitle states both rules.
+
+### Monthly Dropbox snapshot of the purged-watchlist archive
+
+daily_pipeline.sh [16b]: on the first pipeline run of each calendar month,
+watchlist_purged.csv is rclone-copied to
+dropbox:market-data-archive/watchlist_purged/watchlist_purged_YYYY-MM.csv.
+Exactly-once via a marker file (~/.local/state/watchlist_purged_last_archive);
+rides the pipeline rather than owning a monthly cron because the pmset 00:25
+wake guarantees the pipeline fires while a standalone monthly schedule on a
+sleeping Mac is silently skipped. First snapshot (2026-07, 7.3 KB) uploaded
+and verified on Dropbox at setup.
+
+### Full digest rides as an .html attachment
+
+render() grew a `full=True` mode (same rows, no caps: every zone row, all
+sectors, untruncated whys) and send() grew attachment support (mixed/
+alternative MIME). The morning email now carries the trimmed body (~98 KB,
+under the clip) PLUS `watchlist_full_YYYY-MM-DD.html` (~330 KB) — attachments
+don't count toward Gmail's clip, so the trim demotes detail a click away
+instead of dropping it. --draft writes watchlist_full.html beside
+brief_today.html.
+
+### Digest trimmed under Gmail's clip line (442 KB → 99 KB combined)
+
+Gmail clips HTML above ~102 KB; the combined email ran 442 KB. The digest is
+now 41 KB (brief 57 KB → combined 99 KB) via visible-never-silent caps:
+top-10 rows per zone table ("… N more in this zone (M held)" trailer), sector
+clusters cut to strongest 6 + weakest 2 (both ends matter for rotation; the
+elided middle is counted), record strips capped at 8, the ❔ zone collapsed
+to a symbol roll, per-row "As of" column dropped (a date now appears ONLY on
+rows staler than the digest — its original job), why-remarks truncated at 36
+chars, and inline-style diet across dashboard/zone/strip rows. The margin is
+~3 KB — if a busy brief day re-clips, next lever is attaching the full
+untrimmed digest as an .html attachment (attachments don't count).
+
+### One morning email (brief + digest); 3-week sell-zone purge
+
+* **Combined email** — send_mailer.py now appends the watchlist digest below
+  the brief (navy divider between) and extends the subject: "📈 Daily Market
+  Brief — … + 📊 Watchlist (42↑ 32↓ of 126 held)". One send at [14/14], still
+  behind the screener.in validation gate; step [18/18] removed. The digest
+  section is failure-ISOLATED: if it throws, the brief still ships with an
+  error strip where the digest would be. Hygiene (entry backfill, eviction,
+  purge) now runs inside that call — once per morning, draft or send.
+* **Purge rule (user)** — sell-zone streak > 15 sessions (~3 trading weeks)
+  DELETES the row from watchlist.csv: evicted rows get purged once they cross
+  it, and a live row that far gone skips the evicted halfway house entirely.
+  Rows are archived to watchlist_purged.csv (append-only, purged_date column)
+  before deletion — removal from the live list, never from history. held and
+  sold rows are exempt. First run: 73 rows purged (INFY, ITC, ONGC, COALINDIA,
+  VEDL, WIPRO among them), watchlist 883 → 810, evicted 114 → 41. Purges are
+  announced in the 🗑 churn line.
+
+### Digest rides the pipeline; smart-investing.in template
+
+* **Trigger moved** — daily_pipeline.sh grew step [18/18]: the digest now
+  sends the moment the pipeline finishes (~05:50 IST), reading data that is
+  minutes old, instead of the fixed 07:00 n8n schedule. The n8n workflow
+  `watchlistdigest001` was DEACTIVATED (kept, not deleted — reactivate in the
+  n8n UI to fall back) and n8n restarted so the trigger deregistered. Two
+  triggers would have double-sent.
+* **Template** — restyled after smart-investing.in (user-supplied reference):
+  deep navy #0B2F4A banner and section strips, ice #eef4f6 canvas, white card
+  tables with #ecf1f6 header rows, teal #16a085 for gains/buy, #ca3433 for
+  losses/sell, coral #F07857 hold strip. Palette lifted from the site's own
+  CSS (styles_custom_2.min.css), not guessed from a screenshot.
+
+### Watchlist mailer reorganised zone-first (supersedes the country sections)
+
+Same day, second layout iteration on user request: recommendations are now
+grouped by ZONE across all countries — 🟩 Buy zone first (one table, all five
+markets, green-first within), 🟨 Hold below, 🟥 Sell at the bottom (with the
+per-name eviction clock as a Streak column), ❔ Unmeasured last. The
+per-country sections this replaces lived for exactly one send. Exited
+positions drop to a muted strip — they are records, not recommendations.
+Daily churn is surfaced up top: a "🆕 joined / 🪦 left" line names what entered
+(signal_tracker/recurring_movers, nightly) and what the sell-zone rule evicted
+this morning, so the watchlist reads as the living list it now is.
+
+### Watchlist: country sections, entry tracking, buy/hold/sell zones, auto-eviction
+
+* **Schema** — watchlist.csv grew `entry_date`/`entry_price`, stamped at ADD
+  time by both writers (signal_tracker, recurring_movers) and BACKFILLED for
+  existing rows from the dates already embedded in notes (398/883 rows).
+  signal_tracker's hand-rolled 4-column csv.writer rewrite was replaced with
+  concat+to_csv — the old writer would have silently sheared the new columns
+  off on the next signal day.
+* **Zones** — BUY (close>EMA20>EMA50) / SELL (close<EMA50) / HOLD (between),
+  computed per bar from the price series. Deliberately STATELESS: the sell
+  streak is read off the tail of the series each run, so there is no counter
+  column for a missed run to corrupt. <25 bars → zone "?", never evicted.
+* **Eviction (user rule)** — a watch/signal/justified name in the SELL zone
+  >5 consecutive sessions flips to status `evicted` (row kept, note says when
+  and why; `held` is never auto-exited — exiting the portfolio is not this
+  tool's call). First run purged a 116-name backlog (AARON 222d, 476040.KQ
+  133d in the sell zone) — expected: the rule never existed before. Hygiene
+  runs inside the digest BEFORE rendering (--no-maintain to skip), so the
+  email always shows the post-eviction list.
+* **Mailer layout** — per-country sections (🇮🇳🇺🇸🇯🇵🇰🇷🇪🇺, green-first within
+  each) with new columns: since-entry return + days held, zone chip with the
+  eviction clock visible ("🟥 sell 3d/6"), plus a capped "🪦 Evicted" strip.
+
+### Watchlist digest → dashboard (market × sector × liquidity × returns)
+
+The per-name digest now opens with three aggregate views over every priced row
+(815 of 883 — all tiers count; a sold name is still a market observation):
+
+* **🌍 Market pulse** — per market: n, 🟢/⚪/🔴, median 1d/5d, a stacked 1d
+  return-distribution bar (7 buckets, email-safe nested-table cells — no JS,
+  no images), best/worst mover.
+* **🏭 Sector clusters** — cross-market, hottest median-1d first; 1-name
+  "clusters" suppressed. Sector labels come from a NEW incremental cache
+  (market_cache/sector_map.json): JP is free+total from the japan scan
+  workbook's TSE 33-industry codes (JPX code→name map hardcoded — it is
+  stable and public), everything else via yfinance .info capped at 40
+  lookups per scheduled run so the 07:00 mailer can never hang on a slow
+  API; `--build-sectors` backfills the whole watchlist in one sitting
+  (checkpoints every 25 fetches). Unresolved names group as "Unclassified"
+  and retry next run. Taxonomies deliberately NOT unified: GICS "Industrials"
+  and TSE "Machinery" stay distinct rather than being force-mapped wrong.
+* **💧 Liquidity × returns** — per tier T1..T4/below-floor/unmeasured: median
+  1d/5d, %green, distribution bar. Answers "is today's strength in names I
+  can actually buy?"
+
+### Watchlist digest: liquidity gate, green-first ordering, "why" column
+
+The 07:00 digest (watchlist_digest.py, n8n-sent) previously ranked by status
+tier (held > watch > signal > sold) and printed the raw machine note. Three
+changes, all user-requested:
+
+* **Green movers first.** Colour is now the PRIMARY sort (🟢 → ⚪ → 🔴 → ❔),
+  status tier demoted to tie-break within a colour. The old "owning something
+  is the reason to look first" ordering lost to "what moved today" — with 883
+  rows the held block buried every mover below the fold.
+* **Liquidity gate + tier column.** Median 60d Close×Volume in USD (FX via
+  liquidity.py's cached rates), tiered on the SAME absolute bands the scan
+  workbooks print (T1 ≥$12M … T4 above floor) so the label means one thing
+  everywhere. Names below the floor (adaptive_liquidity.scan_floor: India
+  ₹1cr/day policy, $10k structural elsewhere) move to a muted bottom strip —
+  visible, not deleted. First run: 76 of 883 below floor, several of them
+  green (EMAMIPAP +20% — exactly the untradeable-mover trap the gate exists
+  for). Unmeasurable liquidity fails OPEN ("?"), matching scan_gate's ethos.
+  REJECTED: percentile tiers (adaptive_liquidity.retier) — the watchlist is a
+  biased ~880-name sample, and a percentile within it would not mean
+  "percentile within the market".
+  REJECTED: liquidity.scan_gate() directly — it derives currency from the
+  ticker suffix, and the watchlist stores IN/KR/JP bare ('RELIANCE' would be
+  read as USD, inflating turnover ~83x). Currency now comes from the suffix
+  when present, else the market column.
+* **"Why on the list" column.** Status + note expanded to a readable reason
+  ("screener signal: grade-A breakout (breakout_quality) on 2026-07-21",
+  "recurring mover x3 +5.2% since …"). Pre-ledger signal rows whose note is
+  just a company name are labelled "source not recorded" rather than passing
+  the name off as a reason.
+* **KR/JP/EU rows finally price.** market_cache/ohlc/ is US-only (7,657 bare
+  tickers), so every KR row — all 125 — had shipped as "not in cache" since
+  the digest existed. Prices were local all along, in the year-partitioned
+  warehouse signal_tracker reads (global-market-data/warehouse/ohlcv, fresh
+  through today). _load_ohlc now falls back to it, loading each market once
+  per run (last TWO year partitions, so early-January still has the 10 bars
+  the turnover median needs; per-symbol filtered reads at ~0.4s each were
+  rejected — 190 of them is minutes). Symbol spelling bridged, not rewritten:
+  the watchlist keeps broker-style bare KR codes ('5360'), the loader tries
+  '005360.KS' then '.KQ' (venue unrecorded), JP gets '.T'. Missing rows
+  282 → 68 (KR 125→5, JP 65→1, EU 23→1); the survivors are genuine gaps —
+  ETFs (EEM, SOXL, NIFTYBEES) and renamed/delisted names, correctly surfaced
+  as ❔ rather than papered over. Digest runtime 3.8s → 8.6s.
+
+### 00:30 run: 2 steps failed on a path both scripts had already abandoned
+
+ingest (market_ingest.py refresh_symbol_names) and ratios (financial_ratios.py)
+both tracebacked reading `~/Downloads/market_cache/symbol_master.parquet` —
+`Operation not permitted`, the TCC/launchd-vs-Downloads failure mode this
+pipeline migrated away from on 2026-07-16. Both scripts still HARDCODED the
+Downloads copy for symbol_master even though the plist exported
+MARKET_CACHE=~/market-pipeline/market_cache. Fixed same morning (04:51): both
+now honor $MARKET_CACHE with the live tree as default. Everything else in the
+run succeeded — brief validated against screener.in (6 names agree) and sent.
+
+### The XBRL × CA × bhavcopy join is live (pit_event_studies.py)
+
+Three fully point-in-time India studies on adjusted prices, abnormal vs daily
+market median, broadcast-timestamp anchored (after-15:30 -> next trading day):
+1. PEAD on 64,263 filing-dated events, announcement-return quintiles within
+   quarter: Q5−Q1 CAR63 spread only +1.09% — announcement-sorted PEAD is WEAK
+   in India. 🔴 levels are biased (+13% all quintiles: filing universe vs
+   microcap-median benchmark + within-window survivorship) — spreads only.
+2. Surprise-sorted PEAD: n=83 (parse coverage) — noise until queue drains.
+3. Post-CA (722 splits/bonuses, 10y): +14.4%/+9.9% abnormal RUN-UP in the 20d
+   before ex-date, ~0% after (47% hit) — the anticipation trade exists, the
+   post-event trade does not. Follow-on: anchor on caBroadcastDate
+   (announcement) instead of ex-date to see how much of the run-up is
+   tradeable.
+
+### DISCOVERY: NSE moved mainstream results to the integrated-filing API
+
+The "2025 is thin" gap in results_index was not a collection failure: under
+SEBI's integrated-filing framework (Dec-2024 quarter onward), mainstream
+quarterly results stopped flowing to api/corporates-financial-results — the
+legacy endpoint now returns only stragglers (59 rows for Oct-Dec-2025 where
+7,349 exist). New endpoint found and wired in permanently
+(api/integrated-filing-results, paginated size<=5000, schema mapped onto the
+legacy one, seq ids prefixed IF): index now 151,928 filings / 2,794 symbols,
+2025-26 at full ~7,300/quarter volume. Any NSE-results consumer that still
+reads only the legacy API is silently losing post-2024 coverage.
+
+## 2026-07-23 (later: regime conditioning; JP/KR scoring was silently broken)
+
+### CORRECTION: JP/KR signals never scored — join bug, not stale panels
+
+The "~2,000 JP/KR scores blocked on panel refresh" diagnosis was wrong on the
+mechanism. `score_signals.py`'s `entry_px`/horizon joins used the BARE ledger
+symbol ('9202') instead of the warehouse-suffixed `wh_symbol` ('9202.T'), so
+JP/KR matched **0%** even against a fresh panel — masked because IN/US/EU
+symbols are identical in both forms and the stale-panel note gave the zeros an
+innocent explanation. Fixed: all price joins now use wh_symbol; JP/KR anchor
+100% (1,568 + 223 signals). Lesson: a 0% match rate with a plausible excuse
+still deserves a direct join test.
+
+### Regime conditioning added (CIO-review gap #7)
+
+`build_regimes.py` → `warehouse/regimes.parquet`: daily ^VIX + ^INDIAVIX with
+POINT-IN-TIME tercile labels (each day vs its trailing ~3y window — expanding
+full-sample terciles were rejected as lookahead). The scorer joins the regime
+at signal date (IN→IndiaVIX, others→VIX) and SIGNAL_CALIBRATION.md now has an
+outcomes-by-regime section. First read: IN Darvas BUY +21d hits 63% in
+HIGH-IndiaVIX regime vs 43% in MID (excess +0.47% vs −0.55%); IN SELL works in
+MID (56%) but inverts in HIGH (42%) — with the standing caveat that regime is
+confounded with cohort timing until multi-month cohorts accrue.
+
+### Panels: JP/KR/EU refreshed + refresh tooling
+
+`refresh_panels.py`: incremental yf refresh of any non-IN warehouse panel
+(auto_adjust=True, same convention as collection; always re-run
+price_adjuster_global.py after). JP +45,218 rows, KR +36,019, EU +13,598 —
+all three now end 2026-07-23. EU remains a COVERAGE gap: 1-year/852-symbol
+panel matches only 12% of EU scan signals — a full EU collection (10y, scan
+universe) is the fix, not a refresh.
+
+## 2026-07-23 (adjusted-price propagation — and a premise correction)
+
+### CORRECTION: JP/KR/CN/US panels were never raw Close
+
+The account-wide "raw Close — splits fake returns" flag (claims.yaml, memory)
+was overbroad. Verified in-panel: NTT trades ¥147 *before* its 25:1, Samsung
+₩41k *before* its 50:1, NVDA $120 through its 10:1 — fractional closes and
+back-scaled volume throughout. The non-India panels are yfinance-adjusted as of
+their last assembly. The raw-Close defect (and the +12.2% fake illiquidity
+premium it manufactured) was **India bhavcopy only**, already fixed 2026-07-21.
+
+### What actually needed fixing: post-assembly residual breaks
+
+Splits occurring after a panel's last full re-download appear as raw jumps
+(7946.T ¥3,673→¥733 5:1, 8227.T 3:1, KR cluster 2024-26). New
+`price_adjuster_global.py`: integer-ratio (≥2:1) + calm-day-band + per-market
+TURNOVER gates → 86 candidates; each must be confirmed against the yfinance
+split calendar before it may adjust → 8 confirmed (JP 2, KR 3, US 3; CN/EU 0).
+Sparse overlays written to gmd `warehouse/ohlcv_adj/{JP,KR,US}/
+corrected_symbols.parquet` — overlay-first read rule, no 700MB duplication.
+
+**Rejected along the way (each caught by validation):** sub-2 ratios (3:2, 5:4
+matched ordinary -20/-33% days — 3,002 false positives); share-count liquidity
+gate (killed thin-but-real ¥13M/day 7946.T); snapping corrections to the yf
+calendar date (panel rebases days before the official ex-date — scaling at the
+calendar date corrupted 3 already-rebased rows; scale at the OBSERVED break).
+
+**New yfinance bug (memorialised):** `history(auto_adjust=True)` serves
+UNADJUSTED prices across recent JP/KR splits even when `.splits` knows the
+event. Validate corrections by series continuity + calendar, never by comparing
+windowed returns to yf's "adjusted" history (US is fine: 3/3 exact).
+
+**Standing rule:** every panel re-assembly resets the residual set — re-run
+`price_adjuster_global.py` after any full re-download (staleness trigger in
+claims.yaml).
+
+### cleaned_ohlcv 17,571-row surplus reconciled; loads now split append vs regenerated
+
+Closes the "known remainder" below. Root cause confirmed: `cleaned_long.parquet`
+is fully REGENERATED each run (pivot + clean_ohlcv can drop or alter historical
+rows) and `assembled_long.parquet` is rewritten with dedup keep="last" (old-date
+rows can be replaced or backfilled), yet `bhavcopy_to_db.py --incremental` only
+ever appended rows with `trade_date > max` — so cleaned-away rows accumulated as
+a permanent +17,571 surplus in DuckDB and its Postgres mirror, and `--verify`
+FAILed every night as a false failure in daily_pipeline step [15].
+**Decision: classify each source by write semantics, not one load strategy for
+all.** New `REGENERATED = {bhavcopy_ohlcv, cleaned_ohlcv}` set: incremental
+DuckDB load re-creates these from source; Postgres mirror rebuilds them on
+row-count divergence via DELETE+INSERT — **not DROP** (rejected: the
+`market_daily.ticker_freshness` view depends on `bhavcopy.cleaned_ohlcv`, DROP
+would need CASCADE and destroy it; caught live on first run). `nse_raw`/`bse_raw`
+keep true append-only loads (bhavcopy_raw_archive.py only ever appends days
+newer than max TradDt), `nse_deep_ohlcv` too (static archive, no live writer).
+Reconciled: pg cleaned_ohlcv 1,257,133→1,239,562, `--verify` exits 0 across all
+five tables, ticker_freshness view intact (21,263 tickers).
+
+### Raw 34-col bhavcopy archives have a writer again (nse.parquet/bse.parquet)
+
+The 2026-07-21 "known remainder" is closed. The original builder of the raw
+archives was an ad-hoc script that was never committed and vanished with the
+~/Downloads tree — confirmed by searching every repo's full git history: the
+only file that ever referenced `nse.parquet` is `bhavcopy_to_db.py`, a
+*consumer*. `bhavcopy_raw_archive.py` recreates it: appends day-CSVs newer than
+each parquet's max TradDt, full `--rebuild` available. **Decision: schema is
+PINNED in code** (TradDt/BizDt date32, prices double, ids int64, empty UDiFF
+cols string) rather than inferred per-run — inference from a day-CSV would type
+all-NaN string columns as float and silently drift the arrow schema, breaking
+bhavcopy_to_db's incremental date comparison downstream. Verified before
+writing: the frozen archives are a plain per-day concat (row counts match
+CSV-for-CSV, 34/34 cols, no filtering beyond what bhavcopy_history applies when
+writing the day-CSVs), and post-append the pre-existing rows are byte-identical.
+Wired into daily_pipeline step [15] *before* bhavcopy_to_db so the raw layer
+rides the same schedule as everything else; registered in data_registry
+(bhavcopy.nse_raw/bse_raw, max_age 1d) so going stale is now observable.
+Backfill ran: pg.bhavcopy.nse_raw 620,332→632,987, bse_raw 1,284,825→1,312,525,
+both current through 2026-07-21.
+
+Known remainder, found during the same run: `pg.bhavcopy.cleaned_ohlcv` (and
+its DuckDB twin) hold 17,571 MORE rows than today's `cleaned_long.parquet` —
+the incremental load only appends by date, so rows the daily-regenerated
+cleaned parquet later dropped are never reconciled. Max dates match; the
+`--verify` FAIL is this, not the raw-archive fix.
+
+### US fundamentals now collected from SEC EDGAR into the store (US_current.parquet)
+
+`us_fundamentals_edgar.py` — the US analog of the India off-hours collector, but
+sourced from data.sec.gov companyfacts: official, filing-dated, and rate-limited
+at a documented 10 req/s instead of an opaque throttle. **Decision: EDGAR over
+yfinance for the US** — yfinance is only in the India collector because India has
+no official filings API; the US does, and yfinance's alphabetical throttle-bias
+is the exact disease the store exists to cure. Store shape = `IN_current.parquet`
+verbatim (same columns, capex stored negative to match the yfinance convention)
+so every India-store consumer reads it unchanged. Restatement rule: comparative
+prior-year figures in a newer 10-K overwrite the original (latest `filed` wins);
+quarterly rows inside 10-Ks are excluded by a 330–380-day span filter — both
+covered by `--self-test`. Wired into `run_fundamentals_offhours.sh` (1,500
+names/session ≈ full ~7k universe in 5 of the 9 weekly slots, then staleness-driven).
+
+### Correction: future-dated debt maturities minted phantom fiscal years (EDGAR)
+
+First bulk run (1,500 names, 0 fetch failures, A-share 10.2%) surfaced it:
+PMTV's 10-K reports LongTermDebt *repayments due 2026-2029* as instant facts
+with future `end` dates, and the parser treated every instant end as a fiscal
+year — the ratio table's "newest US FY" read 2029-12-31. Rule now: a fiscal
+year that hasn't ended cannot have been filed; ends > today are dropped
+(self-tested), and the 4 phantom rows were purged from the store. One ticker
+this time, but the bug class is any company tagging maturity schedules with
+bare debt tags.
+
+### New: financial_ratios.py — one India+US ratio table
+
+PE/PB/ROE/ROA/ROCE/D-E/current ratio/margins/FCF yield/CFO-to-NI/asset turnover/
+revenue growth, per ticker, latest FY vs latest close (India closes from
+`cleaned_long.parquet` — NSE precedence; US from `ohlcv_US.parquet`). Currencies
+never mixed: every ratio is a pure number; `mcap_local` is in the market's own
+currency by design. Outputs: `market_cache/fundamentals/ratios_latest.parquet`,
+Postgres `fundamentals.ratios` (full replace — derived data, stores are truth),
+`reports/financial_ratios.csv`. Validated against prior screener.in checks:
+RELIANCE ROE 8.9% / ROCE 11.3%, TCS ROCE 56.3%. Re-priced daily in pipeline step
+[15/15]; recomputed after each off-hours collection too.
+
+### Decision: Dropbox (rclone) replaces GitHub LFS as the off-machine data store
+
+`~/scripts/cloud_backup.sh`, pipeline step [16/16]. The LFS account budget is
+exhausted, every rewritten parquet became a new permanent blob (no delta
+compression), and only repo deletion ever frees space — the delete/edit churn
+this replaces. Drive side: `market-data-archive/current/<tree>` exact mirror +
+`history/<YYYY-MM-DD>/` where changed/deleted files are MOVED (never destroyed),
+60-day history retention, weekly Monday `pg_dump -Fc` of market_data (last 8
+kept). Trees: market_cache, bhavcopy_cache, cache_seed, global-market-data
+cache_seed, ~/data (duckdb). lmdb dirs excluded — live memory-mapped stores
+snapshot corrupt and rebuild from parquet anyway. **Remote: `dropbox:`
+(1.6 TiB free) — user's call after an initial googledrive setup; also sidesteps
+rclone's shared Google client_id retiring during 2026. `gdrive1` was ruled out
+either way (institutional IIT content — deactivation risk for an archive).**
+Rejected: GCS (needs billing setup for no capacity we lack). Runs as step [16] rather than its
+own schedule — a separate schedule off the wake window is how market_ingest
+drifted 8 days. (The Google client_id retirement note only matters if the archive ever moves
+back to a Drive remote: rclone.org/drive/#making-your-own-client-id.)
+
+Orchestration layer: `n8n_dropbox_workflow.json` (import into the local n8n at
+:5678). Two flows: a **09:00 daily catch-up backup** — deliberately AFTER the
+00:30 pipeline, because cloud_backup.sh is idempotent so it costs seconds when
+step [16] already ran, and it is the run that actually happens when the Mac
+slept through the wake window (the launchd lesson, third time) — and a
+**restore/list webhook** (`POST /webhook/dropbox-restore`,
+action=list|history|restore, tree allowlisted, dest sanitized, optional
+date=YYYY-MM-DD to pull a prior version from history/). Bulk bytes stay on
+rclone; the Dropbox MCP connector (same account — verified by a marker-file
+round-trip between rclone and the connector) is the browse/verify surface.
+
+Imported + ACTIVATED as `dropboxbackup001` after two upgrades matching the
+marketpipeline001 conventions: (1) the bare `rclone size` verify was replaced
+with `~/scripts/cloud_backup_verify.sh` — an independent per-tree GATE
+(remote-vs-local bytes with the backup's own excludes, 10% churn tolerance,
+pg-dump recency <8d) because a whole-mirror byte count passes a half-synced
+tree; (2) an ALERT node (send_alert.py) wired to the error outputs of both the
+backup and the gate — without it a failed backup only dies quietly in the
+executions list, the exact silent-staleness mode this whole day was about.
+Webhook tested live: `list` returns the mirror inventory; invalid
+tree/dest/date inputs throw in the Code node BEFORE any shell runs (verified:
+error execution, no side effects — fail-closed). `history` errors until the
+first re-sync creates history/ — expected, not a defect. 🔑 `n8n
+import:workflow` DEACTIVATES on import — follow with `n8n update:workflow
+--active=true` + `launchctl kickstart -k gui/501/com.umashankar.n8n`.
+`DbxBkpMonitor001` (needed a Dropbox OAuth2 credential that was never attached)
+is superseded by the credential-free rclone GATE and left inactive.
+
+## 2026-07-23 (early morning: runtime ledger; two corrections it caught)
+
+### New: morning_runtimes.py — per-run duration ledger across all three surfaces
+
+Appends every finished run (pipeline log sections, n8n trigger executions for
+the 07:00 chain and 09:00 backup) to reports/morning_runtimes.csv — append-only,
+idempotent, in-flight runs picked up by the next sweep. Prints a recent trend +
+per-surface median/max. Exists because drift only ever got found by hand-diffing
+artifact mtimes (the Korea 3→28min case). First sweep: 8 runs back to Jul 17.
+
+### Correction: I broke my own backup lock
+
+The first sweep exposed the 00:30 Jul-23 run stuck in step [16] for ~4h: TWO
+rclone syncs interleaving on the same tree. Cause: my queued re-run command
+carried an unconditional `rmdir` of the lock — written to clear my own stale
+lock, but by execution time the lock belonged to the pipeline's LIVE step-16
+instance. Lesson encoded here: never clear a lock without checking the holder
+is dead (`rmdir` only after `pgrep` shows no cloud_backup.sh). Competitor
+killed; the pipeline's own sync left to finish alone.
+
+### Correction: readers reintroduced the ~/Downloads TCC trap
+
+market_ingest.py and financial_ratios.py (both written 2026-07-22) hardcoded
+`~/Downloads/market_cache/symbol_master.parquet` — the launchd-TCC-denied tree,
+and the exact two-trees trap symbol_master.py's own comment warns about (its
+WRITER already targets MARKET_CACHE). The 00:30 run tracebacked on it in step
+[15]. Both readers now resolve `$MARKET_CACHE/symbol_master.parquet` (env, then
+live-tree default). The Downloads copy remains only as a stale git snapshot.
+
+## 2026-07-23 (post-midnight: backup concurrency + restore hardening)
+
+### Correction: the first pg dump was destroyed by a /tmp filename collision
+
+Two concurrent cloud_backup.sh invocations shared /tmp/market_data_<date>.dump.
+Instance A uploaded it, printed ok, and rm'd the file while instance B's rclone
+was mid-transfer of the SAME path → hash mismatch → rclone deleted the
+"corrupted" REMOTE copy too. Net: a dump that had landed was destroyed by the
+retry of its twin. Three fixes in cloud_backup.sh: (1) mkdir-based
+single-instance lock keyed by remote (a second invocation exits 0 with a log
+line — the 00:30 pipeline hitting the lock during a manual run is normal, not
+a failure); (2) $$ in the LOCAL dump path so even an aborted instance can't
+collide with a later one (remote name stays dated); (3) the dump-prune used
+`head -n -8`, which macOS head rejects — every prune since inception was a
+silent no-op; now `sort -r | tail -n +9`.
+
+### Restore verified against a live user restore; webhook retry flags
+
+A full-tree restore during the triple-concurrent window (two backups + 1.6GB
+dump upload) surfaced ~20 `invalid character '<'` errors — Dropbox API
+throttling returning HTML where JSON belongs, NOT corruption: sampled files
+byte-exact on the remote, and a re-download SHA-256-matched the local
+original. The n8n restore webhook now bakes in
+`--retries 5 --low-level-retries 20 --timeout 10m`; interactive restores
+should carry the same flags. The instance lock also closes the worst
+contention window.
+
+## 2026-07-22 (night: justified mailer — evidence-first brief)
+
+### New: justified_mailer.py — only screens that earned their place
+
+Inverts the daily brief: starts from the repo's measured evidence and shows ONE
+backtest-best screen per market, with the result, sample and test window printed
+above the picks. India = near_high + momentum (the two screens with positive
+India edge: +1.33/+1.18pp, 21d fwd, 2016→2026 PIT — run as SEPARATE lists,
+matching how the backtest tested them; intersecting them left 1 name). US/KR/JP
+= RSI-14 oversold (+1.85/+2.04/+0.93pp, win 0.463/0.481/0.513). Fundamental
+overlay table = factor_combo CSVs verbatim (n, span, edge, t, years-positive)
+with the honest caveats attached in-mail: t<1, US PIT EDGAR found high-F
+INVERTED, and the Piotroski edge is an illiquidity premium (~$100k yes, $10M
+no). "Excluded by evidence" box lists Golden Cross (worst everywhere), Europe
+(untested), india_factor_panel (biased sampler), momentum outside India.
+
+Three defects caught by inspecting the first drafts — each now guarded in code:
+1. **India momentum list was ALL ETFs** (PHARMABEES/HEALTHIETF/MOMNC) — the
+   LIQUIDSBI failure mode again; fixed with the ISIN allowlist (INE + SctySrs
+   EQ from nse_raw), the documented instrument-type key.
+2. **US oversold surfaced RSI≈0 zombies** (SKHYV 0.0) — thin listings falling
+   14 straight days; now >=100 bars + $2 floor + RSI>2 sanity band.
+3. **ohlcv_NSE holds ~126 bars — exactly too short for 126-day momentum**
+   (2 non-NaN momenta in 2,069 symbols); India source switched to
+   cleaned_long (273 trading days), re-gated to the workbook's ₹1cr-floor
+   universe (ungated cleaned_long put VIJIFIN @ ₹9 on top).
+
+First edition sent 2026-07-22 late night: 40 picks (10/market).
+
+**Scheduled same night (user call):** node "Justified brief (send + sync)" in
+the 07:00 weekday n8n chain — gate → recurring movers → justified brief →
+digest — so the brief emails daily and its picks land in watchlist.csv
+(`justified` tier, note = "<screen metric> @ <date>") BEFORE the digest builds.
+The digest renders `justified` as a SEPARATE table (own heading/columns, screen
+column instead of free-note), never mixed into held/watch/sold — they are
+mailer output, not portfolio state. Existing watchlist rows are never touched.
+First sync: +39 rows. Import gotcha hit twice tonight: `n8n export` emits a
+LIST, a patched re-dump emits a DICT — a `[0]` on the re-read KeyErrors and the
+stale file imports silently; the live-DB command was verified after the fix
+(the node also initially lacked the `cd` prefix every other node carries —
+executeCommand cwd is n8n's, not the repo's).
+
+## 2026-07-22 (night: recurring movers — the self-updating shortlist watchlist)
+
+### New: recurring_movers.py — mailer picks that keep recurring AND are moving
+
+The distilled daily watchlist the signal ledger was building toward: names with
+**>= 2 distinct signal dates** in the last 30d whose price is **>= +2% since the
+FIRST flag** (entry = the ledger's own price_at_signal — the number the brief
+actually quoted). Recurrence × movement, not either alone: one strong day is
+one strong day; re-passing while the market agrees is the signal. Rules kept
+few and printed in the output. Source hygiene: `india_factor_panel` rows are
+EXCLUDED (documented alphabetical sampler — recurrence from a biased sampler
+measures the bias); T5_MOST_ILLIQUID dropped. Current prices come from the
+day's scan workbooks (KR codes zero-pad-normalised — ledger holds '400', the
+workbook '000400').
+
+Outputs: `reports/recurring_movers.csv` (full ranked list, rebuilt each run) +
+top-25 promoted into `watchlist.csv` as `signal` tier — capped because a young
+ledger qualifies 100+ names at 2 appearances and flooding buries the curated
+tiers; existing rows are never touched (same contract as signal_tracker).
+
+**Daily update wiring: inside the 07:00 watchlist-digest n8n workflow**
+(gate → refresh movers → build digest), NOT a new schedule — the digest is the
+consumer, so refreshing immediately before it means the 07:00 email always
+carries today's movers, and `onError: continue` ensures a movers failure can't
+block the digest. (Also deliberately not appended to daily_pipeline.sh
+tonight: that script was mid-execution, and bash re-reads running scripts —
+editing it live corrupts the run.) First run: 130 qualifiers, +14 promoted
+(rest were already on the watchlist). watchlist_digest.py learned a `signal`
+tier (own sort rank, count, and amber tag) — previously those rows rendered
+untagged and uncounted, masquerading as holdings.
+
+## 2026-07-22 (warehouse ingest repaired + per-ticker freshness ledger)
+
+### Warehouse ingest had been silently stale for 8 days — root cause: the migration left it behind
+
+`scripts/market_ingest.py` and `scripts/bhavcopy_to_db.py` still pointed at the
+abandoned `~/Downloads/code/python_files` / `~/Downloads/data/bhavcopy_cache`
+tree after the 2026-07-16 migration to `~/market-pipeline`. Both kept "running
+fine" against dead directories: snapshots froze at 2026-07-16, Postgres bhavcopy
+at 2026-07-14, and nothing alerted. Fixed by repointing both (with
+`BHAV_CACHE`/`MARKET_PIPELINE_DIR` env overrides) and backfilling: +33,105
+bhavcopy rows (Jul 15–21), and every missed workbook date per market — the
+ingester now loads ALL dates absent from the table, not just the newest file, so
+an ingest gap no longer loses the intervening days.
+
+**Decision — the ingest is now step [15/15] of `daily_pipeline.sh`**, not a
+separate schedule. Rejected: its own launchd/cron job (that is exactly the
+arrangement that let it drift — a second schedule with no coupling to the data
+it records, off the wake window). Running it in-pipeline ties it to the same
+wake, the same log, and the `[ALERT]` failure email. It calls `/usr/bin/python3`
+explicitly because duckdb lives there and not in the venv (the same split
+documented on 2026-07-15).
+
+### New: per-ticker freshness ledger (ticker, name, market, last update)
+
+`market_daily.ticker_freshness` (Postgres view) + `market_ingest.py --tickers`
+/ `--csv` — one row per ticker with name, market, and date of last real data:
+21,279 tickers across 5 markets. India rows come from bhavcopy trade dates (the
+true series, ~7.9k symbols), not the gated scan snapshot; names come from the
+workbook `Name` column where it exists (EU/JP/KR) and from
+`market_daily.symbol_names` (refreshed each run from `symbol_master.parquet`,
+NSE preferred on symbol collisions) otherwise. India name coverage is 4,308/7,858
+— the unnamed remainder are BSE-only/delisted symbols outside symbol_master,
+left NULL rather than guessed. Snapshot workbooks now also persist `name`.
+Exported daily to `reports/ticker_freshness.csv` for downstream extraction.
+
+Known remainder: `nse_raw`/`bse_raw` (the 34-col raw archives) still have no
+writer since 2026-07-13 — `nse.parquet`/`bse.parquet` in the new cache are not
+being rebuilt by anything. The OHLCV series everything reads is current; the raw
+archive is the stale layer.
+
+## 2026-07-21 (night, sampling)
+
+### 🔴 EVERY India factor result so far is an ALPHABETICAL sample
+
+Found while checking why the news-convergence output was all A-names. The India
+factor panel held 135 tickers:
+
+    {'2': 1, '3': 3, '5': 1, '6': 1, 'A': 127, 'B': 2}
+
+**127 of 135 begin with "A"**, and the list stops at `BAGFILMS`.
+
+`screener_history_collector._universe()` returned `sorted(set(...))` and the
+caller takes `universe[:limit]`. screener.in hard-blocks after ~50-155 requests
+per session, so every session ever run collected an alphabetical PREFIX.
+
+**This invalidates the factor work to date.** Piotroski, ROCE, debt-cycle and
+every combination test was a statement about companies whose name starts with A,
+presented as a statement about the Indian market. Worse, the panel growing
+108 → 135 earlier today *looked* like progress while adding only more A's — the
+sample appeared to improve while staying exactly as biased.
+
+Alphabetical order correlates with nothing financial, which is precisely why a
+truncated alphabetical sample looks random until the first letters are counted.
+This is the **same defect already recorded for the US price panel** (an
+interrupted alphabetical collection missing CME/CMI). Second occurrence, same
+root cause, different dataset.
+
+**Fixed** (`global-stock-screener` `b785dec`): the universe is ordered by symbol
+hash. Deterministic — same universe, same sequence, so runs stay reproducible
+and resumption still works via the `done` set — but uncorrelated with the
+alphabet, so a session that dies early leaves a representative sample. Verified:
+first 150 names span **28 distinct first letters, was 2**.
+
+⚠️ The existing 220 collected tickers remain alphabetically skewed. The panel
+only becomes representative as the trickle collects under the new ordering.
+**Do not quote a factor result off the current panel.**
+
+### `news_convergence.py` — do the headlines contradict the picks?
+
+For each stock passing a filter, pull Moneycontrol/ET/Mint coverage and report
+`CONVERGENT` / `NEUTRAL` / `DIVERGENT` / `NO_NEWS`.
+
+**Decision: the useful output is DIVERGENCE, not convergence.** "The filter
+picked it and the news is good, so the filter worked" is confirmation bias — it
+would make every filter look good on a day the market rose. What earns its keep
+is a technically immaculate stock carrying a fraud probe or an auditor
+resignation, i.e. something public the filter cannot see. Only forward returns
+can say a filter works; `signal_tracker.py` does that.
+
+Two guards that materially change the output:
+
+- **Stricter matching than `sentiment_pipeline`.** The RSS feeds are
+  market-wide. The default matcher scored RELIANCE `POSITIVE` off two copies of
+  *"Market wrap: Top gainers and losers on Nifty and Sensex today"* — a headline
+  naming dozens of companies and characterising none. Here a headline counts
+  only if the company is named in the **title**, market-wraps are excluded, and
+  duplicates collapse. Recall traded for precision deliberately.
+- **Red-flag terms outrank the average.** VADER is general-purpose: "SEBI probe"
+  and "CFO resigns" score near-neutral in ordinary English, and those are exactly
+  the headlines that matter. Three routine positives must not bury one auditor
+  resignation, which is what averaging does.
+
+`NO_NEWS` is its own category, never folded into `NEUTRAL`: 20 of 30 names had
+no company-specific coverage, and "nothing bad was written" versus "nobody was
+looking" are different facts.
+
+### Export mined — little there for the mailer
+
+The supplied 59MB export is **claude.ai web chats**; the pipeline engineering
+happened in Claude Code, whose transcripts live in `~/.claude/projects/` and are
+not in it. 39 of 180 conversations mention the mailer/pipeline, but the
+moneycontrol references are all generic (Moneycontrol as a website for screening
+or FII/DII flows) and the `convergence` hits are unrelated (Navier-Stokes,
+policy convergence). No pipeline decisions recovered.
+
+---
+
+## 2026-07-22 (adjusted prices — the data is fixed, and stays fixed)
+
+### `price_adjuster.py` — split/bonus-adjusted India warehouse, validated 7/7
+
+789 events parsed from the CA history (377 splits, 412 bonuses; the subject
+strings are perfectly regular), factors compounded backward, 546,802 bars
+re-scaled across 577 symbols → `warehouse/ohlcv_adj/IN/`.
+
+**Validated against yfinance's INDEPENDENT adjustment, across each ex-date:
+7 OK · 0 DIFF.** The same table shows what was being fixed — through recent
+events the RAW series claims −93.8%, −92.1%, −88.4% "crashes" where the true
+returns are −69%, −20.8%, +16.2%. This is the measured +12.2%-fake-premium
+artifact, now removed at the source.
+
+One harness lesson: the first run showed 5–9pp of fake DIFF because the two
+series' return windows started/ended on different trading days. Returns over
+different endpoints are different returns — both series are now cut to their
+common dates spanning the ex-date. (Same family as the zero-day-holding bug:
+comparisons must share their frame.)
+
+Deliberately NOT adjusted: dividends (a total-return series is a different,
+later artifact). Splits and bonuses are the return-corrupting events.
+
+### Freshness is wired, not assumed
+
+- Daily extras run refreshes the CURRENT quarter of CA history (idempotent), so
+  new ex-dates flow to the adjuster automatically.
+- `ingest.sh` step 7b rebuilds the adjusted partitions right after the daily
+  warehouse fold.
+- Both registered (`warehouse.ohlcv_adj_in`, `extras.corp_actions_history`) —
+  staleness shows in data_index and gates like everything else.
+
+⚠️ Consumers: use `ohlcv_adj/IN` for ANY multi-month return computation. The
+raw `ohlcv/IN` remains for point-in-time price checks (what did it close at
+that day) where raw is correct.
+
+---
+
+## 2026-07-22 (CA history + filings-based metrics, site-validated)
+
+### Corporate-actions history: 23,480 actions back to 2015
+
+The top correctness gap closed: the CA API serves history by exact
+calendar-quarter windows (same trap as the results API — ragged windows return
+almost nothing). `exchange_extras.py --ca-quarters 44` harvested every ex-date
+(dividends, splits, bonuses) matching the price warehouse's depth. This is the
+data needed to adjust the raw-close warehouse — the +12.2% split artifact is now
+fixable rather than merely known.
+
+### `metrics_from_filings.py` — metrics with provenance, checked against the sites
+
+Computes net margin, OPM-proxy, EPS, YoY growth and interest cover from the
+XBRL filings (every figure traces to a filing with a date), then validates
+against screener.in's quarterly table — filings vs the site, per quarter, per
+consolidation basis.
+
+**Validation run: 6 OK · 0 DIFF.** Three initial mismatches, each diagnosed to
+a distinct cause and each a lesson encoded in the harness:
+
+- **SHYAMMETL 3,612cr vs 1,559cr** — consolidated filing compared against the
+  standalone page. Basis is now matched PER FILING, not per symbol.
+- **WEALTH 20 vs 21cr** — whole-crore rounding is 5%% of a Rs20cr quarter; the
+  tolerance now has an absolute floor (1cr) alongside the 2%% relative.
+- **RADICO 3,715cr vs 925cr with PAT 65 == 65 exactly** — not an error: liquor
+  companies file revenue GROSS of excise, the sites net it out, and the filing
+  carries no excise element to reconcile with. Classified `DEFN`
+  (definitional), a category distinct from DIFF, because forcing agreement
+  would hide a real convention difference.
+
+The harness rule: DIFF against one site -> suspect our parse; DIFF against all
+sites -> the filing was restated and the divergence IS the finding.
+
+---
+
+## 2026-07-22 (warehouse — partitioned parquet + DuckDB)
+
+### The LFS problem was duplication and monoliths, not file format
+
+Asked to cut LFS space "by using parquets": the panels already WERE parquet, and
+measured re-compression gains nothing (68.9 vs 68MB — already compressed). The
+real waste:
+
+- **~900MB where ~450MB exists** — the same market panels tracked in BOTH data
+  repos, diverging, with the canonical copy differing per market (this folklore
+  is now written down once, in `warehouse_build.py`: IN from global-market-data's
+  deep panel; US from global-stock-screener — the other US is the broken
+  alphabetical collection).
+- **Monoliths defeat LFS** — every daily update rewrote a 68-184MB file and each
+  push uploaded a complete new LFS object. Append-only history, re-uploaded in
+  full, forever, server-side.
+
+### The fix: `warehouse/ohlcv/<MKT>/year=YYYY.parquet` + DuckDB views
+
+43.5M rows, 6 markets, 2016-2026, row parity verified 6/6. Partitioning costs
++7% on disk and cuts the daily push from a 68MB monolith to the ~8MB
+current-year file — **~10x less LFS growth per push**. `warehouse.duckdb` is
+268KB of VIEWS (no data copied): SQL over every market with zero load step,
+committable for free.
+
+Consumers rewired and verified: `warehouse_update` writes only changed year
+partitions (closed years never change under the strictly-newer rule);
+`signal_tracker` / `watchlist_pnl` read the warehouse dirs (pandas reads a
+partition directory natively — the swap was one path).
+
+Monoliths untracked in both repos (local files stay as caches; README pointers
+left). ⚠️ GitHub keeps already-pushed LFS objects — this stops FUTURE growth
+and removes the duplication; reclaiming historical remote objects needs a
+support request or repo surgery, deliberately not attempted.
+
+---
+
+## 2026-07-22 (NSE XBRL — the point-in-time prize)
+
+### `nse_xbrl_results.py` — filing-dated quarterly fundamentals, 10+ years
+
+The user pointed at NSE's corporate-filings XBRL page; behind it sits an API
+that answers plain curl. This closes the last big gap: every India fundamentals
+source so far failed point-in-time (yfinance has no filing dates, so backtests
+guess a +90d lag; screener.in's rate limit made every panel an A-prefix sample).
+
+**Index harvested in full: 110,942 filings · 2,495 symbols · back to 2015**,
+each with `filingDate` (when the market learned the numbers), fiscal period,
+audited/consolidated flags, and the XBRL file link. Backtests can now use
+`visible_from = filingDate` — the real date, removing the biggest honesty
+caveat on the factor work.
+
+Files (~20KB each, full P&L in the in-bse-fin taxonomy) trickle in hash order,
+~2,000 per off-hours session piggybacked on the fundamentals runner — full
+history in ~8 weeks, representative at every stage.
+
+**Three parser findings, each verified before shipping:**
+- The API silently misbehaves on windows longer than a quarter (a 4.7-month
+  window returned 8 filings where its quarters held thousands) — exact
+  calendar-quarter windows only.
+- NSE's "WEB"-format files reference `contextRef="OneD"` **without defining
+  it** — invalid XBRL, but consistent; the period is synthesized from the
+  index record. This alone was 172 of the first 299 "failures".
+- Element names drift across taxonomy years (only
+  `ProfitLossForPeriodFromContinuingOperations` in 2018 files; banks use
+  `InterestEarned`) — alias lists per field.
+
+Parse rate 42% → **95%**. Periods verified: all rows bind to true 89-91-day
+quarters (zero YTD contamination — the first parse of TRIDENT took the H1 YTD
+context, ₹3,291cr instead of ₹1,797cr; the period-bound parser fixed it and the
+corrected figures match the company's published Q2FY24).
+
+Registered as `xbrl.pit_quarterly`. Consumer wiring (factor panel using
+filingDate as visible_from) is the follow-on once coverage accumulates.
+
+---
+
+## 2026-07-22 (NSE/BSE bulk extras — six new datasets)
+
+Probed the exchanges' public endpoints directly: seven bulk files are cookie-free
+(archives.nseindia.com + two JSON APIs answered plain curl; only NSE's website
+APIs need the cookie dance). `exchange_extras.py` now collects daily, idempotent
+per (kind, date), raw files kept verbatim + one consolidated parquet per kind.
+Wired into ingest as step 3b; index_closes and delivery registered in
+data_registry (3d tolerance).
+
+What each fills:
+
+| dataset | gap it closes |
+|---|---|
+| **index_closes** (162 indices/day, with P/E·P/B·yield) | the BENCHMARK gap — NIFTYBEES was ISIN-filtered out of the equity panel, so signal tracking used a panel-median stand-in; this is the real Nifty 50. Index P/E is also a regime series the pipeline never had |
+| **delivery** (per-stock DELIV_PER) | conviction signal — positions taken home vs intraday churn; never collected |
+| **bulk_deals / block_deals** (full history, client names) | smart-money prints; never collected |
+| **corp_actions** (ex-dates: dividends, splits, bonuses) | the SPLIT-ADJUSTMENT gap — deep panels carry raw closes, and splits faked a +12.2% illiquid premium in a measured backtest; this is the data to adjust or at least flag |
+| **fo_oi** (FII/DII/pro/client OI) | futures positioning; context for put_call_parity |
+| **bse_results_cal** | earnings calendar without scraping |
+
+Verified with an 8-day backfill: 966 index rows, 19,571 delivery rows, deals,
+20 corp actions, 642 calendar entries — 0 failures (weekend 404s recorded as
+skips, not errors; a holiday is a fact, not a failure).
+
+**Deliberate choices:** raw files are never deleted (a parsing bug must not
+destroy source data); each kind fails independently (index closes must not
+depend on bulk-deals parsing); the CA endpoint raises loudly if NSE later
+fences it, rather than storing a block page as data.
+
+**Consumers not yet wired** (data first, consumers next): signal_tracker /
+watchlist_pnl still benchmark against the panel median — switching them to the
+real Nifty 50 series is the immediate follow-on.
+
+---
+
+## 2026-07-22 (liquidity framing + staleness guard)
+
+### The brief now says what its universe IS: high-liquidity picks
+
+The fundamental screeners run on ~1,350 of ~7,800 listed Indian equities. The
+missing ~4,500 are not a gap — they are removed by a deliberate ₹1cr/day
+median-turnover floor applied BEFORE any fundamental test (measured funnel:
+7,842 equities → 5,203 with enough history → ~1,400 clear the floor). The brief
+previously implied this; it now states it outright: **liquidity is a screening
+criterion alongside Piotroski and the rest**, and lower-liquidity names are
+deliberately out of scope until their collection is reliable — at which point
+they arrive as a separately-tagged tier, not mixed in.
+
+Floor sensitivities, for when that day comes: ₹1cr → 1,480 names · ₹10L → 2,253
+· ₹1L → 3,665. The cost/capacity work says the illiquid edge is real at retail
+size, so ₹10L is the plausible next tier.
+
+### Fundamentals staleness is now monitored, not assumed
+
+"Collect regularly and avoid stale data" needs machinery, not intent:
+
+- Both stores registered in `data_registry` (`fundamentals.in_annual`,
+  `fundamentals.in_quarterly`, writer `fundamentals_offhours.py`, tolerance
+  10d) — so `data_index` and the ingest gate report them like every other
+  dataset. 10 days means the SCHEDULE broke, not that quarterly filings moved.
+- The brief's coverage note shows the store's **median** age — median, not
+  newest, so one fresh ticker cannot make 1,300 stale ones look current (the
+  max-mtime bug, third appearance) — and switches to a bold STALE warning past
+  10 days.
+
+---
+
+## 2026-07-22 (fundamentals — all four screeners store-served)
+
+Phases 2-3 completing Phase 1. All four fundamental screeners now run from the
+off-hours store with zero yfinance calls per store hit, so none throttle-truncate
+alphabetically. Final coverage: 1,287 usable tickers, 26 first-letters, ~10%
+A-share — the market's real distribution, replacing the 89-96% A the screeners
+showed.
+
+- **Piotroski** — bit-identical store-vs-live (8/8).
+- **Coffee Can / Magic Formula** — never worse than live; MORE complete on 5 of
+  13 tested. Needed 6 extra fields (equity, EBIT, FCF, capex, total debt, cash)
+  and market cap computed from stored shares x the scan's price.
+- **Bull Cartel** — bit-identical YoY quarterly growth (4/4); quarterly income
+  statement collected alongside annual in the same fetch, stored in
+  IN_quarterly.parquet.
+
+**🔴 Finding: the live Stage-4 path was DEGRADED, not just truncated.** Chasing a
+CoffeeCan mismatch (store 6/6 vs live 5/6 for EICHERMOT) proved the integrated
+per-ticker fetch (statements + quarterly + info + fast_info, in a thread pool)
+silently drops individual rows under load — e.g. a near-zero Long Term Debt —
+so it scored tickers it DID process slightly wrong, on top of dropping later
+tickers entirely. The store fixes both.
+
+**Three bugs caught by verifying before shipping:** substring field-matching
+(grabbed "Total Current Assets" 218B for "Current Assets" 56B); stale
+statement-routing (new fields silently empty — now an explicit map + assert);
+and the fresh-skip being annual-only (would never collect quarterly for an
+annually-fresh name — now requires quarterly presence).
+
+Fallback to the live path is intact throughout: a store miss is byte-identical
+to before, so every change can only ADD coverage.
+
+---
+
+## 2026-07-22 (fundamentals coverage)
+
+### 🔴 The A-bias was TWO bugs, not one — and the live scan was the bigger
+
+Confirmed the brief's Piotroski/CoffeeCan/BullCartel/MagicFormula picks are
+89-96% A-names, and isolated the cause precisely: the Darvas/GoldenCross picks
+span the full alphabet (25 first-letters), but the FUNDAMENTAL screeners do not,
+because fundamentals come from two paths that both truncate alphabetically:
+
+  * screener.in PIT collector — blocked after 50-155 requests (already fixed,
+    hash ordering).
+  * the LIVE scan's Stage 4 — fetches one yfinance Ticker() per stock in
+    PARALLEL, Yahoo throttles after ~250, and the survivors are the
+    alphabetically-first. Measured: the Fundamentals sheet stops at BAJAJELEC;
+    the fundamentals store is 161 usable tickers, 133 of them A.
+
+### Off-hours multi-source collector + store-first Piotroski (Phase 1)
+
+`fundamentals_offhours.py` pre-collects current fundamentals for the clean
+equity universe (~1,348 names) from yfinance, hash-ordered, off-hours (weekends
++ weeknights), into a store the scan reads. Verified yfinance returns full
+Piotroski inputs for the non-A names screener.in never reached.
+
+The scan's `fundamental_scan` is now STORE-FIRST with fallback: a store hit costs
+zero yfinance calls (never throttles) and computes Piotroski identically; a store
+miss is byte-identical to before. Piotroski becomes alphabet-complete; the other
+three screeners abstain on a store hit (they need mcap/EBIT/equity/quarterly not
+yet stored) — Phases 2-3.
+
+**Decision: bhavcopy is NOT a fundamentals source.** It is price data; listing it
+would create a field that never populates. yfinance is primary; screener.in is
+optional deep-history enrichment.
+
+### Verification caught a field-extraction bug before it shipped
+
+First wired run: store f=5 vs live f=4 for AADHARHFC. The collector's `_pick`
+used SUBSTRING matching, so "current assets" matched "Total/Net/Other Current
+Assets" (218B stored vs 56B real) and "borrowings" grabbed "Total Debt" (187B)
+where the scan reads "Long Term Debt" (152B). Fixed to exact-match-first; field
+renamed borrowings->long_term_debt. Re-verified 8/8 tickers now score
+identically store-vs-live. The wrong store was cleared and re-seeded.
+
+⚠️ Coverage fills over hours/days as the collector runs. A self-correcting
+caveat on the brief's fundamentals section states current coverage so an A-heavy
+list is not read as 'the best fundamental names in India'.
+
+---
+
+## 2026-07-21 (night, correction)
+
+### 🔴 CORRECTION: the daily mailer was never failing — I was breaking it
+
+Recorded because the earlier entries in this file assert the opposite, and a
+changelog that keeps a wrong diagnosis is worse than one with a gap.
+
+Full run history for 2026-07-21:
+
+| run ended | failed steps | outcome |
+|---|---|---|
+| 04:10 | 0 | **SENT** |
+| 06:59 | 0 | **SENT** |
+| 13:52 | 0 | not sent — market open, screener.in serving live quotes |
+| 15:19 | 2 | not sent |
+| 16:39 | 2 | not sent |
+| 18:56 | 2 | not sent |
+| 19:04 | 2 | not sent |
+| 19:12 | 0 | **SENT** |
+
+The scheduled runs sent cleanly. Every failure was a manually-invoked run.
+
+**Cause: `pipeline_lib.sh` resolved its interpreter from the caller's PATH**
+(`PY="${PY:-python3}"`). The launchd plists put `.venv/bin` first, so scheduled
+runs used the venv; a plain shell used `/usr/bin/python3`, which lacks
+`bseindia`. `[1/9] India full screener scan` therefore died instantly in manual
+runs only — and since no fresh India scan was produced, the brief validated a
+stale **13:36 intraday** workbook, where HDFCBANK showed 777.6 against
+screener.in's 761.0 close. That identical 2.18% "mismatch" recurred in four
+consecutive runs and read as a data fault; it was a wrong-interpreter fault.
+
+Consequences: four wasted runs, five spurious failure-alert emails, and a
+defect recorded against `[1/9]` that never existed.
+
+**Fixed:** `pipeline_lib.sh` resolves `$HERE/.venv/bin/python` by construction,
+warns if it is absent, and still honours an explicit `$PY`. Same defect class as
+the two cache trees and the two bhavcopy stores — one thing, two resolutions,
+silent divergence — and the third time today it produced a confident wrong
+answer rather than an error.
+
+**Validation was right every time.** Widening the tolerance to clear HDFCBANK
+would have shipped an intraday brief as a daily one.
+
+---
+
+## 2026-07-21 (night)
+
+### Signal tracking now works — it was structurally empty before
+
+`--report` printed "no aged entries could be priced" and returned nothing. Not a
+data outage: it required `price_at_signal`, and **all 121 trackable entries were
+backfilled `golden_cross` rows that never recorded an entry price**. The report
+could never have produced a number, and said so in a way that read like missing
+data.
+
+Applied the watchlist model — the same `basis` distinction `watchlist_pnl`
+already uses:
+
+- `signal-price` — recorded when the filter fired (a record)
+- `panel-close` — the panel's close on the signal date (an estimate: no fill, no
+  slippage, and for a backfilled row only *close to* what the brief quoted)
+
+All 138 currently-tracked rows are `panel-close`. That is labelled on every row
+and called out in the summary rather than presented as measured entry prices.
+
+**Skips are now counted and named, not silent.** 1,152 entries are stamped today
+and have no forward bar — that is what forward tracking *means*, so it is
+reported as "too early, by design" rather than dropped.
+
+### 🔴 The India benchmark was filtered out of its own panel
+
+`vs mkt` was `nan` for every India entry. `NIFTYBEES` is in the panel but its
+last bar is **2026-07-13**, a week behind the panel itself: it is an ETF (ISIN
+prefix `INF`) and the equity-only bhavcopy filter — added after an ETF shipped
+as a golden-cross pick — stopped updating it. The benchmark was removed as
+collateral damage from a correct fix.
+
+**Decision: fall back to the panel's cross-sectional median, and label it.**
+That is a *different* benchmark — equal-weighted market, not NIFTY 50 — so
+substituting it silently would misrepresent what the comparison is. India now
+reads +0.67% vs mkt / 62% win, with the substitution printed above the table.
+
+### EU/JP/KR tracking via `--fetch-missing`
+
+Those markets have no persisted panel, which hid 1,119 of the ledger's entries —
+most of the shortlist. Opt-in yfinance fetch, reusing the watchlist's symbol
+resolver (Korea's codes need zero-padding to six digits plus a .KS/.KQ board
+suffix; Japan needs .T).
+
+Entries stamped today are filtered out **before** the network calls: 1,069 of
+the 1,119 could not have a forward bar, so fetching the group would mean 1,119
+sequential requests to track 50.
+
+No benchmark for these markets — there is no index series in any local store,
+and synthesising one from the handful of shortlisted names would compare each
+signal against itself. `xret_pct` stays NaN and shows as `nan%`.
+
+Output: `reports/signal_tracking.csv`, one row per shortlisted name with
+`signal_date`, `as_of`, `held_days`, `entry_used`, `basis`, `ret_pct`.
+
+⚠️ 138 tracked rows over 3-6 days is a diary, not a result. Every row is
+`golden_cross` — the newer filters were all stamped today.
+
+### Trickle confirmed working
+
+`runs = 1`, exit 0, logged at 17:30:06. The earlier `runs = 0` was the counter
+resetting when the job was booted out and back in — **not** the never-fired
+failure seen on the daily-pipeline job. The 17:30 run was refused (screener.in
+still blocking this machine after the 16:45 hard block); gate unchanged at 143.
+
+---
+
+## 2026-07-21 (evening, collection)
+
+### `--refresh-thin` was queueing the collector's own good data for re-fetch
+
+(in `global-stock-screener`, commit `45afa1d`)
+
+Its "usable" test required `source == "screener_in"`, but rows written by the
+current collector path carry a **null** source. So 201 fully-populated tickers
+— cfo 94.7%, borrowings 88.3%, median 10 fiscal years — were classed as thin and
+queued for re-fetch. screener.in hard-blocks after roughly 50–155 requests per
+session, so that is two entire sessions spent re-downloading data already held.
+
+**Decision: drop the source condition entirely.** It was standing in for "not a
+yfinance-only row", and cfo presence already establishes that (yfinance supplies
+cfo on 2.9% of rows). Usable 281 → 524; re-fetch 1,575 → 1,332.
+
+### Collection state — blocked, and the trickle is the only way forward
+
+| | start of session | end |
+|---|---|---|
+| store | 8,429 rows / 1,846 tickers | 8,668 / 1,860 |
+| complete-path tickers | 193 | 220 |
+| ≥5 fully-populated years | 94 | 120 |
+| panel tickers per rebalance | 108 | 135 |
+
+The refresh run **aborted at 19 tickers** on a hard block; the circuit breaker
+behaved correctly. The budget was already spent by the earlier concurrent
+session (see above), so this is a self-inflicted ceiling for today rather than a
+new limit.
+
+⚠️ **The panel is still statistically thin.** Forward-return coverage is 60–110
+firms per rebalance year, not the ~300–600 needed for the factor comparison to
+separate signal from noise. Any factor result quoted off this panel remains
+directionally suggestive at best — the same caveat as before, now with 135
+tickers instead of 108. The launchd trickle is the mechanism that closes this,
+over days, not in one session.
+
+---
+
+## 2026-07-21 (evening, post-close run)
+
+### `technical` now capped at 5 per market — wiring it everywhere broke the watchlist
+
+Direct consequence of wiring `breakout_quality` into all five scanners. The
+post-close mailer returned **2,110** technical passes (US 1,044, JP 766, EU 185,
+KR 110) and pushed the watchlist from 775 rows to **2,703** — a list nobody can
+act on.
+
+**The filter is not broken.** 2,110 of ~15,000 names is a ~14% hit rate, which
+is what a grade-A/B breakout screen should return. It was never a shortlist; it
+only looked like one while Korea was the sole market emitting `Quality_Grade`.
+
+**Decision: rank and cap per market, not globally.** Grade alone is too weak a
+bar (grade A is still 595 names/day, and daily intake compounds). A *global*
+top-N would hand the list to whichever market scanned the most names — the Korea
+skew again, pointed the other way. So: grade A, ranked by quality score, top 5
+per market. 2,110 → 20, scores 90–100, evenly split across EU/JP/KR/US.
+
+The ledger still records **every** pass (2,369 entries) — nothing is lost for
+analysis. Only watchlist intake is bounded. Watchlist went +14 instead of +1,928.
+
+⚠️ India contributed no technical signals this run. **Correction (see the
+`night` entry): this was NOT a pipeline defect.** `[1/9]` failed only in
+manually-invoked runs, because of the interpreter split — the scheduled 04:10
+and 06:59 runs completed with 0 failed steps and sent normally.
+
+### Do not run the screener.in collector alongside the mailer
+
+The post-close brief failed validation with 3 of 8 sample stocks skipped on
+`http 429`. Cause: a screener.in collection session was running concurrently,
+and the mailer validates prices against the same host. Self-inflicted rate limit.
+
+The collection also produced **zero rows** in five minutes (store mtime
+unchanged) — so it contributed nothing while still degrading the brief. Worst of
+both. Sequence these two against screener.in; never overlap them.
+
+---
+
+## 2026-07-21 (evening)
+
+### 🔴 The India F-score is out of EIGHT, not nine — `f6_curratio_up` never fires
+
+`f6_curratio_up` evaluates on **0.0%** of panel rows. `f_tested` maxes at 8.
+Every "Piotroski score" in the India panel is therefore out of 8, and an `F≥7`
+filter here does not mean what `F≥7` means in the literature.
+
+This is **structural, not a bug to fix in the mapping.** screener.in's Data
+Sheet balance sheet is `Equity Capital / Reserves / Borrowings / Other
+Liabilities / Total` against `Net Block / CWIP / Investments / Other Assets /
+Total` — there is no current-vs-non-current split, so the current ratio has no
+input path. Confirmed: neither `screener_history_collector.py` nor
+`screener_in_auth.py` references `current_assets` or `current_liabilities`
+anywhere.
+
+Two consequences for any factor result quoted from this panel:
+- Cross-study comparisons must say "8-test F-score", or they overstate
+  strictness (7/8 is a higher bar than 7/9).
+- `f8_margin_up` also only evaluates on 55.2% of rows, so the effective test
+  count varies by firm-year. `f_tested` is already stored per row — use it as a
+  denominator rather than assuming 9.
+
+**Not fixed.** Getting F6 would mean sourcing the current-asset split from a
+second provider per ticker, and the store shows why that is not free: see below.
+
+### The two fundamental sources never overlap per ticker
+
+`cache_seed/fundamentals_history/IN.parquet` holds 1,846 tickers / 8,429 rows,
+but the factor panel builds from only ~108. Not a gate that is too strict — the
+sources are complementary in aggregate and disjoint per name:
+
+| source | rows | cfo | borrowings | total_assets |
+|---|---|---|---|---|
+| `screener_in` | 2,808 | 99.3% | 0.0% | 0.0% |
+| `yfinance` | 3,769 | 2.9% | 0.0% | 98.9% |
+| `None` (current collector) | 1,848 | 94.7% | 88.3% | 53.5% |
+
+Tickers carrying **both** `screener_in` and `yfinance` rows: **0**. So the
+281 screener-only names have cash-flow but no balance sheet, and the 1,443
+yfinance-only names have the reverse; neither group can pass the panel gate.
+Only the current collector's path produces rows complete enough to use — 193
+tickers, median 10 fiscal years, of which 94 have ≥5 fully-populated years.
+
+**Decision: expand by re-running the current collector, not by repairing old
+rows.** A merge across the two legacy sources would need per-ticker fiscal-year
+alignment between two providers with different restatement policies, and would
+silently mix vintages inside one firm-year. Re-collecting produces one
+provider's view per row, which is the thing a point-in-time panel requires.
+
+---
+
+## 2026-07-21 (later still)
+
+### `breakout_quality` wired into all five scanners
+
+Fixes the coverage defect recorded below. India, US, Japan and Europe now emit
+the ten `breakout_quality` columns, so `harvest_technical()` can see them
+instead of skipping them.
+
+**Decision: one shared helper, not four copies.** Added
+`breakout_quality.row_fields(df, price_round)`, mirroring the existing
+`golden_cross.row_fields` idiom, and migrated Korea onto it too. Four pasted
+copies of the same block is how two implementations drift apart, and this
+repo has already paid for that once.
+
+`price_round` is the only per-market difference: 0 for JPY/KRW where a decimal
+on a price is noise, 2 for INR/USD/EUR. Everything else rounds identically.
+
+**Two things found while doing it:**
+
+*Korea's inline block had a latent bug.* It guarded with
+`round(q["rel_volume"], 2) if q.get("rel_volume") else None` — falsy for a
+genuine `0.0`, so a real zero became `None` in 15 of 353 sampled rows. Verified
+before migrating that the signal-bearing fields (`Quality_Grade`,
+`Above_EMA50`, `EMA50_Rising`, `Recomputed_Signal`, `Actionable`) are identical
+across old and new; only `Rel_Volume` and `Body_Pct` change, and only where the
+true value was zero. Korea's *signals* are therefore unaffected by the
+migration.
+
+*The import fallback returns keys, not `{}`.* An empty dict would omit the
+`Quality_Grade` column and silently remove that market from the technical
+filter — reproducing the exact bug being fixed. Returning all ten keys as
+`None` means a row fails to qualify rather than a market disappearing.
+
+**Verified end-to-end**, not just by import: a real 60-ticker US scan emitted
+all ten columns with a sane grade spread (A 1, B 24, C 13, D 22), and
+`harvest_technical()` picked up 11 US signals where it previously saw zero.
+The test workbook was then deleted — being the newest US scan, it would have
+had the mailer harvest signals from a 60-name universe.
+
+⚠️ **India, Japan and Europe emit these columns only after their NEXT full
+scan.** Their current workbooks predate this change, so the harvester still
+sees Korea alone until then. The watchlist stays Korea-skewed in the meantime;
+that is expected, not a regression.
+
+---
+
+## 2026-07-21 (later)
+
+### `technical` filter can only ever fire for Korea
+
+The 15:19 mailer recorded 110 `technical` passes, all Korean, and pushed +101
+names into the watchlist — taking KR from 3 signal names to 110, the largest
+block in the book. This is **not** a signal about Korea.
+
+`harvest_technical()` skips any market whose scan lacks a `Quality_Grade`
+column, and only the Korea scanner emits it:
+
+| market | latest scan | `Quality_Grade` |
+|---|---|---|
+| IN | `indian_full_scan_20260721_1336` | no — skipped |
+| US | `us_full_scan_20260721_1513` | no — skipped |
+| **KR** | `korea_market_scan_20260721_1518` | **yes** |
+| JP | `japan_market_scan_20260721_1517` | no — skipped |
+| EU | `european_market_scan_broad_20260721_1515` | no — skipped |
+
+**Decision: recorded, not silently accepted.** The filter's conjunction
+(grade A/B ∧ above EMA-50 ∧ EMA-50 rising ∧ recomputed `BREAKOUT_BUY`) admits
+4.3% of Korean names, which is a sane hit rate — the defect is coverage, not
+threshold. Until `breakout_quality` is wired into the other four scanners, any
+cross-market comparison of `technical` is measuring instrumentation, not
+markets. **Not yet fixed.**
+
+### `symbol_master` wrote 21,902 rows to the stale tree — during a live run
+
+`symbol_master.py` used `os.environ.get("MARKET_CACHE", ~/Downloads/...)`.
+`mailer.sh` does not export `MARKET_CACHE` (only the plists do), so the 15:19
+mailer wrote the symbol master to `~/Downloads/market_cache` while every other
+step of the same run read the live tree.
+
+### Semgrep rule 6 exemption removed — it was hiding the bugs it existed to find
+
+The rule exempted anything inside `os.environ.get("MARKET_CACHE"/"BHAV_CACHE",
+...)`, on the assumption that reading the env var made a line safe. Backwards:
+the **default** is the hazard. Removing the exemption immediately surfaced 10
+further real findings, including `market_data_cache.py` — the file whose
+hardcoded path caused the original nightly US-scan `PermissionError` that
+started this work — plus `liquidity.py` and `ohlcv_cache.py`.
+
+**Decision:** a filter that excludes the cases a rule exists to find is worse
+than no rule, because it reports zero findings and reads as a clean bill of
+health. Blocking count went 0 → 10; that is the rule working, not a regression.
+
+### Re-running the mailer for past dates: rejected as unsound
+
+Asked to re-run the mailer for the days when data was stale. **Not done, by
+decision.** No scanner accepts an as-of date; they read the latest bar, and for
+US/JP/KR/EU they fetch live from yfinance rather than reading persisted history.
+Generating a "17 July brief" from data through 20 July would use bars that did
+not exist on the 17th — lookahead, producing picks that cannot be falsified.
+
+The ledger also shows there is nothing to recover: every date from 13–20 Jul
+holds *only* `golden_cross_hist` signals. Piotroski, debt-reduction, ROCE and
+technical did not exist then. A backdated piotroski signal would need
+point-in-time fundamentals as of that date, which no backfill can synthesise.
+
+What the re-run *did* fix: `mailer.sh` never exported `MARKET_CACHE`, so the
+13:52 manual run read the stale tree. The 15:19 run was the first manual run on
+live stores. Both runs ended in a suppressed send — 13:52 because screener.in
+was serving live intraday quotes, 15:19 because HDFCBANK drifted 2.18% against
+screener.in with 11 minutes left in the session. **A sendable brief requires a
+post-close run.**
+
+---
+
+## 2026-07-21
+
+### Cache roots resolve from the repo, not `~/Downloads`
+
+`data_registry` defaulted `MARKET_CACHE`/`BHAV_CACHE` to `~/Downloads/...` "so
+interactive use is unchanged", with launchd overriding via plist. That split
+every store in two, and the halves diverged silently:
+
+| store | `~/Downloads` | `~/market-pipeline` |
+|---|---|---|
+| `market_cache` | 7,656 parquets, 20 Jul 04:59 | 7,657 parquets, **21 Jul 13:50** |
+| `bhavcopy_cache` | 795M | 856M |
+
+Scheduled runs wrote the second; anything run by hand read the first, a day or
+more behind, with no error. **Decision:** defaults derive from `__file__`, so
+they equal the plist value by construction rather than by two places agreeing,
+and land outside TCC's reach. An override pointing back into `~/Downloads` warns
+on stderr. Rejected the alternative of failing hard on an unset variable — it
+would break interactive use for no gain once the default is correct.
+
+Same fix applied to `bhavcopy_history` and `bhavcopy_store`, which had their own
+`~/Downloads` defaults behind `os.environ.get`.
+
+### Darvas `.fillna(0)` — sixth site found
+
+`.fillna(0)` on a close series makes a missing bar a price of zero, and zero is
+below every Darvas box bottom, so the whole universe reports `BREAKDOWN_SELL`
+(Korea: 2,472 of 2,480 on 21 Jul). Five market scans were fixed at 05:09;
+`us_market_screener.py` was a sixth site, missed because nothing schedules it.
+
+**Decision:** trim to the last settled bar (`last_valid_index()`) and return
+`NO_DATA` explicitly rather than falling through — falling through makes every
+comparison `False` and silently reports `IN_BOX`, a different wrong answer
+rather than a right one. Verified genuine `BREAKOUT_BUY`/`BREAKDOWN_SELL` still
+fire, and that a breakdown series with a NaN tail now reads `IN_BOX` off the last
+settled bar instead of `BREAKDOWN_SELL` off a zero.
+
+### Two scripts were already broken, found via lint
+
+- `build_market_seeds.py` — `OHLC_DIR` had `market_cache` doubled inside
+  `data/`; the path never existed, so it raised `FileNotFoundError` on every
+  run. Now resolves 7,657 parquets.
+- `assemble_email.py` — `PF` pointed at `~/Downloads/code/python_files`, a stale
+  copy of this repo, so its "latest" scan was `combined_US_20260714` while the
+  live tree had `20260721`. Its scratchpad mirror pointed at a session UUID that
+  no longer exists, so two of four write targets had been failing into a broad
+  `except`. Outputs now go to `<repo>/reports`.
+
+### Bug-history lint ruleset (`.semgrep.yml`, `lint.sh`)
+
+Eight rules, each encoding a bug that actually shipped here, with the measured
+cost in the message. **Decision:** deliberately *not* the generic AI-code
+ruleset — `eval()` and `pickle` do not appear in this repo and never have. The
+shared shape of the real bugs is that they are syntactically valid, semantically
+wrong, and return a plausible number, which is why review kept passing them.
+
+Blocking findings: 13 → 0. 22 WARNING-level findings from rules 3 and 5 remain
+**untriaged** and are not enforced.
+
+**Known gap:** rule 6 (`hardcoded-downloads-path`) exempts anything inside
+`os.environ.get("MARKET_CACHE"/"BHAV_CACHE", ...)`, on the assumption that
+reading the env var makes it safe. It does not — the *default* still pointed at
+`~/Downloads`. The rule would not have caught either registry bug above. Not yet
+fixed.
+
+### Watchlist can be priced as-of a date (`--asof`, `--fetch-missing`)
+
+Today's bar is an unsettled intraday tick until the close prints, so a mark
+dated today is not comparable to an entry dated on a close. **Decision:** an
+explicit `--asof` cap makes "priced to yesterday" a property of the run rather
+than an accident of when the stores last updated.
+
+`--fetch-missing` fills EU/JP/KR from yfinance. Those markets have **no
+persisted price store** — their scans fetch live and retain nothing — so 50 of
+651 names had no mark at all. Opt-in, because it reaches the network from an
+otherwise pure reporting tool; unsuitable for a scheduled path as-is.
+
+The summary now splits `n` from `held>0d`. 45 rows were added on the as-of date
+itself, so their 0.0% is arithmetic, not performance; folding them into one
+median made a barely-held list look like a list that went nowhere.
+
+### Corrections — two findings of mine were wrong
+
+**"India's LMDB is 3 sessions stale" — false.** I compared market-pipeline's
+parquet against `~/Downloads`' LMDB. Two different trees. The real store was at
+2026-07-20 throughout. The `_lmdb_behind_cleaned` guard added in response is
+kept, but on honest grounds: the fast path genuinely returns before the LMDB
+sync, so a crash between writing `cleaned` and syncing the LMDB would strand
+them. That window is real; my evidence for it was not.
+
+**Zero-day return bug reintroduced — by me, in the fix.** `_fetch_missing`
+computed `pct_since` without the guard `build()` already had. Japan was shut
+2026-07-20 (Marine Day), so 15 JP names entered on the 20th resolved entry *and*
+mark to the same 17 Jul bar, and differencing a bar against itself printed a
+confident `+0.0%`. This is a variant of the `+26.2% on a zero-day holding` bug
+documented in the same file. Fixed; verified 0 rows now carry a mark preceding
+their entry.
+
+**Pattern worth naming:** three of the day's bugs were *cross-tree or
+cross-store comparisons* that produced a plausible number instead of an error.
+Neither a type checker nor a test catches these, because both operands are
+valid — they just come from different places.
+
+---
+
+## Earlier
+
+Not backfilled. `git log` before 2026-07-21 is the record; entries above start
+from the first day this file existed.

@@ -1,0 +1,657 @@
+# symbol_master.py
+# ================
+# Builds and maintains the SYMBOL MASTER — a persistent Parquet mapping of every
+# tradeable stock's ticker ↔ company name ↔ exchange ↔ yfinance suffix.
+#
+# Sources (company names come free from the bhavcopy "FinInstrmNm" column):
+#   NSE    — nse-library equityBhavcopy   (SctySrs == EQ)
+#   BSE    — bse-library bhavcopyReport    (equity groups)
+#   US     — SEC EDGAR company_tickers_exchange.json
+#   JAPAN  — JPX data_j.xls (TSE equities, ETF/REIT categories excluded)
+#   KOREA  — KRX KIND corpList.do (KOSPI + KOSDAQ; open, no auth)
+#   CHINA  — akshare stock_info_a_code_name() (SSE+SZSE A-shares; Beijing
+#            Stock Exchange codes excluded, yfinance has no data for them)
+#   HK     — FinanceDataReader StockListing('HKEX') (dual RMB-counter dupes
+#            and US-megacap HDR trackers excluded, see _hongkong_names())
+#   EUROPE — data/market_data.duckdb's europe_all_list table (falls back to
+#            data/europe_all_list.csv if the table/file isn't there -- see
+#            _europe_names(), matches backend/parsers/market_db.py's own
+#            DuckDB-then-CSV fallback for the same underlying data)
+#
+# Output:  ~/Downloads/market_cache/symbol_master.parquet
+#   columns: symbol, name, name_clean, exchange, suffix, yf_symbol
+#
+# `name_clean` is the matchable company root (corporate suffixes stripped) used
+# by the news sentiment pipeline so headlines saying "Adani Enterprises" match
+# the ADANIENT ticker (which the bare-ticker matcher missed).
+#
+# Usage:
+#   python symbol_master.py                 # build/refresh the master
+#   python symbol_master.py --refresh       # force full rebuild
+#   from symbol_master import load_master, name_for, clean_name
+#
+# Refreshed automatically (incremental) whenever it's >24h old.
+
+from __future__ import annotations
+
+import argparse
+import re
+import warnings
+from datetime import datetime, timedelta
+from pathlib import Path
+
+import pandas as pd
+
+warnings.filterwarnings("ignore")
+
+
+# ── per-source wall-clock deadline ────────────────────────────────────────────
+# FinanceDataReader (Korea, HKEX) and akshare (China) expose NO timeout
+# parameter, so a stalled remote blocks forever inside the SSL read. Measured
+# 2026-07-20: this step normally takes 14 min; on the very next run it sat at
+# 22 min at 0.0% CPU with every stack sample parked in ssl3_read_n. Under the
+# 00:15 schedule that is unbounded — ingest never finishes, and because mailer.sh
+# hard-gates on ingest, the brief never gets built either. One hung HTTP read in
+# a nice-to-have symbol table takes out the entire morning.
+#
+# WHY NOT socket.setdefaulttimeout ALONE (the first attempt at this fix):
+# it bounds each individual socket OPERATION, not the total call. A server that
+# trickles a byte at a time resets the timer on every read, so the call still
+# runs unbounded — which is precisely the slow-drip shape of the hang observed.
+# It is also silently inert whenever the library passes its own explicit timeout
+# down to urllib3. Necessary, not sufficient.
+#
+# SIGALRM gives the real guarantee: the kernel interrupts the blocking syscall,
+# Python raises in the middle of the C call, and the deadline is WALL-CLOCK
+# regardless of how the vendor library does its I/O. Safe here — this module is
+# single-threaded (SIGALRM is main-thread only) and Unix-only, which macOS is.
+# Both mechanisms are used together: the alarm is the hard ceiling, the socket
+# timeout still trims individual stalled reads well before it.
+import contextlib
+import signal
+import socket
+import threading
+import time
+
+NET_TIMEOUT_S = 90
+
+
+class SourceTimeout(Exception):
+    """A single upstream source exceeded its wall-clock deadline."""
+
+
+@contextlib.contextmanager
+def _deadline(seconds: int = NET_TIMEOUT_S, label: str = "source"):
+    """Hard wall-clock bound on a block that performs network I/O.
+
+    Raises SourceTimeout at `seconds` regardless of what the callee is doing.
+    Falls back to socket-timeout-only where SIGALRM is unavailable (non-main
+    thread, or a non-Unix platform) rather than pretending to guarantee a bound
+    it cannot deliver.
+    """
+    prev_sock = socket.getdefaulttimeout()
+    socket.setdefaulttimeout(min(seconds, 30))
+
+    can_alarm = (hasattr(signal, "SIGALRM")
+                 and threading.current_thread() is threading.main_thread())
+    if not can_alarm:
+        try:
+            yield
+        finally:
+            socket.setdefaulttimeout(prev_sock)
+        return
+
+    def _fire(signum, frame):
+        raise SourceTimeout(f"{label}: exceeded {seconds}s wall-clock deadline")
+
+    prev_handler = signal.signal(signal.SIGALRM, _fire)
+    signal.setitimer(signal.ITIMER_REAL, seconds)
+    t0 = time.time()
+    try:
+        yield
+    finally:
+        signal.setitimer(signal.ITIMER_REAL, 0)
+        signal.signal(signal.SIGALRM, prev_handler)
+        socket.setdefaulttimeout(prev_sock)
+        el = time.time() - t0
+        if el > seconds * 0.5:
+            print(f"  ⏱  {label}: {el:.0f}s (deadline {seconds}s)")
+
+# MARKET_CACHE resolves through data_registry. "Keeping the default pointed at
+# the old location means nothing breaks for interactive use" was the original
+# reasoning and it was wrong: it did not keep one tree working, it created two.
+# The 15:19 mailer on 2026-07-21 wrote 21,902 symbols to
+# ~/Downloads/market_cache/symbol_master.parquet while every other step of the
+# same run read the live tree, because mailer.sh does not export MARKET_CACHE —
+# only the plists do.
+#
+# 🔴 This line is also why .semgrep.yml rule 6 did not catch it: that rule
+# exempts anything inside os.environ.get("MARKET_CACHE", ...), on the assumption
+# that reading the env var makes a line safe. It does not — the DEFAULT is the
+# hazard, and the exemption hides precisely the case that matters.
+import os as _os
+import data_registry as _R
+MASTER = Path(_os.environ.get("MARKET_CACHE", _R.MARKET_CACHE)) / "symbol_master.parquet"
+MASTER.parent.mkdir(parents=True, exist_ok=True)
+STALE_HOURS = 24
+
+# ONLY true legal-form suffixes and pure filler are stripped. Descriptive words
+# (Enterprises, Industries, Power, Ports …) are KEPT because they distinguish
+# group companies — "Adani Enterprises" vs "Adani Ports" vs "Adani Power".
+_CORP_TOKENS = {
+    "LIMITED","LTD","LTD.","LIMITED.","PVT","PRIVATE","CORP","CORP.",
+    "CO","CO.","INC","INC.","PLC","THE","OF","AND","&",
+}
+
+
+def clean_name(name: str) -> str:
+    """
+    Reduce a full company name to its distinctive matchable root, stripping only
+    legal-form suffixes/filler (keeps descriptive tokens that disambiguate
+    group companies).
+      "ADANI ENTERPRISES LIMITED"      -> "ADANI ENTERPRISES"
+      "MARUTI SUZUKI INDIA LTD."       -> "MARUTI SUZUKI INDIA"
+      "Amara Raja Energy & Mobility L" -> "AMARA RAJA ENERGY MOBILITY"
+    Keeps up to the first 3 meaningful tokens — specific enough for headlines.
+    """
+    if not name or not isinstance(name, str):
+        return ""
+    up = re.sub(r"[^A-Za-z ]", " ", name.upper())
+    toks = [t for t in up.split() if t and t not in _CORP_TOKENS and len(t) >= 3]
+    if not toks:
+        return ""
+    return " ".join(toks[:3])
+
+
+# ── Builders per exchange ─────────────────────────────────────────────────────
+
+def _nse_names() -> list:
+    rows = []
+    try:
+        from nse_compat import NSE
+        with NSE(download_folder="/tmp", server=False) as n:
+            for off in range(7):
+                d = datetime.today() - timedelta(days=off)
+                try:
+                    r = n.equityBhavcopy(d)
+                    if hasattr(r, "exists") and r.exists():
+                        df = pd.read_csv(r)
+                        eq = df[df["SctySrs"] == "EQ"]
+                        for _, x in eq.iterrows():
+                            sym = str(x["TckrSymb"]).strip()
+                            nm  = str(x.get("FinInstrmNm","")).strip()
+                            rows.append({"symbol": sym, "name": nm,
+                                         "exchange": "NSE", "suffix": ".NS"})
+                        break
+                except Exception:
+                    continue
+    except ImportError:
+        pass
+    return rows
+
+
+def _bse_names(nse_symbols: set) -> list:
+    rows = []
+    try:
+        from bse import BSE
+        b = BSE(download_folder="/tmp")
+        for off in range(7):
+            d = datetime.today() - timedelta(days=off)
+            try:
+                p = b.bhavcopyReport(d)
+                if hasattr(p, "exists") and p.exists():
+                    df = pd.read_csv(p)
+                    eq_groups = {"A","B","T","X","XT","M","MT","E"}
+                    if "SctySrs" in df.columns:
+                        df = df[df["SctySrs"].isin(eq_groups)]
+                    for _, x in df.iterrows():
+                        sym = str(x["TckrSymb"]).strip()
+                        if sym in nse_symbols:   # dual-listed → use NSE
+                            continue
+                        nm = str(x.get("FinInstrmNm","")).strip()
+                        rows.append({"symbol": sym, "name": nm,
+                                     "exchange": "BSE", "suffix": ".BO"})
+                    break
+            except Exception:
+                continue
+    except ImportError:
+        pass
+    return rows
+
+
+def _japan_names() -> list:
+    """
+    TSE equities via JPX's own data_j.xls (same source as run_app.sh's Japan
+    refresh). Unlike NSE/BSE, symbol is stored PRE-SUFFIXED ("7203.T") with
+    suffix="" -- matches CLAUDE.md's stated ticker-format convention for
+    Japan/Korea (pre-suffixed already, no suffix to append), and
+    market_correlation_scan.py's fetch_universe_prices() already guards
+    against double-suffixing anything containing a "." .
+
+    Uses an INCLUDE-list of the genuine common-equity market categories,
+    not an exclude-list of fund/ETF categories. run_app.sh's original
+    Japan-fetch logic used an exclude-list checking for the literal string
+    "REIT・インフラファンド" -- but JPX's actual current label for that
+    category is "REIT・ベンチャーファンド・カントリーファンド・インフラ
+    ファンド" (confirmed by enumerating every real category value in the
+    live file), so that exclusion silently never matched anything and 63
+    J-REITs/funds were leaking into the "stock" universe undetected (found
+    this via a real correlation scan: a 56-member "cluster" that turned out
+    to be entirely J-REITs moving together on rate sentiment, not
+    operating companies). An include-list of the 3 known board tiers
+    (Prime/Standard/Growth, domestic) is robust to JPX renaming or adding
+    fund categories in the future, where an exclude-list silently isn't.
+    """
+    _INCLUDE_CATEGORIES = {
+        "プライム（内国株式）",   # Prime (domestic stock)
+        "スタンダード（内国株式）",  # Standard (domestic stock)
+        "グロース（内国株式）",   # Growth (domestic stock)
+    }
+    # 2026-09-03: JPX re-published data_j as .xlsx and the .xls now 404s. That
+    # also rules out xlrd, which dropped xlsx support in 2.0 -- pandas/openpyxl
+    # reads both. Columns are positional and unchanged: 1=code, 2=name,
+    # 3=market category, with row 0 the header (pandas consumes it).
+    rows = []
+    try:
+        import pandas as pd
+        import requests
+        from io import BytesIO
+        r = requests.get(
+            "https://www.jpx.co.jp/markets/statistics-equities/misc/tvdivq0000001vg2-att/data_j.xlsx",
+            timeout=60,
+        )
+        if r.ok:
+            df = pd.read_excel(BytesIO(r.content), dtype=str)
+            for code_raw, name, market_cat in zip(
+                df.iloc[:, 1], df.iloc[:, 2], df.iloc[:, 3]
+            ):
+                name = str(name).strip()
+                market_cat = str(market_cat).strip()
+                if not code_raw or not name or market_cat not in _INCLUDE_CATEGORIES:
+                    continue
+                try:
+                    code = str(int(float(code_raw))).zfill(4)
+                except Exception:
+                    code = str(code_raw).strip()
+                if code.isdigit():
+                    rows.append({"symbol": f"{code}.T", "name": name,
+                                 "exchange": "JAPAN", "suffix": ""})
+        else:
+            warnings.warn(f"JPX data_j.xlsx returned HTTP {r.status_code}")
+    except ImportError:
+        pass
+    except Exception as e:
+        # Swallowing this silently is what let the 404 above go unnoticed for
+        # three days -- Japan just quietly stopped appearing in the master.
+        warnings.warn(f"JPX listed-issues fetch failed: {e}")
+    if not rows:
+        warnings.warn("JPX listed-issues master returned 0 Japanese equities")
+    return rows
+
+
+def _korea_names() -> list:
+    """
+    KOSPI + KOSDAQ via the KRX KIND listed-company download (open, no auth).
+    KOSPI and KOSDAQ get distinct `exchange` values (mirroring how NASDAQ/NYSE
+    are two exchange values under the "US" market grouping) so
+    market_correlation_scan.py's --market KOREA can combine both the same
+    way MARKET_EXCHANGES["US"] combines NASDAQ+NYSE. Pre-suffixed symbols
+    (.KS / .KQ), suffix="" -- same reasoning as _japan_names().
+
+    WHY NOT FinanceDataReader (the source this used until 2026-09-09): FDR's
+    listing backend started returning HTTP 404 for EVERY market key -- KOSPI,
+    KOSDAQ, KONEX, KRX, KRX-DESC alike -- so this returned 0 rows, the master
+    was rebuilt with no Korea at all, and market_correlation_scan.py's
+    `--market KOREA` resolved 0 symbols and wrote empty cluster/matrix files.
+    (The Korea OHLCV cache was warm the whole time: 2,774 symbols. The outage
+    was purely the ticker LIST.) pykrx is not the fallback either -- as of
+    1.0.51 its listing calls require KRX_ID/KRX_PW credentials we don't hold.
+
+    KIND is the same source full_korea_market_scan.py already uses, which is
+    why that scan kept working through the outage. The ~20 lines of parse are
+    deliberately duplicated rather than imported: symbol_master is a low-level
+    shared module and importing a top-level scan script would invert the
+    dependency and drag pykrx/openpyxl into every consumer. Keep the two in
+    sync -- see full_korea_market_scan._fetch_kind_list().
+    """
+    import io
+
+    import requests
+
+    rows = []
+    url  = "https://kind.krx.co.kr/corpgeneral/corpList.do"
+    hdrs = {"User-Agent": "Mozilla/5.0", "Referer": "https://kind.krx.co.kr/"}
+    for mkt_param, sfx, exch in [("stockMkt", ".KS", "KOSPI"),
+                                 ("kosdaqMkt", ".KQ", "KOSDAQ")]:
+        try:
+            with _deadline(label=f"Korea/{exch}"):
+                r = requests.get(
+                    url,
+                    params={"method": "download", "searchType": "13",
+                            "marketType": mkt_param},
+                    headers=hdrs, timeout=30,
+                )
+                r.raise_for_status()
+                df = pd.read_html(io.StringIO(r.text), encoding="euc-kr")[0]
+        except SourceTimeout as e:
+            # Loud, not silent. The pre-existing `except Exception: continue`
+            # made a hang -- and, on 2026-09-09, a hard 404 -- look identical
+            # to an exchange that genuinely has no listings.
+            print(f"  ✗ {e} — skipping {exch}")
+            continue
+        except Exception as e:
+            print(f"  ✗ Korea/{exch} listing fetch failed: "
+                  f"{type(e).__name__}: {e} — skipping {exch}")
+            continue
+        for _, x in df.iterrows():
+            sym  = str(x.get("종목코드", "")).strip().zfill(6)
+            name = str(x.get("회사명", "")).strip()
+            if len(sym) == 6 and sym.isdigit() and name:
+                rows.append({"symbol": f"{sym}{sfx}", "name": name,
+                             "exchange": exch, "suffix": ""})
+    return rows
+
+
+def _china_names() -> list:
+    """
+    SSE + SZSE A-shares via akshare's stock_info_a_code_name() (same source as
+    run_app.sh's China refresh). Pre-suffixed symbols (.SS / .SZ), suffix=""
+    -- same reasoning as _japan_names()/_korea_names().
+
+    run_app.sh's suffix rule is `.SS if code.startswith('6') else .SZ`, which
+    silently mis-suffixes the ~327 Beijing Stock Exchange codes (prefix "9",
+    e.g. "920000") as .SZ. Checked live: yfinance has NO data at all for BJSE
+    tickers regardless of suffix (both 920000.BJ and a real BJSE ticker
+    830799.BJ return HTTP 404 "Quote not found") -- Yahoo Finance simply
+    doesn't carry this exchange. So instead of mis-suffixing them, BJSE codes
+    are excluded outright here (same rationale as _japan_names() excluding
+    J-REITs: don't feed the correlation scan symbols that can only ever
+    fail their price fetch). SSE (prefix "6", includes the 688xxx STAR
+    Market sub-board) and SZSE (prefix "0" main board / "3" ChiNext) are
+    both confirmed live against yfinance (000001.SZ, 600000.SS, 000002.SZ
+    all returned real CNY-denominated quotes).
+    """
+    rows = []
+    try:
+        import warnings as _w
+        _w.filterwarnings("ignore")
+        import akshare as ak
+        with _deadline(label="China/akshare"):
+            df = ak.stock_info_a_code_name()
+        for _, x in df.iterrows():
+            code = str(x.get("code", "")).strip().zfill(6)
+            name = str(x.get("name", "")).strip()
+            if not code or not name or not code.isdigit():
+                continue
+            if code.startswith("6"):
+                sfx, exch = ".SS", "SSE"
+            elif code.startswith(("0", "3")):
+                sfx, exch = ".SZ", "SZSE"
+            else:
+                continue  # Beijing Stock Exchange (prefix "9") -- no yfinance data
+            rows.append({"symbol": f"{code}{sfx}", "name": name,
+                         "exchange": exch, "suffix": ""})
+    except ImportError:
+        pass
+    except Exception:
+        pass
+    return rows
+
+
+def _hongkong_names() -> list:
+    """
+    HKEX via FinanceDataReader's StockListing('HKEX') (same source as
+    run_app.sh's Hong Kong refresh). Pre-suffixed symbols (.HK), suffix=""
+    -- same reasoning as _japan_names()/_korea_names()/_china_names().
+
+    Checked live against the real FDR listing (2,838 rows) and found two
+    contamination sources run_app.sh's simpler logic doesn't filter:
+
+    1. 25 "8"-prefixed codes (e.g. 80700) are exact-duplicate alternate
+       trading counters of an already-included "0"-prefixed code (e.g.
+       00700) -- same company, same `Name` field, verified by grouping on
+       duplicated names. Including both would trivially self-correlate
+       (same underlying price series twice) and inflate cluster sizes for
+       no real reason. Excluded via a plain `not symbol.startswith("8")`.
+
+    2. All 7 codes in the "04xxx" block (04332/04333/04335/04336/04337/
+       04338/04621) are HKEX's newer Hong Kong Depositary Receipt (HDR)
+       products tracking US megacaps directly (Microsoft, Cisco, Intel,
+       Applied Materials, Amgen, Starbucks, a CH Cinda preferred share) --
+       not genuine HK-operating companies. Their price mechanically
+       tracks the US underlying, so they'd only ever show "correlates
+       with the US market", not real HK-market structure. No genuine
+       HK company currently occupies the 04xxx block (all 7 rows in it
+       are HDRs), so excluding that whole prefix is safe today.
+
+    3. FDR's raw `Symbol` field is already 5-digit zero-padded (e.g.
+       "00700" for Tencent), but the real yfinance/Yahoo Finance HK
+       ticker is 4-digit ("0700.HK", not "00700.HK") -- confirmed live:
+       00700.HK / 08321.HK / 09988.HK all 404, while the 4-digit
+       0700.HK / 8321.HK / 9988.HK all resolved real HKD quotes. A
+       plain `.zfill(4)` on an already-5-char string is a no-op, so it
+       silently preserved the wrong-width code for every single HK row
+       -- this is why the very first full HK scan attempt resolved
+       0/2,805 symbols and looked exactly like sustained rate-limiting
+       (yfinance's bulk downloader reports "possibly delisted" for a
+       plain 404, indistinguishable from a real rate-limit response in
+       the printed log) when it was actually every request 404'ing on
+       ticker format. Normalizing via `str(int(sym)).zfill(4)` strips
+       the excess padding before re-padding to exactly 4 digits.
+    """
+    rows = []
+    try:
+        import warnings as _w
+        _w.filterwarnings("ignore")
+        import FinanceDataReader as fdr
+        with _deadline(label="HK/HKEX"):
+            df = fdr.StockListing("HKEX")
+        for _, x in df.iterrows():
+            sym = str(x.get("Symbol", "")).strip()
+            name = str(x.get("Name", "")).strip()
+            if not sym or not name or not sym.isdigit():
+                continue
+            if sym.startswith("8") or sym.startswith("04"):
+                continue  # dual RMB-counter dupe or US-megacap HDR tracker
+            code = str(int(sym)).zfill(4)
+            rows.append({"symbol": f"{code}.HK", "name": name,
+                         "exchange": "HKEX", "suffix": ""})
+    except ImportError:
+        pass
+    except Exception:
+        pass
+    return rows
+
+
+def _europe_names() -> list:
+    """
+    966 stocks across 17 European exchanges, from run_app.sh's own Europe
+    refresh (Wikipedia index scraping, rebuilt only if missing/>30 days old
+    -- see CLAUDE.md). Symbols are pre-suffixed (e.g. "ADMIE.AT"), suffix=""
+    -- same reasoning as _japan_names()/_korea_names()/_china_names()/
+    _hongkong_names().
+
+    Two repo branches currently disagree on where this data lives: `main`
+    still has the original data/europe_all_list.csv (LFS-tracked), while the
+    feature branch migrated it into data/market_data.duckdb's
+    europe_all_list table and deleted the CSV outright (a different,
+    concurrent change to this repo, not made as part of the market-scan
+    work in this file). Tries DuckDB first, falls back to the CSV --
+    mirrors backend/parsers/market_db.py's own DuckDB-then-CSV fallback for
+    this exact table, so this function keeps working regardless of which
+    branch/merge state it runs against.
+
+    `exchange` here is the 17 raw per-venue values already in the source
+    data (e.g. "Euronext Paris", "Nasdaq Stockholm"), not CLAUDE.md's
+    8 grouped "Exchange groups" rows -- passed through as-is rather than
+    re-bucketed, consistent with every other _xxx_names() function just
+    reshaping its source's columns rather than inventing new grouping.
+    """
+    rows = []
+    root = Path(__file__).resolve().parents[3]
+
+    try:
+        import duckdb
+        con = duckdb.connect(str(root / "data" / "market_data.duckdb"), read_only=True)
+        try:
+            df = con.execute("SELECT yf_ticker, name, exchange FROM europe_all_list").fetchdf()
+        finally:
+            con.close()
+        for _, x in df.iterrows():
+            yf_ticker = str(x["yf_ticker"]).strip()
+            name = str(x["name"]).strip()
+            exch = str(x["exchange"]).strip()
+            if yf_ticker and name:
+                rows.append({"symbol": yf_ticker, "name": name, "exchange": exch, "suffix": ""})
+        if rows:
+            return rows
+    except Exception:
+        pass
+
+    try:
+        csv_path = root / "data" / "europe_all_list.csv"
+        if csv_path.exists():
+            df = pd.read_csv(csv_path)
+            for _, x in df.iterrows():
+                yf_ticker = str(x["yf_ticker"]).strip()
+                name = str(x["name"]).strip()
+                exch = str(x["exchange"]).strip()
+                if yf_ticker and name:
+                    rows.append({"symbol": yf_ticker, "name": name, "exchange": exch, "suffix": ""})
+    except Exception:
+        pass
+    return rows
+
+
+def _us_names() -> list:
+    rows = []
+    try:
+        import requests
+        url  = "https://www.sec.gov/files/company_tickers_exchange.json"
+        hdrs = {"User-Agent": "StockScanner umashankartd1991@gmail.com"}
+        data = requests.get(url, timeout=30, headers=hdrs).json()
+        for row in data.get("data", []):
+            name = str(row[1]).strip() if len(row) > 1 else ""
+            tk   = str(row[2]).strip().upper() if len(row) > 2 else ""
+            exch = str(row[3]).strip().lower() if len(row) > 3 else ""
+            if not tk or len(tk) > 5 or any(c in tk for c in " .,"):
+                continue
+            ex = ("NASDAQ" if "nasdaq" in exch else
+                  "NYSE" if ("nyse" in exch or "amex" in exch) else None)
+            if ex:
+                rows.append({"symbol": tk, "name": name,
+                             "exchange": ex, "suffix": ""})
+    except Exception:
+        pass
+    return rows
+
+
+# ── Public API ────────────────────────────────────────────────────────────────
+
+def build_master(refresh: bool = False, include_us: bool = True) -> pd.DataFrame:
+    """Build the full symbol master and persist it as Parquet."""
+    print("Building symbol master (ticker ↔ company name) …")
+    nse = _nse_names()
+    nse_syms = {r["symbol"] for r in nse}
+    bse = _bse_names(nse_syms)
+    us  = _us_names() if include_us else []
+    japan = _japan_names()
+    korea = _korea_names()
+    china = _china_names()
+    hk = _hongkong_names()
+    europe = _europe_names()
+    print(f"  NSE: {len(nse)} | BSE-only: {len(bse)} | US: {len(us)} | "
+          f"Japan: {len(japan)} | Korea: {len(korea)} | China: {len(china)} | "
+          f"HK: {len(hk)} | Europe: {len(europe)}")
+
+    df = pd.DataFrame(nse + bse + us + japan + korea + china + hk + europe)
+    if df.empty:
+        print("  ⚠️  No symbols fetched."); return df
+
+    # A source that breaks upstream returns [] and looks exactly like a market
+    # that legitimately has no listings, so a whole market can vanish from the
+    # master in silence -- which is what happened to Korea on 2026-09-09 (FDR
+    # started 404ing; the correlation scan then resolved 0 symbols and wrote
+    # empty clusters for a day before anyone noticed). Compare against the
+    # master we are about to overwrite and say so loudly. Warn rather than
+    # abort: markets legitimately sit at zero here (China is a known scope
+    # gap), and refusing to write would block every unrelated refresh too.
+    if MASTER.exists():
+        try:
+            prev = pd.read_parquet(MASTER)["exchange"].value_counts()
+            now  = df["exchange"].value_counts()
+            lost = sorted(x for x in prev.index
+                          if prev[x] > 0 and int(now.get(x, 0)) == 0)
+            if lost:
+                print(f"  ✗ REGRESSION: {len(lost)} exchange(s) present in the "
+                      f"existing master are EMPTY in this rebuild — "
+                      + ", ".join(f"{x} (was {prev[x]})" for x in lost))
+                print("     Their upstream source is probably broken. The master "
+                      "is still being written; downstream scans of those markets "
+                      "will resolve 0 symbols until it is fixed.")
+        except Exception:
+            pass  # diagnostic only — never block the rebuild
+    df = df.drop_duplicates(subset=["symbol","exchange"])
+    df["name_clean"] = df["name"].map(clean_name)
+    df["yf_symbol"]  = df["symbol"] + df["suffix"]
+    df = df[["symbol","name","name_clean","exchange","suffix","yf_symbol"]]
+
+    df.to_parquet(MASTER, compression="snappy", index=False)
+    print(f"  ✅ Symbol master saved: {len(df)} stocks → {MASTER}")
+    print(f"     ({(df['name_clean']!='').sum()} have a usable company-name root)")
+    return df
+
+
+def load_master(auto_refresh: bool = True) -> pd.DataFrame:
+    """Load the symbol master, rebuilding if missing or >24h stale."""
+    if MASTER.exists():
+        age_h = (datetime.now().timestamp() - MASTER.stat().st_mtime) / 3600
+        if not (auto_refresh and age_h > STALE_HOURS):
+            try:
+                return pd.read_parquet(MASTER)
+            except Exception:
+                pass
+    return build_master()
+
+
+# Cached lookups (built once per process)
+_LOOKUP = {}
+
+def _ensure_lookup():
+    global _LOOKUP
+    if not _LOOKUP:
+        m = load_master()
+        if not m.empty:
+            # A ticker can appear on >1 exchange (e.g. NSE & US). Keep first
+            # so the symbol index is unique.
+            m = m.drop_duplicates(subset=["symbol"], keep="first")
+            _LOOKUP = m.set_index("symbol").to_dict("index")
+
+
+def name_for(symbol: str) -> str:
+    """Full company name for a ticker (e.g. 'ADANI ENTERPRISES LIMITED')."""
+    _ensure_lookup()
+    return _LOOKUP.get(symbol, {}).get("name", "")
+
+
+def clean_name_for(symbol: str) -> str:
+    """Matchable company root for a ticker (e.g. 'ADANI ENTERPRISES')."""
+    _ensure_lookup()
+    return _LOOKUP.get(symbol, {}).get("name_clean", "")
+
+
+if __name__ == "__main__":
+    p = argparse.ArgumentParser(description="Build the ticker↔name symbol master parquet")
+    p.add_argument("--refresh", action="store_true", help="Force full rebuild")
+    p.add_argument("--no-us", action="store_true", help="Skip US (SEC EDGAR)")
+    a = p.parse_args()
+    df = build_master(refresh=a.refresh, include_us=not a.no_us)
+    if not df.empty:
+        print("\nSample:")
+        print(df.head(8).to_string(index=False))
+        # Show the key fix: ADANIENT now has a company name
+        for s in ["ADANIENT","RELIANCE","TCS","MARUTI"]:
+            row = df[df["symbol"]==s]
+            if not row.empty:
+                r = row.iloc[0]
+                print(f"  {s:<12} name='{r['name']}' clean='{r['name_clean']}'")

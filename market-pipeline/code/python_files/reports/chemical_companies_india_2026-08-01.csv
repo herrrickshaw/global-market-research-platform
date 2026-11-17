@@ -1,0 +1,11 @@
+name,ticker,market,segment,capacity_ktpa,key_products,capex_project,capex_value_cr,capex_timeline,hsn_codes,market_cap_usd,market_cap_bn,pe_ratio,pb_ratio,roe,debt_to_equity,sector,industry,employees,website,currency,risk_flags,quick_win,market_share_india
+Reliance Industries Limited,RELIANCE.NS,NSE,Petrochemicals,4000,"['Ethylene', 'Propylene', 'PP', 'PE', 'TPA']",RIL O2C,75000,FY28-30,"['29011100', '29011200', '39021010', '39021030', '39021100', '29173600']",17697767161856.0,17697.767161856,23.696323,1.9576527,,36.653,Energy,Oil & Gas Refining & Marketing,404501.0,https://www.ril.com,INR,,,
+Indian Oil Corporation,IOCL.NS,NSE,Petrochemicals,1500,"['Ethylene', 'Propylene', 'PP']",Panipat/Mathura Integration,15000,FY27-29,"['29011100', '29011200', '39021100']",,,,,,,,,,,,,,
+Bharat Petroleum Corporation Limited,BPCL.NS,NSE,Petrochemicals,900,"['Ethylene', 'Propylene', 'PP']",BPCL AP Cracker + Kochi PP,100000,"FY27-28 (AP), FY26 (Kochi done)","['29011100', '29011200', '39021100']",1366158999552.0,1366.158999552,7.973816,1.3642783,,54.332,Energy,Oil & Gas Refining & Marketing,,https://www.bharatpetroleum.in,INR,['AP EC not filed (Jul 2026)'],,
+Hindustan Petroleum,HPCL.NS,NSE,Petrochemicals,400,"['Ethylene', 'Propylene']",Minor upgrades,2500,FY27-28,"['29011100', '29011200']",,,,,,,,,,,,,,
+Jindal Polyester,JINDALP.NS,NSE,Polyester/TPA,400,"['TPA', 'PET']",TPA capacity expansion,3000,FY27-28,"['29173600', '39074100']",,,,,,,,,,,,,,
+Lupin Limited,LUPIN.NS,NSE,Specialty Chemicals,50,"['Acrylic Acid', 'Derivatives']",Acrylic acid backward integration,500,FY27-28,['29164000'],1104222224384.0,1104.222224384,20.747423,4.918363,0.26907,29.388,Healthcare,Drug Manufacturers - Specialty & Generic,26021.0,https://www.lupin.com,INR,,,
+Adani Wilmar,ADANIWD.NS,NSE,Oilseed Processing,500,"['Lecithin', 'Soya Oil']",Lecithin extraction expansion,200,FY27,['29239090'],,,,,,,,,,,,,True,
+Cargill India,,Private,Oilseed Processing,300,"['Lecithin', 'Plant Oils']",Lecithin capacity +50 KTPA,150,FY27-28,['29239090'],,,,,,,,,,,,,True,
+Sumitomo Chemical,,Global,Dyes & Pigments,120,"['Disperse Dyes', 'Reactive Dyes']",Dye facility upgrade,400,FY28-29,['32030010'],,,,,,,,,,,,,,0.15
+Archroma India,,Global,Dyes & Chemicals,80,"['Dyes', 'Auxiliaries']",Auxiliary chemicals expansion,250,FY28-30,"['32030010', '38090010']",,,,,,,,,,,,,,0.12

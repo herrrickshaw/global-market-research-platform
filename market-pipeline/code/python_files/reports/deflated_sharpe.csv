@@ -1,0 +1,11 @@
+market,regime,chosen,n_trials,T_weeks,IR_chosen,IR_exp_max,DSR,survives_0.95
+IN,bull,trend,10,331,2.34,1.6,0.994,True
+IN,bear,def_revert,10,192,0.86,0.74,0.627,False
+US,bull,mom252,10,347,1.19,0.83,0.901,False
+US,bear,def_revert,10,127,0.55,0.87,0.245,False
+JP,bull,golden_cross,10,402,0.84,0.56,0.857,False
+JP,bear,revert,10,116,0.84,1.44,0.105,False
+KR,bull,breakout,10,227,2.04,1.22,0.99,True
+KR,bear,def_revert,10,281,1.32,1.63,0.156,False
+EU,bull,mom252,10,375,1.39,0.8,0.985,True
+EU,bear,revert,10,99,1.18,1.23,0.466,False

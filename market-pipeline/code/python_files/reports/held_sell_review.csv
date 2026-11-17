@@ -1,0 +1,10 @@
+market,symbol,status,stock_state,kalman_drift_ann_pct,markov_e21d_pct,verdict
+IN,CASTROLIND,held,bear,-20.5,-0.31,"WEAK (stock bear-state, drift<0)"
+IN,VENTIVE,held,bear,-33.4,2.8,"WEAK (stock bear-state, drift<0)"
+IN,CARRARO,held,bear,-51.1,1.22,"WEAK (stock bear-state, drift<0)"
+IN,SUZLON,held,bear,-52.8,-2.69,"WEAK (stock bear-state, drift<0)"
+IN,INDOFARM,held,bear,-53.8,-2.4,"WEAK (stock bear-state, drift<0)"
+IN,TNPETRO,held,bear,-66.0,0.4,"WEAK (stock bear-state, drift<0)"
+IN,SPLPETRO,held,bear,-118.0,2.09,"WEAK (stock bear-state, drift<0)"
+IN,SENORES,held,bear,-133.6,3.63,"WEAK (stock bear-state, drift<0)"
+IN,CEWATER,held,bear,-136.9,-3.87,"WEAK (stock bear-state, drift<0)"
