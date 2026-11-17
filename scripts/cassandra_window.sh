@@ -66,6 +66,26 @@ case "${1:-}" in
   stop)
     if ! listening; then log "stop: already down"; exit 0; fi
     log "stop: taking Cassandra down for the nightly window"
+
+    # LAST MOMENT CASSANDRA IS GUARANTEED UP. The daily audit runs ~07:00, inside
+    # the 00:12-09:00 down window, so the two Cassandra-only facts it checks — the
+    # Darvas BUY share (E-001/E-028) and stock_quotes_history depth (E-012) — were
+    # simply unverifiable and got reported as such on 2026-08-18. Capturing them
+    # here rides an existing job instead of adding a second schedule to drift.
+    #
+    # NEVER let this block the shutdown: the whole point of the window is memory
+    # relief on an 8GB box that was losing to jetsam, and a snapshot bug must not
+    # hold 4GB of committed heap hostage. Hence `|| true` and a hard timeout.
+    log "stop: capturing backend snapshot before shutdown"
+    /usr/bin/python3 "$HOME/scripts/backend_snapshot.py" >>"$LOG" 2>&1 &
+    SNAP=$!
+    for _ in $(seq 1 24); do kill -0 "$SNAP" 2>/dev/null || break; sleep 5; done
+    if kill -0 "$SNAP" 2>/dev/null; then
+      log "⚠ stop: snapshot still running after 120s — killing it, proceeding with shutdown"
+      kill -9 "$SNAP" 2>/dev/null || true
+    fi
+    wait "$SNAP" 2>/dev/null || log "⚠ stop: backend snapshot failed (continuing)"
+
     "$BREW" services stop cassandra >>"$LOG" 2>&1
     for _ in $(seq 1 20); do
       listening || break

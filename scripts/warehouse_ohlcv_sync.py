@@ -2,7 +2,7 @@
 """
 warehouse_ohlcv_sync.py — keep the India parquet panel level with the bhavcopy.
 
-THE LAG THIS FIXES. repos/global-market-data/warehouse/ohlcv/IN/year=*.parquet
+THE LAG THIS FIXES. <warehouse>/ohlcv/IN/year=*.parquet
 is the panel behind almost every India study in this repo: pead_liquidity_study
 .load_prices() reads it, and pe_bands, smallcap_screener, cluster_indices,
 custom_indices and backtest_tier_anomalies all reach it from there. Nothing in
@@ -41,7 +41,22 @@ import argparse
 import sys
 from pathlib import Path
 
-WH = Path("/Users/umashankar/repos/global-market-data/warehouse/ohlcv/IN")
+# 🔴 RESOLVE THE WAREHOUSE, NEVER HARDCODE IT. This read
+# /Users/umashankar/repos/global-market-data/warehouse/ohlcv/IN until 2026-08-18.
+# The warehouse moved to ~/.cache/market-warehouse in the 2026-08-14 migration and
+# that path stopped existing, so every nightly run since died on "no parquet files
+# under ..." and returned 1 — visible only as `[NOTES] ingest: warehouse ohlcv
+# parquet sync` at the end of daily_research.sh, four days running. It was the last
+# straggler of that migration; E-014 caught the four steps inside daily_mailer.sh
+# and missed this one because it lives in ~/scripts, not the pipeline tree.
+#
+# market_paths is the canonical resolver (MARKET_CACHE_ROOT, default
+# ~/.cache/market-warehouse) and sits in this same directory, so it imports here
+# under /usr/bin/python3 without the venv's .pth. Going through it means the next
+# move of the warehouse changes one constant, not every consumer.
+import market_paths
+
+WH = market_paths.CACHE / "ohlcv" / "IN"
 DSN = "dbname=market_data host=/tmp user=umashankar"
 SRC = "pg.bhavcopy.cleaned_ohlcv"
 COLS = ["Date", "Symbol", "Open", "High", "Low", "Close", "Volume"]

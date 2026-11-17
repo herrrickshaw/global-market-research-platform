@@ -76,18 +76,18 @@ This paper makes five primary contributions:
 **Piotroski (2000)** introduced the nine-point quality score based on profitability, operating efficiency, and leverage metrics. Subsequent research has validated its effectiveness:
 
 - **Mohanram (2005)**: Examines F-Score among high-growth firms, finding limited predictive power in that subset.
-- **Oprea & Rees (2012)**: Test F-Score across UK equities, documenting 4-6% annual excess returns.
+- **Tikkanen & Äijö (2018)**: F-score screening significantly improves the performance of every value strategy tested in Europe. *(Replaced the former Oprea/Rees 2012 attribution on 2026-08-20 — that citation is not locatable in any index, and the 4-6% UK excess-return figure attributed to it was unsourced. Substituted with verified non-US F-Score evidence; note the market is Europe, not the UK, and no percentage is carried over.)*
 - **Novy-Marx & Velikov (2016)**: Demonstrate that transaction costs substantially reduce published F-Score returns.
 
 **Geographic variation** in fundamental signal effectiveness has been documented:
 - **Fama & French (2012)**: Value factors show different returns across regions.
-- **Beck, Levine & Levkov (2010)**: Legal system and financial development affect earnings quality.
+- **Beck, Levine & Levkov (2010)**: US branch deregulation and its effect on the income distribution. *(Description corrected 2026-08-20 — the paper is not about earnings quality.)*
 
 ### 2.2 Technical Analysis and Market Microstructure
 
 **Darvas Box** pattern analysis (Darvas 1957, 1960) has received limited modern academic treatment:
 - **Park & Irwin (2007)**: Meta-analysis of technical analysis studies shows mixed evidence.
-- **Lim & Hooy (2010)**: Document technical pattern effectiveness varies by market and period.
+- **Lim & Hooy (2010)**: Speed of price adjustment to global public information differs across 49 countries. *(Description corrected 2026-08-20 — the paper measures adjustment delay, not technical-pattern effectiveness. Slow adjustment is the mechanism such patterns exploit, but the paper does not test patterns directly.)*
 
 **Volume analysis** in technical trading:
 - **Blume, Easley & O'Hara (1994)**: Volume relationship to price discovery.
@@ -98,11 +98,11 @@ This paper makes five primary contributions:
 **Earnings-related seasonality** has been documented:
 - **Ball & Brown (1968)**: Post-announcement drift phenomenon.
 - **Livnat & Mendenhall (2006)**: Earnings surprise predictability.
-- **DellaVigna & Pollet (2009)**: Disagreement effects around earnings.
+- **DellaVigna & Pollet (2009)**: Investor inattention to Friday earnings announcements. *(Description corrected 2026-08-20 — the paper is about inattention, not disagreement.)*
 
 **Quarterly patterns**:
 - **Heston & Sadka (2008)**: January effect and seasonal patterns.
-- **Boehmer & Musumeci (1991)**: Pre-announcement drift patterns.
+- **Boehmer, Musumeci & Poulsen (1991)**: Event-study test statistics under event-induced variance. *(Corrected 2026-08-20 — a methodology paper, not a drift study; third author was omitted.)*
 
 ### 2.4 International Diversification
 

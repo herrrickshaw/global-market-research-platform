@@ -179,10 +179,10 @@ Priority 4: Regime Stability
 
 If you want context on why these gaps matter, read these papers:
 
-- **Transaction Costs**: Novy-Marx & Velikov (2016) "A taxonomy of anomalies"
-- **Survivorship Bias**: Dimson, Marsh & Staunton (2002) "Triumph of the optimists"
-- **Risk Metrics**: Sharpe (1966) on Sharpe ratio
-- **Multi-Period Testing**: Harvey, Liu & Zhu (2016) "...and the cross-section of expected returns"
+- **Transaction Costs**: Novy-Marx & Velikov (2016) *A Taxonomy of Anomalies and Their Trading Costs*
+- **Survivorship Bias**: Dimson, Marsh & Staunton (2002) *Triumph of the Optimists: 101 Years of Global Investment Returns*
+- **Risk Metrics**: Sharpe (1966) *Mutual Fund Performance* — the origin of the reward-to-variability ratio
+- **Multi-Period Testing**: Harvey, Liu & Zhu (2016) *…and the Cross-Section of Expected Returns*
 
 ---
 

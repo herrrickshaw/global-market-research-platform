@@ -1,0 +1,13 @@
+screen,family,factor_align,liquidity_friendly,verdict,why,score
+Golden Crossover (50>200 DMA),trend,10,8,EFFECTIVE,our PRIMARY India edge — trend survives Deflated Sharpe (0.994); no size cap,9.0
+Magic Formula (ROCE + earnings yield),quality+value,8,7,EFFECTIVE,combines the two validated factors; Greenblatt travels to India; no cap floor,7.5
+"Value Stocks (hi OPM/ROCE, low D/E)",quality+value,8,7,EFFECTIVE,"targets validated quality+value, keeps the illiquid tail where the edge lives",7.5
+High Growth + High RoE + Low PE,quality+value+growth,8,6,EFFECTIVE,multi-factor sweet spot; all three validated in India,7.0
+The Bull Cartel (quarterly growth),earnings momentum,7,6,GOOD,earnings momentum aligns with India's momentum character; can be crowded/priced,6.5
+Growth Stocks (GARP / G-Factor),growth+quality,6,6,GOOD,"growth+quality tilt; India is momentum-friendly, but GARP crowds",6.0
+Low on 10Y Avg Earnings (Graham),deep value,6,6,MODERATE,"value reverts in India, but absolute deep-value catches value traps (use sector-relative)",6.0
+Piotroski Scan (F = 9),quality,6,5,MODERATE,quality earns a premium BUT F-score alone is weak without the liquidity gate (US F is inverted),5.5
+FII Buying (institutional flow),flow / sentiment,5,6,MODERATE,"FII flow chases momentum (some signal) but you follow the lag; short-lived, front-run-able",5.5
+Benjamin Graham & Buffett (sales>₹250cr),value + size floor,5,4,MODERATE,"value works, but the sales floor starts excluding the illiquid tail where the edge is strongest",4.5
+Highest Dividend Yield,dividend / value,4,5,WEAK,dividend-capture is weak; high-DY in India skews to low-growth PSU value traps,4.5
+Bluest of the Blue Chips (mcap>₹3000cr),large-cap value,3,2,WEAK,the large-cap FLOOR kills the illiquidity edge — big Indian names are efficiently priced; popular but the worst place to find mispricing,2.5

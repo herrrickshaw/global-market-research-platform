@@ -21,6 +21,7 @@ Suffix strategy (per Cassandra instruments):
 from __future__ import annotations
 
 import logging
+import os
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -143,6 +144,15 @@ def fetch_market_quotes(
     Fetch live quotes for every instrument in one market and persist to Cassandra.
     Blocking — must be called from a background thread.
     """
+    if os.environ.get('BULK_FETCH_DBOS') == '1':
+        try:
+            from db.bulk_fetcher_dbos import ensure_launched, run_market
+            ensure_launched()
+        except Exception as exc:   # DBOS/Postgres unavailable — keep the proven path
+            log.warning('bulk_fetcher: DBOS unavailable (%s) — using non-durable path', exc)
+        else:
+            return run_market(market, batch_size, max_workers, with_fundamentals, inter_batch_delay)
+
     cfg    = _MARKET_CFG.get(market, {'suffix': '', 'is_inr': False})
     suffix = cfg['suffix']
     is_inr = cfg['is_inr']

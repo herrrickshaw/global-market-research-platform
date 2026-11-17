@@ -1,0 +1,305 @@
+market,symbol,status,mkt_trend,mkt_vol,stock_state,kalman_drift_ann_pct,markov_e21d_pct,asof,verdict,rsi,rsi_zone
+IN,RAYMOND,watch,bear,MID,bull,571.2,3.29,2026-10-01,DEMOTE (market bear),79.9,HOLD
+IN,MAHESHWARI,signal,bear,MID,bull,283.3,-3.09,2026-10-01,DEMOTE (market bear),61.2,BUY
+IN,STLTECH,justified,bear,MID,bull,278.8,5.18,2026-10-01,DEMOTE (market bear),72.0,BUY
+IN,CORDSCABLE,signal,bear,MID,chop,251.6,0.93,2026-10-01,DEMOTE (market bear),49.5,HOLD
+IN,MVGJL,signal,bear,MID,bull,245.2,-1.48,2026-10-01,DEMOTE (market bear),55.8,BUY
+IN,INDSWFTLAB,watch,bear,MID,bull,218.2,2.87,2026-10-01,DEMOTE (market bear),59.3,BUY
+IN,BLISSGVS,justified,bear,MID,bull,209.5,0.95,2026-10-01,DEMOTE (market bear),55.3,BUY
+IN,SUNFLAG,playbook,bear,MID,bull,206.6,2.53,2026-10-01,DEMOTE (market bear),68.1,BUY
+IN,FCL,signal,bear,MID,bull,190.6,2.73,2026-10-01,DEMOTE (market bear),54.2,BUY
+IN,ARROWGREEN,playbook,bear,MID,bull,164.7,-0.84,2026-10-01,DEMOTE (market bear),57.2,BUY
+IN,WSTCSTPAPR,watch,bear,MID,bull,158.5,3.46,2026-10-01,DEMOTE (market bear),58.9,BUY
+IN,UNIMECH,held,bear,MID,bull,157.1,4.43,2026-10-01,DEMOTE (market bear),67.3,BUY
+IN,JINDWORLD,signal,bear,MID,bull,156.0,3.05,2026-10-01,DEMOTE (market bear),47.5,HOLD
+IN,MARINE,watch,bear,MID,chop,150.8,4.28,2026-10-01,DEMOTE (market bear),61.6,BUY
+IN,REDINGTON,watch,bear,MID,bull,144.2,-0.03,2026-10-01,DEMOTE (market bear),58.3,BUY
+IN,IOLCP,watch,bear,MID,bull,137.9,5.02,2026-10-01,DEMOTE (market bear),60.6,BUY
+IN,SPLPETRO,held,bear,MID,bull,131.9,-0.4,2026-10-01,DEMOTE (market bear),44.4,HOLD
+IN,DEEPINDS,watch,bear,MID,bull,121.8,4.58,2026-10-01,DEMOTE (market bear),53.2,BUY
+IN,SHREEPUSHK,playbook,bear,MID,bull,120.3,0.06,2026-10-01,DEMOTE (market bear),54.6,BUY
+IN,ISGEC,signal,bear,MID,bull,118.9,2.82,2026-10-01,DEMOTE (market bear),69.5,BUY
+IN,RPTECH,playbook,bear,MID,bull,104.1,3.08,2026-10-01,DEMOTE (market bear),68.6,BUY
+IN,VINCOFE,signal,bear,MID,chop,98.8,5.2,2026-10-01,DEMOTE (market bear),55.5,BUY
+IN,ASIANHOTNR,signal,bear,MID,bear,97.8,0.89,2026-10-01,DEMOTE (market bear),42.2,HOLD
+IN,WINDLAS,signal,bear,MID,bull,97.7,0.84,2026-10-01,DEMOTE (market bear),53.1,BUY
+IN,CONFIPET,playbook,bear,MID,bull,96.3,0.29,2026-10-01,DEMOTE (market bear),52.1,BUY
+IN,TFCILTD,signal,bear,MID,chop,93.7,1.85,2026-10-01,DEMOTE (market bear),54.5,BUY
+IN,PREMIERPOL,signal,bear,MID,chop,93.6,1.92,2026-10-01,DEMOTE (market bear),52.8,BUY
+IN,AKUMS,watch,bear,MID,bull,93.1,-1.59,2026-10-01,DEMOTE (market bear),59.9,BUY
+IN,AGI,signal,bear,MID,chop,89.4,4.82,2026-10-01,DEMOTE (market bear),53.8,BUY
+IN,GNA,playbook,bear,MID,bull,89.2,2.45,2026-10-01,DEMOTE (market bear),55.0,BUY
+IN,TNPETRO,held,bear,MID,bear,81.7,0.39,2026-10-01,DEMOTE (market bear),48.3,HOLD
+IN,EIMCOELECO,signal,bear,MID,bull,79.5,1.2,2026-10-01,DEMOTE (market bear),56.7,BUY
+IN,VINDHYATEL,playbook,bear,MID,chop,77.8,2.95,2026-10-01,DEMOTE (market bear),48.4,HOLD
+IN,GANDHAR,watch,bear,MID,bull,75.5,1.15,2026-10-01,DEMOTE (market bear),65.9,BUY
+IN,NAZARA,watch,bear,MID,bull,75.3,2.56,2026-10-01,DEMOTE (market bear),62.7,BUY
+IN,GMBREW,signal,bear,MID,bull,69.7,2.14,2026-10-01,DEMOTE (market bear),56.8,BUY
+IN,GNFC,signal,bear,MID,chop,68.3,1.51,2026-10-01,DEMOTE (market bear),50.0,BUY
+IN,KMEW,signal,bear,MID,chop,64.2,7.87,2026-10-01,DEMOTE (market bear),54.0,BUY
+IN,CASTROLIND,held,bear,MID,bull,61.2,0.31,2026-10-01,DEMOTE (market bear),62.8,BUY
+IN,AYMSYNTEX,signal,bear,MID,bear,59.1,-0.63,2026-10-01,DEMOTE (market bear),48.0,HOLD
+IN,TCPLPACK,watch,bear,MID,chop,57.9,3.7,2026-10-01,DEMOTE (market bear),50.9,BUY
+IN,TALBROAUTO,playbook,bear,MID,chop,57.1,3.63,2026-10-01,DEMOTE (market bear),43.6,HOLD
+IN,AEROFLEX,justified,bear,MID,bear,55.8,5.17,2026-10-01,DEMOTE (market bear),51.1,BUY
+IN,GODREJAGRO,watch,bear,MID,bear,53.7,0.77,2026-10-01,DEMOTE (market bear),47.4,HOLD
+IN,LGBBROSLTD,signal,bear,MID,chop,51.6,2.83,2026-10-01,DEMOTE (market bear),53.6,BUY
+IN,GHCLTEXTIL,playbook,bear,MID,bear,46.4,2.46,2026-10-01,DEMOTE (market bear),49.5,HOLD
+IN,DIACABS,justified,bear,MID,chop,45.8,11.1,2026-10-01,DEMOTE (market bear),48.1,HOLD
+IN,AZAD,watch,bear,MID,chop,44.1,4.72,2026-10-01,DEMOTE (market bear),56.2,BUY
+IN,MSTCLTD,playbook,bear,MID,bear,40.9,-0.26,2026-10-01,DEMOTE (market bear),46.8,HOLD
+IN,PVRINOX,watch,bear,MID,chop,39.2,0.72,2026-10-01,DEMOTE (market bear),47.6,HOLD
+IN,DEEDEV,justified,bear,MID,bull,38.4,7.99,2026-10-01,DEMOTE (market bear),50.8,BUY
+IN,OMAXE,watch,bear,MID,bear,36.3,-1.44,2026-10-01,DEMOTE (market bear),44.4,HOLD
+IN,BLSE,watch,bear,MID,bear,30.2,-2.35,2026-10-01,DEMOTE (market bear),53.6,BUY
+IN,EMAMIPAP,watch,bear,MID,bull,29.5,-0.49,2026-10-01,DEMOTE (market bear),50.8,BUY
+IN,20MICRONS,signal,bear,MID,bear,27.9,0.99,2026-10-01,DEMOTE (market bear),46.2,HOLD
+IN,MATRIMONY,watch,bear,MID,bear,26.4,-0.23,2026-10-01,DEMOTE (market bear),39.8,SELL
+IN,NIFTYBEES,held,bear,MID,bull,23.2,1.32,2026-08-24,DEMOTE (market bear),,?
+IN,KTKBANK,signal,bear,MID,bear,22.4,-0.88,2026-10-01,DEMOTE (market bear),48.1,HOLD
+IN,SATIN,playbook,bear,MID,bull,22.3,2.02,2026-10-01,DEMOTE (market bear),51.3,BUY
+IN,ETERNAL,watch,bear,MID,bear,20.3,0.04,2026-10-01,DEMOTE (market bear),39.5,SELL
+IN,SEAMECLTD,playbook,bear,MID,bear,17.5,1.06,2026-10-01,DEMOTE (market bear),36.5,SELL
+IN,UNICHEMLAB,signal,bear,MID,bear,16.6,1.09,2026-10-01,DEMOTE (market bear),47.8,HOLD
+IN,ASAHIINDIA,watch,bear,MID,chop,14.3,1.67,2026-10-01,DEMOTE (market bear),47.2,HOLD
+IN,UNIPARTS,playbook,bear,MID,bear,9.8,0.65,2026-10-01,DEMOTE (market bear),43.3,HOLD
+IN,VIJAYA,watch,bear,MID,bear,9.6,3.18,2026-10-01,DEMOTE (market bear),41.1,HOLD
+IN,TNPL,held,bear,MID,chop,8.1,-0.53,2026-10-01,DEMOTE (market bear),48.4,HOLD
+IN,CHENNPETRO,watch,bear,MID,chop,7.7,1.65,2026-10-01,DEMOTE (market bear),42.9,HOLD
+IN,WABAG,watch,bear,MID,chop,6.0,1.26,2026-10-01,DEMOTE (market bear),46.4,HOLD
+IN,AJANTPHARM,signal,bear,MID,bull,6.0,0.13,2026-10-01,DEMOTE (market bear),54.3,BUY
+IN,JKPAPER,watch,bear,MID,bear,4.9,1.34,2026-10-01,DEMOTE (market bear),38.1,SELL
+IN,STOVEKRAFT,watch,bear,MID,bear,3.3,-1.29,2026-10-01,DEMOTE (market bear),48.7,HOLD
+IN,NITINSPIN,playbook,bear,MID,bear,2.7,0.5,2026-10-01,DEMOTE (market bear),43.5,HOLD
+IN,PSUBNKBEES,held,bear,MID,chop,2.3,0.45,2026-08-24,DEMOTE (market bear),,?
+IN,PANAMAPET,playbook,bear,MID,chop,-3.5,0.92,2026-10-01,DEMOTE (market bear),54.8,BUY
+IN,PETRONET,watch,bear,MID,bear,-4.4,2.82,2026-10-01,DEMOTE (market bear),49.1,HOLD
+IN,TMB,playbook,bear,MID,bear,-10.6,1.15,2026-10-01,DEMOTE (market bear),46.2,HOLD
+IN,YASHO,justified,bear,MID,bear,-11.0,2.58,2026-10-01,DEMOTE (market bear),49.4,HOLD
+IN,CARRARO,held,bear,MID,bear,-11.3,1.19,2026-10-01,DEMOTE (market bear),43.5,HOLD
+IN,MOTHERSON,watch,bear,MID,bear,-12.5,-0.67,2026-10-01,DEMOTE (market bear),42.7,HOLD
+IN,PRICOLLTD,signal,bear,MID,bear,-14.4,3.46,2026-10-01,DEMOTE (market bear),41.9,HOLD
+IN,GAIL,watch,bear,MID,chop,-14.6,0.96,2026-10-01,DEMOTE (market bear),45.6,HOLD
+IN,SAGILITY,watch,bear,MID,bear,-16.8,2.61,2026-10-01,DEMOTE (market bear),41.6,HOLD
+IN,PPLPHARMA,signal,bear,MID,bear,-18.6,-2.29,2026-10-01,DEMOTE (market bear),39.3,SELL
+IN,NYKAA,watch,bear,MID,bear,-20.7,0.01,2026-10-01,DEMOTE (market bear),44.7,HOLD
+IN,GARFIBRES,signal,bear,MID,bear,-23.9,2.87,2026-10-01,DEMOTE (market bear),44.1,HOLD
+IN,SPORTKING,playbook,bear,MID,bear,-27.8,2.18,2026-10-01,DEMOTE (market bear),46.9,HOLD
+IN,HFCL,justified,bear,MID,bear,-29.9,2.17,2026-10-01,DEMOTE (market bear),58.5,BUY
+IN,OIL,watch,bear,MID,bear,-34.3,0.9,2026-10-01,DEMOTE (market bear),32.5,SELL
+IN,JINDALSAW,watch,bear,MID,bear,-36.0,1.14,2026-10-01,DEMOTE (market bear),38.2,SELL
+IN,SAPPHIRE,watch,bear,MID,bear,-41.0,-0.07,2026-10-01,DEMOTE (market bear),36.1,SELL
+IN,CEWATER,held,bear,MID,bear,-41.4,-3.4,2026-10-01,DEMOTE (market bear),38.5,SELL
+IN,PNBHOUSING,watch,bear,MID,bear,-41.9,-2.34,2026-10-01,DEMOTE (market bear),42.2,HOLD
+IN,IDFCFIRSTB,watch,bear,MID,bear,-42.0,-0.6,2026-10-01,DEMOTE (market bear),38.5,SELL
+IN,NATCOPHARM,signal,bear,MID,bear,-49.1,-1.06,2026-10-01,DEMOTE (market bear),41.0,HOLD
+IN,AARTISURF,held,bear,MID,bear,-50.4,-0.72,2026-10-01,DEMOTE (market bear),42.9,HOLD
+IN,VENTIVE,held,bear,MID,bear,-50.4,3.0,2026-10-01,DEMOTE (market bear),36.1,SELL
+IN,INDOFARM,held,bear,MID,chop,-54.9,-6.62,2026-10-01,DEMOTE (market bear),40.8,HOLD
+IN,HOMEFIRST,signal,bear,MID,bear,-59.1,1.4,2026-10-01,DEMOTE (market bear),40.9,HOLD
+IN,SENORES,held,bear,MID,bear,-63.7,6.75,2026-10-01,DEMOTE (market bear),40.2,HOLD
+IN,ATUL,signal,bear,MID,bear,-85.5,1.15,2026-10-01,DEMOTE (market bear),28.9,SELL
+IN,SWIGGY,watch,bear,MID,bear,-90.1,-3.85,2026-10-01,DEMOTE (market bear),27.2,SELL
+IN,AEROENTER,playbook,bear,MID,bear,-92.1,6.46,2026-10-01,DEMOTE (market bear),43.0,HOLD
+IN,ANUP,signal,bear,MID,bear,-134.6,-1.16,2026-10-01,DEMOTE (market bear),28.0,SELL
+IN,SUZLON,held,bear,MID,bear,-162.2,-2.74,2026-10-01,DEMOTE (market bear),19.1,SELL
+US,IOVA,signal,bull,LOW,bull,617.9,2.31,2026-10-01,ENTER-WAIT (RSI),80.0,SELL
+US,JETD,signal,bull,LOW,bull,306.3,1.66,2026-10-01,ENTER-OK,61.2,HOLD
+US,FLYD,signal,bull,LOW,bull,286.4,-1.98,2026-09-30,ENTER-OK,57.5,HOLD
+US,PLSE,signal,bull,LOW,bull,282.8,3.94,2026-09-30,ENTER-OK,49.0,HOLD
+US,BITW,signal,bull,LOW,bull,264.9,6.52,2026-09-30,ENTER-OK,64.5,HOLD
+US,IBIT,signal,bull,LOW,bull,250.0,4.38,2026-09-30,ENTER-OK,65.2,HOLD
+US,INTC,held,bull,LOW,bull,234.5,-0.32,2026-10-01,ENTER-OK,61.5,HOLD
+US,BNO,signal,bull,LOW,bull,220.0,2.77,2026-09-30,ENTER-OK,62.2,HOLD
+US,CNH,signal,bull,LOW,bull,219.9,-0.1,2026-09-30,ENTER-OK,48.9,HOLD
+US,AMD,held,bull,LOW,bull,216.7,5.05,2026-09-30,ENTER-OK,67.0,HOLD
+US,DELL,held,bull,LOW,bull,211.6,3.44,2026-09-30,ENTER-OK,54.0,HOLD
+US,META,held,bull,LOW,bull,209.5,1.29,2026-09-30,ENTER-OK,61.1,HOLD
+US,MTLS,signal,bull,LOW,bull,203.0,-2.82,2026-09-30,ENTER-WAIT (RSI),74.2,SELL
+US,WTIU,signal,bull,LOW,bull,200.7,-4.42,2026-09-30,ENTER-OK,51.9,HOLD
+US,VLO,held,bull,LOW,bull,199.0,3.13,2026-10-01,ENTER-OK,67.1,HOLD
+US,SOPH,signal,bull,LOW,bull,194.4,-7.87,2026-09-30,ENTER-OK,49.5,HOLD
+US,MLAB,held,bull,LOW,bull,191.7,-1.67,2026-09-30,ENTER-OK,54.7,HOLD
+US,TRMD,signal,bull,LOW,bull,187.9,-0.54,2026-10-01,ENTER-WAIT (RSI),71.2,SELL
+US,PGEN,signal,bull,LOW,bull,186.7,-4.4,2026-10-01,ENTER-OK,63.4,HOLD
+US,BRRR,signal,bull,LOW,bull,184.1,4.28,2026-09-30,ENTER-OK,65.1,HOLD
+US,CENN,signal,bull,LOW,bull,182.8,-20.97,2026-09-30,ENTER-OK,42.2,HOLD
+US,IBEX,value-hold,bull,LOW,bull,180.0,1.01,2026-10-01,ENTER-OK,69.9,HOLD
+US,DT,signal,bull,LOW,bull,178.3,1.74,2026-09-30,ENTER-WAIT (RSI),70.2,SELL
+US,USO,signal,bull,LOW,bull,173.3,2.2,2026-10-01,ENTER-OK,50.8,HOLD
+US,NRGU,signal,bull,LOW,bull,172.8,1.61,2026-09-30,ENTER-OK,52.0,HOLD
+US,DBO,signal,bull,LOW,bull,170.7,1.53,2026-09-30,ENTER-OK,55.0,HOLD
+US,ANF,value-hold,bull,LOW,bull,170.1,2.08,2026-09-30,ENTER-OK,54.0,HOLD
+US,XNCR,signal,bull,LOW,bull,163.0,-0.83,2026-09-30,ENTER-OK,50.7,HOLD
+US,PUBM,signal,bull,LOW,bull,162.8,-1.4,2026-10-01,ENTER-WAIT (RSI),71.9,SELL
+US,MARA,held,bull,LOW,bull,158.9,2.54,2026-09-29,ENTER-OK,44.6,HOLD
+US,DBE,signal,bull,LOW,bull,158.2,1.99,2026-09-30,ENTER-OK,59.4,HOLD
+US,BLFS,signal,bull,LOW,bull,154.2,3.67,2026-09-30,ENTER-OK,50.2,HOLD
+US,TMO,held,bull,LOW,bull,147.0,1.29,2026-10-01,ENTER-OK,55.6,HOLD
+US,GTLB,held,bull,LOW,bull,140.5,-0.84,2026-10-01,ENTER-OK,61.9,HOLD
+US,A,held,bull,LOW,bull,138.8,1.71,2026-10-01,ENTER-OK,60.0,HOLD
+US,AKTX,signal,bull,LOW,bull,136.2,-6.42,2026-09-30,ENTER-OK,41.7,HOLD
+US,ASBP,signal,bull,LOW,bull,128.5,-9.51,2026-09-30,ENTER-OK,46.9,HOLD
+US,AVTR,signal,bull,LOW,bull,126.7,1.28,2026-09-29,ENTER-OK,53.5,HOLD
+US,RGR,signal,bull,LOW,bull,118.6,-0.39,2026-10-01,ENTER-WAIT (RSI),74.0,SELL
+US,GYRE,signal,bull,LOW,bull,117.3,-0.18,2026-09-30,ENTER-OK,49.1,HOLD
+US,XBP,signal,bull,LOW,bull,115.7,-7.84,2026-09-30,ENTER-OK,51.8,HOLD
+US,GSG,signal,bull,LOW,bull,111.8,1.4,2026-09-30,ENTER-OK,53.4,HOLD
+US,FET,signal,bull,LOW,bull,111.3,-0.06,2026-09-30,ENTER-OK,56.8,HOLD
+US,LINK,signal,bull,LOW,bull,109.8,-5.92,2026-10-01,ENTER-OK,61.5,HOLD
+US,FPI,signal,bull,LOW,bull,106.3,0.16,2026-10-01,ENTER-WAIT (RSI),71.7,SELL
+US,MTD,held,bull,LOW,bull,92.6,1.37,2026-09-30,ENTER-OK,58.8,HOLD
+US,VRNS,signal,bull,LOW,bull,92.5,2.93,2026-10-01,ENTER-OK,55.1,HOLD
+US,EUDA,signal,bull,LOW,bull,90.1,-4.73,2026-10-01,ENTER-OK,50.9,HOLD
+US,CRESY,signal,bull,LOW,bull,89.3,0.77,2026-09-30,ENTER-OK,40.9,HOLD
+US,USCI,signal,bull,LOW,bull,87.0,1.09,2026-10-01,ENTER-OK,58.1,HOLD
+US,DHR,held,bull,LOW,bull,82.6,0.51,2026-09-29,ENTER-OK,47.2,HOLD
+US,VOC,signal,bull,LOW,bull,82.5,1.27,2026-10-01,ENTER-OK,56.9,HOLD
+US,CFFI,signal,bull,LOW,bull,81.1,-0.23,2026-10-01,ENTER-OK,60.3,HOLD
+US,TAGS,signal,bull,LOW,bull,80.3,-0.47,2026-09-30,ENTER-OK,42.0,HOLD
+US,CHA,signal,bull,LOW,bull,78.2,-12.55,2026-09-30,ENTER-OK,43.6,HOLD
+US,CULP,signal,bull,LOW,bull,76.8,-1.71,2026-09-30,ENTER-OK,52.8,HOLD
+US,FNGS,signal,bull,LOW,bull,76.4,2.6,2026-09-30,ENTER-OK,57.9,HOLD
+US,SHEL,held,bull,LOW,bull,74.8,0.16,2026-09-29,ENTER-OK,56.1,HOLD
+US,MSGM,signal,bull,LOW,bull,71.9,-17.23,2026-09-30,ENTER-OK,59.2,HOLD
+US,CORN,held,bull,LOW,bull,70.8,0.04,2026-09-30,ENTER-OK,38.3,HOLD
+US,BSVN,signal,bull,LOW,bull,70.8,0.53,2026-09-30,ENTER-OK,56.5,HOLD
+US,AFGB,playbook,bull,LOW,bull,68.3,0.21,2026-10-01,ENTER-OK,61.1,HOLD
+US,TSM,held,bull,LOW,bull,67.5,3.2,2026-09-30,ENTER-OK,65.7,HOLD
+US,AAPL,held,bull,LOW,bull,65.9,2.97,2026-09-30,ENTER-OK,51.5,HOLD
+US,GRDN,signal,bull,LOW,bull,62.7,0.83,2026-09-30,ENTER-OK,44.6,HOLD
+US,GRN,signal,bull,LOW,bull,59.7,0.84,2026-09-30,ENTER-OK,52.1,HOLD
+US,FBLA,signal,bull,LOW,bull,58.3,1.02,2026-09-30,ENTER-OK,68.7,HOLD
+US,CVX,held,bull,LOW,bull,57.7,0.53,2026-09-29,ENTER-OK,52.7,HOLD
+US,SU,held,bull,LOW,bull,54.8,1.34,2026-10-01,ENTER-OK,55.7,HOLD
+US,MTCH,held,bull,LOW,bull,52.3,0.99,2026-09-30,ENTER-OK,43.7,HOLD
+US,EQH,held,bull,LOW,bull,50.8,1.38,2026-09-30,ENTER-OK,49.3,HOLD
+US,SF-PB,signal,bull,LOW,bull,49.9,0.08,2026-10-01,ENTER-OK,68.4,HOLD
+US,WOR,signal,bull,LOW,bull,49.1,0.41,2026-09-30,ENTER-OK,50.9,HOLD
+US,NVDA,held,bull,LOW,bull,47.8,4.02,2026-09-30,ENTER-OK,60.2,HOLD
+US,GNK,held,bull,LOW,bull,45.6,0.55,2026-09-30,ENTER-OK,55.9,HOLD
+US,KR,held,bull,LOW,bull,37.8,0.1,2026-09-30,ENTER-OK,52.4,HOLD
+US,VYLD,signal,bull,LOW,bull,35.6,1.7,2026-09-30,ENTER-OK,58.3,HOLD
+US,SPNT,signal,bull,LOW,bull,34.1,-0.01,2026-09-30,ENTER-OK,47.2,HOLD
+US,GREEL,signal,bull,LOW,bull,33.9,8.45,2026-09-30,ENTER-WAIT (RSI),72.4,SELL
+US,JNJ,held,bull,LOW,bull,29.0,0.88,2026-09-29,ENTER-OK,35.5,HOLD
+US,AFGC,playbook,bull,LOW,bull,27.1,0.27,2026-09-30,ENTER-OK,54.7,HOLD
+US,CIG,signal,bull,LOW,bull,20.9,0.82,2026-09-29,ENTER-OK,50.6,HOLD
+US,XOM,held,bull,LOW,bull,17.1,1.06,2026-10-01,ENTER-OK,54.8,HOLD
+US,IHS,signal,bull,LOW,bull,14.5,-3.46,2026-09-30,ENTER-OK,41.6,HOLD
+US,TWO-PC,signal,bull,LOW,bull,13.7,0.88,2026-09-29,ENTER-WAIT (RSI),85.6,SELL
+US,UNG,signal,bull,LOW,bull,12.1,-1.62,2026-09-30,ENTER-OK,44.1,HOLD
+US,TWO-PA,signal,bull,LOW,bull,11.7,1.82,2026-09-29,ENTER-WAIT (RSI),85.8,SELL
+US,FSEA,signal,bull,LOW,bull,10.9,-1.16,2026-09-30,ENTER-WAIT (RSI),72.4,SELL
+US,ANG-PD,signal,bull,LOW,bull,9.9,-0.46,2026-09-30,ENTER-OK,52.1,HOLD
+US,DRDB,signal,bull,LOW,bull,9.1,0.36,2026-09-30,ENTER-WAIT (RSI),72.9,SELL
+US,QSEA,signal,bull,LOW,bull,6.4,0.36,2026-09-30,ENTER-WAIT (RSI),73.5,SELL
+US,LPBB,signal,bull,LOW,bull,4.9,0.27,2026-09-30,ENTER-OK,63.4,HOLD
+US,FACT,signal,bull,LOW,bull,4.7,0.35,2026-09-30,ENTER-OK,62.9,HOLD
+US,TVA,signal,bull,LOW,bull,3.7,-0.05,2026-09-30,ENTER-OK,69.0,HOLD
+US,BPOPM,signal,bull,LOW,bull,0.8,-0.91,2026-10-01,ENTER-OK,60.5,HOLD
+US,HELP,signal,bull,LOW,chop,212.3,-1.63,2026-10-01,HOLD-OK,45.7,HOLD
+US,CHCI,signal,bull,LOW,chop,142.7,1.33,2026-10-01,HOLD-OK,46.7,HOLD
+US,SAP,held,bull,LOW,chop,120.3,0.48,2026-09-29,HOLD-OK,52.2,HOLD
+US,ETON,signal,bull,LOW,bear,117.5,1.26,2026-09-30,HOLD-OK,40.1,HOLD
+US,KRO,signal,bull,LOW,chop,100.1,3.15,2026-09-30,HOLD-OK,40.8,HOLD
+US,EQNR,signal,bull,LOW,chop,97.2,0.62,2026-09-29,HOLD-OK,48.2,HOLD
+US,CLPR,signal,bull,LOW,bear,81.8,-0.02,2026-09-30,HOLD-OK,39.9,HOLD
+US,EXFY,signal,bull,LOW,chop,72.6,-7.63,2026-09-30,HOLD-OK,54.9,HOLD
+US,ACN,value-hold,bull,LOW,chop,49.3,-3.95,2026-09-30,HOLD-OK,70.0,SELL
+US,TSLA,held,bull,LOW,chop,47.6,-0.59,2026-10-01,HOLD-OK,45.6,HOLD
+US,TTE,held,bull,LOW,chop,46.7,1.15,2026-09-29,HOLD-OK,34.7,BUY
+US,BRBS,signal,bull,LOW,bear,44.2,-0.24,2026-09-30,HOLD-OK,48.1,HOLD
+US,PEGA,held,bull,LOW,chop,43.9,0.65,2026-09-30,HOLD-OK,48.9,HOLD
+US,GFI,held,bull,LOW,bear,43.3,3.5,2026-09-30,HOLD-OK,34.6,BUY
+US,NCEW,signal,bull,LOW,chop,40.5,-0.74,2026-09-30,HOLD-OK,43.8,HOLD
+US,IBAC,signal,bull,LOW,chop,31.8,0.49,2026-09-30,HOLD-OK,44.8,HOLD
+US,BATRK,held,bull,LOW,chop,31.5,1.18,2026-10-01,HOLD-OK,51.6,HOLD
+US,FORR,signal,bull,LOW,chop,28.8,1.2,2026-09-30,HOLD-OK,50.4,HOLD
+US,GEF-B,signal,bull,LOW,bear,24.5,2.55,2026-09-30,HOLD-OK,48.4,HOLD
+US,DBX,signal,bull,LOW,chop,20.1,-1.15,2026-09-30,HOLD-OK,48.7,HOLD
+US,SM,signal,bull,LOW,bear,20.0,-1.57,2026-09-30,HOLD-OK,48.9,HOLD
+US,MT,held,bull,LOW,bear,19.7,1.27,2026-09-29,HOLD-OK,28.2,BUY
+US,MET,held,bull,LOW,bear,19.0,1.91,2026-09-29,HOLD-OK,41.7,HOLD
+US,DXC,held,bull,LOW,chop,17.8,-0.61,2026-09-30,HOLD-OK,58.9,HOLD
+US,CME,held,bull,LOW,bear,14.5,1.76,2026-09-30,HOLD-OK,43.7,HOLD
+US,COP,held,bull,LOW,bear,12.2,1.54,2026-09-29,HOLD-OK,45.5,HOLD
+US,DBA,signal,bull,LOW,chop,8.1,0.3,2026-09-30,HOLD-OK,41.1,HOLD
+US,PG,held,bull,LOW,chop,7.8,0.27,2026-09-30,HOLD-OK,43.6,HOLD
+US,ENR,playbook,bull,LOW,bear,6.5,-1.46,2026-09-30,HOLD-OK,47.5,HOLD
+US,ACCO,playbook,bull,LOW,bear,5.9,0.74,2026-09-30,HOLD-OK,49.3,HOLD
+US,PCAPU,signal,bull,LOW,chop,5.6,-0.58,2026-09-30,HOLD-OK,53.7,HOLD
+US,ASML,held,bull,LOW,chop,4.4,1.56,2026-09-30,HOLD-OK,59.6,HOLD
+US,DBRG-PJ,signal,bull,LOW,chop,4.1,1.87,2026-09-30,HOLD-OK,49.5,HOLD
+US,T,held,bull,LOW,bear,3.1,0.5,2026-10-01,HOLD-OK,38.2,HOLD
+US,AOMD,signal,bull,LOW,chop,3.0,1.16,2026-09-30,HOLD-OK,43.2,HOLD
+US,EMR,held,bull,LOW,bear,1.7,0.68,2026-09-29,HOLD-OK,58.9,HOLD
+US,BHFAP,signal,bull,LOW,chop,-3.8,0.09,2026-09-30,HOLD-OK,45.7,HOLD
+US,NTGR,held,bull,LOW,bull,-4.3,-0.05,2026-10-01,HOLD-OK,58.0,HOLD
+US,GOOG,held,bull,LOW,chop,-6.1,2.19,2026-09-30,HOLD-OK,45.2,HOLD
+US,TXN,held,bull,LOW,chop,-6.4,1.54,2026-09-30,HOLD-OK,61.9,HOLD
+US,ECL,held,bull,LOW,chop,-12.4,1.24,2026-09-29,HOLD-OK,41.4,HOLD
+US,ARE,signal,bull,LOW,chop,-12.7,-1.24,2026-09-30,HOLD-OK,35.8,HOLD
+US,GLW,held,bull,LOW,chop,-25.9,2.7,2026-09-28,HOLD-OK,54.1,HOLD
+US,MNKD,held,bull,LOW,chop,-122.2,0.44,2026-09-30,HOLD-OK,59.3,HOLD
+US,NCI,signal,bull,LOW,bull,-401.2,-10.08,2026-09-30,HOLD-OK,14.5,BUY
+US,ADAMN,signal,bull,LOW,bear,-0.7,-1.52,2026-10-01,"WEAK (stock bear-state, drift<0)",51.5,HOLD
+US,AMGN,held,bull,LOW,bear,-2.5,0.84,2026-09-30,"WEAK (stock bear-state, drift<0)",50.2,HOLD
+US,CLH,held,bull,LOW,bear,-3.0,1.49,2026-09-30,"WEAK (stock bear-state, drift<0)",46.7,HOLD
+US,DIS,held,bull,LOW,bear,-3.1,-0.68,2026-10-01,"WEAK (stock bear-state, drift<0)",39.5,HOLD
+US,JCI,held,bull,LOW,bear,-3.6,1.37,2026-09-29,"WEAK (stock bear-state, drift<0)",62.2,HOLD
+US,LNG,held,bull,LOW,bear,-4.6,2.05,2026-10-01,"WEAK (stock bear-state, drift<0)",49.2,HOLD
+US,ETB,signal,bull,LOW,bear,-6.3,0.4,2026-10-01,"WEAK (stock bear-state, drift<0)",43.3,HOLD
+US,RIO,held,bull,LOW,bear,-8.5,1.9,2026-10-01,"WEAK (stock bear-state, drift<0)",32.8,BUY
+US,UGI,held,bull,LOW,bear,-9.2,1.07,2026-10-01,"WEAK (stock bear-state, drift<0)",43.0,HOLD
+US,KO,held,bull,LOW,bear,-10.6,2.03,2026-10-01,"WEAK (stock bear-state, drift<0)",39.2,HOLD
+US,V,held,bull,LOW,bear,-15.3,2.58,2026-10-01,"WEAK (stock bear-state, drift<0)",40.1,HOLD
+US,VZ,held,bull,LOW,bear,-18.3,1.37,2026-09-30,"WEAK (stock bear-state, drift<0)",34.9,BUY
+US,OXY,held,bull,LOW,bear,-23.2,0.47,2026-09-30,"WEAK (stock bear-state, drift<0)",49.0,HOLD
+US,IBM,held,bull,LOW,bear,-26.8,1.44,2026-09-29,"WEAK (stock bear-state, drift<0)",44.2,HOLD
+US,WMT,held,bull,LOW,bear,-33.3,2.59,2026-09-30,"WEAK (stock bear-state, drift<0)",40.2,HOLD
+US,HSBC,held,bull,LOW,bear,-36.6,1.36,2026-10-01,"WEAK (stock bear-state, drift<0)",30.8,BUY
+US,AMZN,held,bull,LOW,bear,-37.0,1.24,2026-09-30,"WEAK (stock bear-state, drift<0)",44.2,HOLD
+US,COST,held,bull,LOW,bear,-39.2,1.31,2026-09-30,"WEAK (stock bear-state, drift<0)",48.6,HOLD
+US,FLS,held,bull,LOW,bear,-40.0,0.83,2026-09-30,"WEAK (stock bear-state, drift<0)",42.3,HOLD
+US,SOJE,playbook,bull,LOW,bear,-42.1,-0.76,2026-09-30,"WEAK (stock bear-state, drift<0)",47.8,HOLD
+US,MSCI,held,bull,LOW,bear,-44.9,3.94,2026-09-30,"WEAK (stock bear-state, drift<0)",44.3,HOLD
+US,LYB,held,bull,LOW,bear,-45.4,0.66,2026-09-30,"WEAK (stock bear-state, drift<0)",35.8,HOLD
+US,RKLB,held,bull,LOW,bear,-45.8,-2.65,2026-09-30,"WEAK (stock bear-state, drift<0)",52.4,HOLD
+US,MCO,held,bull,LOW,bear,-46.7,1.26,2026-09-29,"WEAK (stock bear-state, drift<0)",32.5,BUY
+US,GLNG,held,bull,LOW,bear,-50.9,4.28,2026-10-01,"WEAK (stock bear-state, drift<0)",37.7,HOLD
+US,SPGI,held,bull,LOW,bear,-50.9,0.86,2026-09-29,"WEAK (stock bear-state, drift<0)",32.9,BUY
+US,NEXT,held,bull,LOW,bear,-56.1,-2.89,2026-09-30,"WEAK (stock bear-state, drift<0)",30.4,BUY
+US,CL,held,bull,LOW,bear,-59.8,0.54,2026-09-28,"WEAK (stock bear-state, drift<0)",33.7,BUY
+US,MELI,held,bull,LOW,bear,-60.6,2.01,2026-09-30,"WEAK (stock bear-state, drift<0)",31.3,BUY
+US,ABT,held,bull,LOW,bear,-61.5,-2.48,2026-09-30,"WEAK (stock bear-state, drift<0)",25.7,BUY
+US,AOS,playbook,bull,LOW,bear,-68.1,0.44,2026-09-30,"WEAK (stock bear-state, drift<0)",39.4,HOLD
+US,CMSC,playbook,bull,LOW,bear,-74.0,0.1,2026-09-30,"WEAK (stock bear-state, drift<0)",39.9,HOLD
+US,CWT,held,bull,LOW,bear,-74.8,1.38,2026-09-30,"WEAK (stock bear-state, drift<0)",26.9,BUY
+US,KHC,held,bull,LOW,bear,-76.9,-0.18,2026-09-30,"WEAK (stock bear-state, drift<0)",26.3,BUY
+US,BKR,held,bull,LOW,bear,-81.9,-0.96,2026-09-30,"WEAK (stock bear-state, drift<0)",35.3,HOLD
+US,FDX,held,bull,LOW,bear,-82.2,0.45,2026-09-28,"WEAK (stock bear-state, drift<0)",35.6,HOLD
+US,BABA,held,bull,LOW,bear,-84.7,-1.13,2026-09-29,"WEAK (stock bear-state, drift<0)",38.4,HOLD
+US,IR,held,bull,LOW,bear,-87.9,1.72,2026-10-01,"WEAK (stock bear-state, drift<0)",47.6,HOLD
+US,WM,held,bull,LOW,bear,-88.6,1.45,2026-09-28,"WEAK (stock bear-state, drift<0)",24.7,BUY
+US,UBS,held,bull,LOW,bear,-89.4,1.18,2026-09-30,"WEAK (stock bear-state, drift<0)",32.1,BUY
+US,SWK,held,bull,LOW,bear,-90.8,-1.07,2026-09-30,"WEAK (stock bear-state, drift<0)",43.4,HOLD
+US,MNDY,held,bull,LOW,bear,-93.2,1.08,2026-09-30,"WEAK (stock bear-state, drift<0)",42.5,HOLD
+US,TMUS,held,bull,LOW,bear,-101.5,2.67,2026-10-01,"WEAK (stock bear-state, drift<0)",33.9,BUY
+US,AVGO,held,bull,LOW,bear,-102.0,4.48,2026-09-30,"WEAK (stock bear-state, drift<0)",39.6,HOLD
+US,INFY,held,bull,LOW,bear,-106.6,-1.0,2026-09-30,"WEAK (stock bear-state, drift<0)",53.9,HOLD
+US,SE,held,bull,LOW,bear,-109.3,0.28,2026-10-01,"WEAK (stock bear-state, drift<0)",29.1,BUY
+US,ES,held,bull,LOW,bear,-110.4,0.67,2026-09-30,"WEAK (stock bear-state, drift<0)",31.8,BUY
+US,BAC,held,bull,LOW,bear,-113.5,0.54,2026-09-30,"WEAK (stock bear-state, drift<0)",22.1,BUY
+US,SHOE,playbook,bull,LOW,bear,-131.1,0.63,2026-09-30,"WEAK (stock bear-state, drift<0)",39.8,HOLD
+US,HD,held,bull,LOW,bear,-136.3,0.4,2026-09-29,"WEAK (stock bear-state, drift<0)",25.9,BUY
+US,CWK,held,bull,LOW,bear,-139.6,-0.62,2026-09-30,"WEAK (stock bear-state, drift<0)",33.1,BUY
+US,WIT,held,bull,LOW,bear,-154.9,-1.62,2026-09-30,"WEAK (stock bear-state, drift<0)",53.3,HOLD
+US,FDP,held,bull,LOW,bear,-163.8,1.94,2026-07-01,"WEAK (stock bear-state, drift<0)",35.5,HOLD
+US,NVO,held,bull,LOW,bear,-169.3,0.24,2026-09-29,"WEAK (stock bear-state, drift<0)",27.3,BUY
+US,FSLR,held,bull,LOW,bear,-172.3,-0.7,2026-09-30,"WEAK (stock bear-state, drift<0)",34.1,BUY
+US,LULU,playbook,bull,LOW,bear,-189.4,-0.55,2026-09-30,"WEAK (stock bear-state, drift<0)",35.6,HOLD
+US,SYK,held,bull,LOW,bear,-192.2,1.87,2026-09-29,"WEAK (stock bear-state, drift<0)",35.0,BUY
+US,CHTR,playbook,bull,LOW,bear,-218.3,-1.82,2026-09-30,"WEAK (stock bear-state, drift<0)",29.7,BUY
+US,VVV,held,bull,LOW,bear,-227.6,0.86,2026-09-30,"WEAK (stock bear-state, drift<0)",53.2,HOLD
+US,NXTT,playbook,bull,LOW,bear,-786.5,-32.75,2026-09-30,"WEAK (stock bear-state, drift<0)",30.5,BUY

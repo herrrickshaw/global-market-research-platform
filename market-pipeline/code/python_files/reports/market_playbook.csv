@@ -1,0 +1,37 @@
+edge,market,priority,note
+Value-reversion (cheap PE),IN,2,"+5.3%/6M t2.5 (sector-relative), long-only"
+Value-reversion (cheap PE),US,3,"+1.7%/3M t2.3 — best US edge, hold ≤3M"
+Value-reversion (cheap PE),KR,2,+3.85%/6M t1.5
+Value-reversion (cheap PE),JP,3,+6.6%/6M t4.84 — strongest value anywhere
+Value-reversion (cheap PE),EU,0,underpowered — can't recommend yet
+Value-reversion (cheap PE),CN,-1,TESTED & FAILS (t0.3) — do not run
+Value+Quality Long/Short,IN,-1,−1.0%/6M — momentum runs shorts over
+Value+Quality Long/Short,US,1,+1.7%/6M t1.0 marginal
+Value+Quality Long/Short,KR,3,"+4.83%/6M t4.17 GROSS → +2.3%/6M t2.0 NET of 5% borrow — best L/S, needs cheap locate"
+Value+Quality Long/Short,JP,2,ROE available; extension of value
+Value+Quality Long/Short,EU,0,no fundamentals depth
+Value+Quality Long/Short,CN,-1,value leg fails
+Momentum / Trend,IN,3,trend DSR 0.994 — most robust factor found; long-only
+Momentum / Trend,US,1,mom DSR 0.90 fragile — light
+Momentum / Trend,KR,2,breakout DSR 0.99
+Momentum / Trend,JP,-1,no DSR survivor — whipsaws
+Momentum / Trend,EU,3,mom252 DSR 0.985 — primary EU edge
+Momentum / Trend,CN,-1,"TESTED & FAILS at 6M too (W−L −0.7%, t−0.2) — any CN momentum is fast/retail-inaccessible"
+Quality (hi-ROE) overlay,IN,2,earns premium behind the liquidity gate
+Quality (hi-ROE) overlay,US,-1,Piotroski INVERTED in US
+Quality (hi-ROE) overlay,KR,2,hi-ROE cheap = the Korea discount
+Quality (hi-ROE) overlay,JP,1,pairs with value
+Quality (hi-ROE) overlay,EU,0,
+Quality (hi-ROE) overlay,CN,0,
+Insider sentiment (6-12m),IN,1,"filings-based, 6-12m outperformance"
+Insider sentiment (6-12m),US,1,"SEC Form 4, documented edge"
+Insider sentiment (6-12m),KR,1,DART disclosures
+Insider sentiment (6-12m),JP,1,EDINET disclosures
+Insider sentiment (6-12m),EU,1,
+Insider sentiment (6-12m),CN,0,disclosure quality low
+Passive core (DCA+rebalance),IN,1,"always-on base: DCA + annual rebalance, vol-targeted"
+Passive core (DCA+rebalance),US,1,"always-on base: DCA + annual rebalance, vol-targeted"
+Passive core (DCA+rebalance),KR,1,"always-on base: DCA + annual rebalance, vol-targeted"
+Passive core (DCA+rebalance),JP,1,"always-on base: DCA + annual rebalance, vol-targeted"
+Passive core (DCA+rebalance),EU,1,"always-on base: DCA + annual rebalance, vol-targeted"
+Passive core (DCA+rebalance),CN,1,"always-on base: DCA + annual rebalance, vol-targeted"

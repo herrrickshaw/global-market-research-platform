@@ -1,0 +1,11 @@
+market,regime,factor,long_only_ir,long_only_ret,long_short_ir,long_short_ret,lo_take_prof_ir,lo_take_prof_ret,ls_take_prof_ir,ls_take_prof_ret
+IN,bull,qual_mom,0.43,0.133,1.7,0.488,-1.0,-0.331,1.67,0.324
+IN,bear,def_revert,0.83,0.222,1.46,0.374,-0.14,-0.066,0.71,0.129
+US,bull,def_revert,1.02,0.329,1.34,0.526,0.63,0.214,1.42,0.298
+US,bear,def_revert,0.55,0.213,1.25,0.508,0.21,0.122,1.74,0.424
+JP,bull,qual_mom,0.49,0.1,1.06,0.223,-0.14,-0.03,0.74,0.129
+JP,bear,def_revert,0.52,0.139,0.7,0.197,-0.24,-0.091,0.38,0.071
+KR,bull,qual_mom,1.54,0.571,2.08,0.597,-0.05,-0.018,1.66,0.323
+KR,bear,def_revert,1.34,0.403,2.24,0.618,0.07,0.039,2.05,0.392
+EU,bull,mom252,1.4,0.269,1.32,0.276,0.49,0.095,0.67,0.109
+EU,bear,def_revert,0.35,0.101,0.56,0.161,-0.44,-0.189,0.48,0.103

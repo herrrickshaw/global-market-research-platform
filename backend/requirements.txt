@@ -32,3 +32,8 @@ duckdb>=1.4.0
 # Active only when UNLIMITED_OCR_URL is set; without it, parsing runs unchanged.
 pymupdf
 requests
+
+# Durable (crash-resumable) bulk quote fetch — opt-in via BULK_FETCH_DBOS=1.
+# Needs a Postgres db (default: dbos_bulk_fetch). See backend/db/bulk_fetcher_dbos.py.
+dbos
+psycopg[binary]

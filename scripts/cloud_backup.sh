@@ -58,9 +58,22 @@ trap 'rmdir "$LOCK" 2>/dev/null' EXIT
 # This lock WAITS instead of exiting, which is the opposite of the daily_pipeline
 # lock and deliberately so: a duplicate pipeline run is redundant work, but a
 # skipped backup is lost coverage, and these two write to different destinations
-# so both genuinely have to run. After 90 minutes it gives up waiting and
-# proceeds anyway — a slow backup beats no backup, and a wedged peer must not be
-# able to suppress this one indefinitely.
+# so both genuinely have to run.
+#
+# 🔴 IT USED TO PROCEED CONCURRENTLY AFTER 90 MINUTES. "A slow backup beats no
+# backup" is the wrong trade when the two runs share an rclone remote: sync with
+# --backup-dir and --delete-excluded means a concurrent peer can delete or
+# version files this run is still transferring, which is the hash-mismatch this
+# file already warns about above. Observed 2026-08-15: THREE syncs live at once
+# against overlapping Dropbox paths, one of them orphaned and 29 hours old, and
+# [R14] appeared wedged as a result.
+#
+# So the wait is still bounded — a hung peer must not stall this forever — but
+# the timeout now EXITS instead of racing. A skipped run is recoverable (rclone
+# sync is idempotent; the next run copies whatever is missing); a corrupted
+# mirror is not. Exit 75 (EX_TEMPFAIL) and log loudly, so a peer that is
+# permanently stuck shows up as repeated failures rather than as silence —
+# the same reasoning as the mailer's lost-send guard.
 ACCT_LOCK="/tmp/cloud_backup.rclone-dropbox.lock"
 ACCT_OWNED=0
 _acct_waited=0
@@ -73,8 +86,12 @@ while :; do
     rm -rf "$ACCT_LOCK" 2>/dev/null; continue          # stale: owner is gone
   fi
   if [ "$_acct_waited" -ge 5400 ]; then
-    echo "cloud_backup: waited 90m on $ACCT_LOCK (pid $_acct_peer) — proceeding concurrently" >> "$LOG"
-    break
+    echo "cloud_backup: waited 90m on $ACCT_LOCK (pid $_acct_peer) — NOT proceeding." >> "$LOG"
+    echo "  Refusing to sync concurrently against the same rclone remote: --backup-dir" >> "$LOG"
+    echo "  and --delete-excluded make an overlapping peer able to delete or version" >> "$LOG"
+    echo "  files this run is still transferring. Skipping is recoverable; a corrupted" >> "$LOG"
+    echo "  mirror is not. Check pid $_acct_peer — if it is wedged, kill it and re-run." >> "$LOG"
+    exit 75
   fi
   [ "$_acct_waited" = 0 ] && echo "cloud_backup: waiting for rclone account lock (pid $_acct_peer)" >> "$LOG"
   sleep 30; _acct_waited=$((_acct_waited + 30))
@@ -93,6 +110,55 @@ TREES=(
   "cache_seed|$HOME/market-pipeline/code/python_files/cache_seed"
   "gmd_cache_seed|$HOME/repos/global-market-data/cache_seed"
   "warehouse_duckdb|$HOME/data"
+  # ── ADDED 2026-08-15 — the rest of market-pipeline/data ────────────────────
+  # Only bhavcopy_cache (951M) was covered, leaving ~193M of this tree as the
+  # ONLY copy on the machine. Policy is now that the laptop holds no sole copy
+  # of anything durable, so the remaining subdirectories are enumerated rather
+  # than backing up data/ wholesale — that would re-sweep bhavcopy_cache into a
+  # second destination and double the nightly transfer.
+  "china_scan|$HOME/market-pipeline/data/china_scan"
+  "nse_factsheets|$HOME/market-pipeline/data/nse_factsheets"
+  "reference_data|$HOME/market-pipeline/data/reference_data"
+  "sentiment_link_results|$HOME/market-pipeline/data/sentiment_link_results"
+  "europe_scan|$HOME/market-pipeline/data/europe_scan"
+  "backtest_results|$HOME/market-pipeline/data/backtest_results"
+  "pattern_results|$HOME/market-pipeline/data/pattern_results"
+  # ── ADDED 2026-08-16 — the last sole-copy-local trees ─────────────────────
+  # Neither was in git NOR in any backup tree, so the laptop was the only copy.
+  #   reference/        532M of govt reports, books and papers — source material,
+  #                     not regenerable by any pipeline here.
+  #   correlation_scan/ 613M of correlation matrices. Technically reproducible,
+  #                     but [R4] takes minutes per market and the .csv.zst
+  #                     matrices are the expensive part — cheaper to store than
+  #                     to recompute after a loss.
+  # The per-market scan workbooks (us_full_scan/, japan_scan/ etc.) are left out
+  # deliberately: they are rebuilt from scratch every single run, so backing them
+  # up would add daily churn for something a re-run reproduces in minutes.
+  "reference|$HOME/reference"
+  "correlation_scan|$HOME/market-pipeline/code/python_files/correlation_scan"
+  # ── ADDED 2026-08-16 (second sweep) — remaining sole-copy data ────────────
+  #   .graphify/         knowledge graphs + their caches. The global map is 42
+  #                      repos / ~31,896 nodes; rebuilding means re-ingesting
+  #                      every repo, so this is expensive, not derived.
+  #   claude-provenance/ provenance records, SOP and summaries — documentation
+  #                      that exists nowhere else.
+  #   logs/              scraper operational logs; small and the only record of
+  #                      what those collectors actually did.
+  #
+  # 🔴 DELIBERATELY EXCLUDED, and not oversights:
+  #   ~/.claude/     2.1G of session transcripts. Backing these up would copy
+  #                  credentials pasted into sessions (an OpenAI key and Google
+  #                  refresh tokens are in there) to two more providers. Prune,
+  #                  do not replicate.
+  #   ~/Downloads/   holds client_secret_*.json OAuth credentials.
+  #   ~/Pictures/    personal, not tool data.
+  #   ~/.git/        already off-machine — origin global-market-research-platform.
+  #   .cache .venvs .npm .local node_modules bin .duckdb .ruvector .dropbox*
+  #                  derived or reinstallable; .duckdb/.ruvector are just
+  #                  downloadable extensions and models.
+  "graphify|$HOME/.graphify"
+  "claude_provenance|$HOME/claude-provenance"
+  "scraper_logs|$HOME/logs"
   # 🔴 ADDED 2026-08-02 — THE OMISSION THAT MATTERED MOST. This tree is the deep
   # price panel every downstream thing reads: the regime backtest, zone rules,
   # warehouse_insights, ownership studies. It was the ONE dataset not backed up
@@ -107,7 +173,24 @@ TREES=(
   # per-request throttling documented below simply does not apply. Year
   # partitioning is what makes that true — a daily run rewrites one ~8MB file per
   # market, not thousands of per-ticker files.
+  #
+  # 🔴 2026-08-17: ohlcv/ AND ohlcv_adj/ NO LONGER LIVE UNDER THIS PATH. They
+  # were migrated to the cloud store and untracked from the repo, so the local
+  # tree below is now ~124MB (audit, bhavcopy, cgd, energy, duckdb) rather than
+  # the 1.1GB described above. The remote gmd_warehouse/ohlcv is what
+  # market_paths.resolve() materialises from — a plain `sync` of this tree would
+  # therefore have DELETED the canonical panels to match a local directory that
+  # is empty by design. They are excluded from this tree (see EXTRA_EXCLUDES)
+  # and pushed from the cache by the two entries below, into the SAME remote
+  # paths, so the resolver keeps reading a current copy.
   "gmd_warehouse|$HOME/repos/global-market-data/warehouse"
+  # Rooted at the subdirectory so `$name` reproduces the remote layout exactly:
+  # these land in gmd_warehouse/ohlcv and gmd_warehouse/ohlcv_adj, which is
+  # where the resolver already looks. Anything writing panels (warehouse_update,
+  # price_adjuster) now writes the cache, so this is the leg that keeps the
+  # canonical copy fresh.
+  "gmd_warehouse/ohlcv|$HOME/.cache/market-warehouse/ohlcv"
+  "gmd_warehouse/ohlcv_adj|$HOME/.cache/market-warehouse/ohlcv_adj"
   # The tar.zst archives of many-small-file static subdirs (see below). Synced as
   # its own dataset so excluding the raw files does not lose the data.
   "backup_archives|$HOME/.backup-archives"
@@ -143,7 +226,17 @@ TREES=(
 # themselves in this sync — backing up a backup, and 45MB of pure duplication.
 # (It also must never live inside the panel dir; pyarrow would read a .bak back as
 # a second copy of that year. Kept outside, and excluded here.)
-EXTRA_EXCLUDES=(--exclude "nse_xbrl/xml/**" --exclude "ohlc/**" --exclude "_backup/**")
+#
+# 🔴 /ohlcv/** and /ohlcv_adj/** are LEADING-SLASH ANCHORED, which matters. They
+# exist to stop the gmd_warehouse tree from deleting the canonical panels off the
+# remote now that those subdirs are empty locally (2026-08-17 migration). Anchored,
+# they match only <tree-root>/ohlcv — so they hit the repo warehouse tree and NOT
+# the two cache-rooted entries that push the panels back in, whose own root IS
+# .../ohlcv. Unanchored, they would match at any depth and silently disable the
+# very upload that keeps the resolver's source current.
+# Verified before adding: no other synced tree has a top-level ohlcv/ directory.
+EXTRA_EXCLUDES=(--exclude "nse_xbrl/xml/**" --exclude "ohlc/**" --exclude "_backup/**"
+                --exclude "/ohlcv/**" --exclude "/ohlcv_adj/**")
 
 {
   echo "=== cloud backup $(date '+%Y-%m-%d %H:%M:%S %Z') -> $REMOTE ==="
@@ -156,7 +249,12 @@ EXTRA_EXCLUDES=(--exclude "nse_xbrl/xml/**" --exclude "ohlc/**" --exclude "_back
     "$RCLONE" sync "$src" "$REMOTE/current/$name" \
       --backup-dir "$REMOTE/history/$TODAY/$name" \
       --exclude "*.tmp" --exclude "*.bak" --exclude "*.parquet.bak" \
-      --exclude "ohlcv.lmdb/**" --exclude ".DS_Store" \
+      --exclude "ohlcv.lmdb/**" \
+      `# gh-clones are re-clonable from their git remotes: 631M of .graphify's
+       # 663M and 18,073 of its 18,080 files. Storing them turns a 7-file,
+       # 34MB tree into an 18k-file upload that throttles on both providers
+       # for something 'git clone' reproduces.` \
+      --exclude "gh-clones/**" --exclude ".DS_Store" \
       "${EXTRA_EXCLUDES[@]}" \
       --transfers 4 --checkers 8 --dropbox-chunk-size 96M \
       --stats-one-line --stats 0 --log-level NOTICE \
