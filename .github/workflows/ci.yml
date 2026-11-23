@@ -93,8 +93,14 @@ jobs:
           pip install --upgrade pip
           pip install pytest pytest-cov numpy pandas scipy openpyxl psycopg2-binary
 
+      # tests/test_bms.py imports a `bms` package that is not in this repo, so a
+      # plain `pytest tests/` aborts at collection. The coverage-measured run
+      # therefore ignores it; the BMS step below is left exactly as it was.
+      - name: Run root suite with coverage
+        run: python -m pytest tests/ -v --ignore=tests/test_bms.py --cov=. --cov-report=xml
+
       - name: Run BMS suite
-        run: python -m pytest tests/ -v --cov=. --cov-report=xml
+        run: python -m pytest tests/ -v
 
       - name: Upload coverage to Codecov
         if: always()
