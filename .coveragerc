@@ -1,0 +1,13 @@
+[run]
+source = .
+omit =
+    */tests/*
+    tests/*
+    */conftest.py
+    */test_*.py
+    test_*.py
+    */docs/*
+    */frontend/*
+    */node_modules/*
+    stock-portfolio-evaluator/tests/*
+    */deoldify.py
