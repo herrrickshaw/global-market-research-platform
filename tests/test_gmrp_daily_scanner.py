@@ -207,6 +207,8 @@ def test_piotroski_boundaries():
     assert f(ema_20=80, ema_50=80)["FX6_ema_cross"] is False
     assert f(atr_14=2.7, cmp=90)["FX7_low_atr"] is False        # exactly 3% of 90
     assert f(atr_14=2.69, cmp=90)["FX7_low_atr"] is True
+    assert f(atr_14=3.0, cmp=100)["FX7_low_atr"] is False       # exactly 3.00% (3/100 == 0.03 in floats)
+    assert f(atr_14=2.99, cmp=100)["FX7_low_atr"] is True
 
 
 def test_piotroski_atr_needs_positive_price():

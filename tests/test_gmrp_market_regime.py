@@ -164,3 +164,21 @@ def test_compute_vol_percentile_buckets(mr, monkeypatch):
     quiet2 = quiet2 / quiet2.iloc[0] * noisy2.iloc[-1]
     _fake_yf(monkeypatch, pd.concat([noisy2, quiet2]))
     assert mr._compute("us")["vol"] == "LOW"
+
+
+def test_compute_masks_implausible_daily_moves(mr, monkeypatch):
+    # 5 tickers, 101 rows -> exactly 100 index returns, the minimum for an EMA(100).
+    p = _panel(0.003, n=101, ncols=5)
+    _fake_yf(monkeypatch, p)
+    assert mr._compute("us")["trend"] != "unknown"
+    # a +70% one-day print on one ticker is masked -> only 4 valid names that day
+    # (<= 4 is dropped), leaving 99 returns -> no EMA -> unknown.
+    jumped = p.copy()
+    jumped.iloc[50:, 0] = jumped.iloc[50:, 0] * 1.7
+    _fake_yf(monkeypatch, jumped)
+    assert mr._compute("us") == {"trend": "unknown", "vol": "unknown"}
+    # a 50% move is below the 60% cut-off and is kept
+    ok = p.copy()
+    ok.iloc[50:, 0] = ok.iloc[50:, 0] * 1.5
+    _fake_yf(monkeypatch, ok)
+    assert mr._compute("us")["trend"] != "unknown"
