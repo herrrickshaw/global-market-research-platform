@@ -93,13 +93,8 @@ jobs:
           pip install --upgrade pip
           pip install pytest numpy pandas scipy openpyxl psycopg2-binary
 
-      - name: Run BMS suite
-        run: python -m pytest tests/ -v
-
-      # `python -m pytest` (not bare `pytest`) is required: it puts the working
-      # directory on sys.path, which is how `import stock_evaluator` resolves
-      # without installing the package. Running this from the repo root fails
-      # with ModuleNotFoundError.
-      - name: Run portfolio-evaluator suite
-        working-directory: stock-portfolio-evaluator
-        run: python -m pytest tests/ -v
+      # bms/ and stock-portfolio-evaluator/ were removed in 2836c64 ("content
+      # consolidated elsewhere"). tests/test_bms.py still imports bms, so it is
+      # ignored here. `python -m pytest` puts the repo root on sys.path.
+      - name: Run test suite
+        run: python -m pytest tests/ -v --ignore=tests/test_bms.py
